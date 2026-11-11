@@ -50,13 +50,23 @@ export class OrgService {
     body: { name?: string; managerId?: string; parentId?: string },
   ) {
     // DIRECTOR may edit any department; a MANAGER only departments they manage.
-    // Non-managers / out-of-scope rows never leak existence: pre-check through
-    // the scoped client returns null for hidden rows → 403 coded (never 404).
+    // Non-managers / out-of-scope rows must never leak existence: the pre-check
+    // through the scoped client returns null for hidden rows → 403 coded.
+    // Truly missing rows stay 404 for DIRECTOR (verified via the unscoped
+    // existence check below) but remain 403 for anyone else.
     if (viewer.role === 'EMPLOYEE') {
       throw error('FORBIDDEN', 'Insufficient permission', HttpStatus.FORBIDDEN);
     }
     const visible = await this.client(viewer).department.findUnique({ where: { id } });
     if (!visible) {
+      if (viewer.role === 'DIRECTOR') {
+        const exists = await this.prisma.withIdentity(viewer.id, (tx) =>
+          tx.department.findUnique({ where: { id }, select: { id: true } }),
+        );
+        if (!exists) {
+          throw error('NOT_FOUND', 'Department not found', HttpStatus.NOT_FOUND);
+        }
+      }
       throw error('FORBIDDEN', 'Insufficient permission', HttpStatus.FORBIDDEN);
     }
     return this.prisma.runAsUser(viewer.id, (tx) =>

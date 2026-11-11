@@ -9,6 +9,7 @@ export interface AbilityUser {
   id: string;
   role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE';
   managedDepartmentIds: string[];
+  departmentId?: string | null;
 }
 
 interface RuleCondition {
@@ -74,7 +75,10 @@ export class AbilitiesFactory {
       return new Ability([{ action: 'manage', subject: 'all' }]);
     }
     if (user.role === 'MANAGER') {
-      const managed = { in: user.managedDepartmentIds };
+      // NOTE: conditions use CASL-style `$in` (what Ability.can evaluates) —
+      // never Prisma-style `in`, which falls through to strict equality and
+      // would deny every conditional MANAGER rule.
+      const managed = { $in: user.managedDepartmentIds };
       return new Ability([
         { action: ['read', 'update'], subject: 'Department', conditions: { id: managed } },
         { action: ['read', 'update'], subject: 'User', conditions: { departmentId: managed } },
@@ -82,7 +86,12 @@ export class AbilitiesFactory {
     }
     return new Ability([
       { action: 'read', subject: 'User', conditions: { id: user.id } },
-      { action: 'read', subject: 'Department', conditions: { id: user.id } },
+      // Own department only — threaded from resolveViewer (the old code
+      // compared the department id against the *user* id, which can never
+      // match a real department).
+      ...(user.departmentId
+        ? [{ action: 'read', subject: 'Department', conditions: { id: user.departmentId } }]
+        : []),
     ]);
   }
 
@@ -111,6 +120,12 @@ export class AbilitiesFactory {
 
   /** Ability for a guard-attached identity (resolves managed departments). */
   async abilityFor(viewer: { id: string; role: ScopeViewer['role'] }): Promise<Ability> {
-    return this.createFor(await this.resolveViewer(viewer));
+    const resolved = await this.resolveViewer(viewer);
+    return this.createFor({
+      id: resolved.id,
+      role: resolved.role,
+      managedDepartmentIds: resolved.managedDepartmentIds,
+      departmentId: resolved.departmentId,
+    });
   }
 }
