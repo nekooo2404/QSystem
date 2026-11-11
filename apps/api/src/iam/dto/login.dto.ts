@@ -1,7 +1,11 @@
 import { IsEmail, IsString, MinLength } from 'class-validator';
+import type {
+  ChangePasswordInput,
+  LoginInput,
+} from '@qsystem/contracts';
 
-/** POST /auth/login body. Shape pinned by plan R2 (T5 standardizes later). */
-export class LoginDto {
+/** POST /auth/login body. Shape pinned by plan R2 (standardized in @qsystem/contracts). */
+export class LoginDto implements LoginInput {
   @IsEmail()
   email!: string;
 
@@ -10,8 +14,8 @@ export class LoginDto {
   password!: string;
 }
 
-/** PATCH /me/password body. */
-export class ChangePasswordDto {
+/** PATCH /me/password body. Rules mirror ChangePasswordSchema. */
+export class ChangePasswordDto implements ChangePasswordInput {
   @IsString()
   @MinLength(1)
   oldPassword!: string;
@@ -21,12 +25,5 @@ export class ChangePasswordDto {
   newPassword!: string;
 }
 
-/** GET /me response. Shape pinned by plan R2 (T5 standardizes later). */
-export interface MeResponse {
-  id: string;
-  email: string;
-  name: string;
-  role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE';
-  departmentId: string | null;
-  managedDepartmentIds: string[];
-}
+/** GET /me response. Shape pinned by plan R2 — canonical type lives in @qsystem/contracts. */
+export type { MeResponse } from '@qsystem/contracts';
