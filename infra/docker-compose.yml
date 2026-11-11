@@ -1,0 +1,80 @@
+name: qsystem
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-qsystem}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-qsystem}
+    # Host ports are env-overridable for machines where the defaults are
+    # taken by other local stacks (e.g. POSTGRES_PORT=55432).
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-qsystem} -d $${POSTGRES_DB:-qsystem}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    # S3-compatible object storage with the MinIO API (buckets, presigned URLs).
+    # NOTE: upstream `minio/minio` is no longer pullable without registry auth
+    # (gone from Docker Hub; quay.io repo returns 401 without login), so dev
+    # infra uses RustFS, which serves the same S3 API on the same ports and
+    # honors the MINIO_ROOT_* env keys below.
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    command: server /data --console-enable --console-address :9001
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${S3_PORT:-9000}:9000"
+      - "${S3_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  meilisearch:
+    image: getmeili/meilisearch
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-change-me-32-chars-minimum-0000}
+    ports:
+      - "${MEILI_PORT:-7700}:7700"
+    volumes:
+      - meili-data:/meili_data
+
+volumes:
+  pgdata:
+  minio-data:
+  meili-data:
