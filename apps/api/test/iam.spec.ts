@@ -7,6 +7,7 @@ import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { resetLoginLimits } from '../src/iam/login-rate-limit';
 
 // Unique per run so repeat runs never clash with seed data or each other.
 const RUN = `iam-${Date.now()}`;
@@ -25,13 +26,17 @@ if (!RLS_OWNER_URL) {
 }
 const owner = new PrismaClient({ datasources: { db: { url: RLS_OWNER_URL } } });
 
-process.env.JWT_SECRET ??= 'test-only-secret-do-not-use-in-prod';
+// TEST_JWT_SECRET is test-only: set locally in this spec so the app's
+// fail-fast path (no hardcoded default key) still signs tokens during e2e.
+// It never touches app code paths outside NODE_ENV=test.
+process.env.TEST_JWT_SECRET ??= 'iam-spec-local-only-do-not-reuse';
 process.env.NODE_ENV ??= 'test';
 
 const PASSWORD = 'Correct-horse-9!';
 const WRONG = 'Wrong-password-0!';
 
 let app!: INestApplication;
+let deptId!: string;
 
 beforeAll(async () => {
   await owner.$connect();
@@ -50,6 +55,7 @@ beforeAll(async () => {
   const dept = await owner.department.create({
     data: { name: `${RUN}-dept`, tenantId: null },
   });
+  deptId = dept.id;
   const manager = await owner.user.create({
     data: {
       email: `${RUN}-mgr@qsystem.local`,
@@ -91,6 +97,13 @@ afterAll(async () => {
   await owner.$disconnect();
 });
 
+function refreshCookieOf(res: { headers: Record<string, unknown> }): string {
+  const cookies = res.headers['set-cookie'] as unknown as string[];
+  const found = cookies.find((c) => c.startsWith('refresh_token='));
+  if (!found) throw new Error('expected refresh_token cookie');
+  return found;
+}
+
 describe('IamModule (Task 3)', () => {
   it('login trả access + set refresh cookie; /me trả role + managedDepartmentIds', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
@@ -110,48 +123,109 @@ describe('IamModule (Task 3)', () => {
       .expect(200);
 
     expect(meRes.body as Record<string, unknown>).toMatchObject({ role: 'MANAGER' });
-    expect(meRes.body.managedDepartmentIds).toContainEqual(
-      expect.any(String),
-    );
+    // Exact-dept assertion: the manager manages exactly this run's dept.
+    expect(meRes.body.managedDepartmentIds).toEqual([deptId]);
   });
 
-  it('refresh xoay vòng: reuse refresh cũ bị 401 + thu hồi chuỗi', async () => {
+  it('refresh xoay vòng: reuse refresh cũ bị 401 REFRESH_REUSED + thu hồi chuỗi', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
 
     const loginRes = await request(server)
       .post('/auth/login')
       .send({ email: `${RUN}-emp@qsystem.local`, password: PASSWORD })
       .expect(201);
-    const firstCookie = (
-      loginRes.headers['set-cookie'] as unknown as string[]
-    ).find((c) => c.startsWith('refresh_token='));
-    expect(firstCookie).toBeDefined();
+    const firstCookie = refreshCookieOf(loginRes);
 
     // First rotation succeeds and issues a fresh cookie.
     const rotated = await request(server)
       .post('/auth/refresh')
-      .set('Cookie', firstCookie as string)
+      .set('Cookie', firstCookie)
       .expect(201);
     expect((rotated.body as { accessToken: string }).accessToken).toEqual(expect.any(String));
 
-    // Reusing the old (already rotated) cookie must fail and revoke the chain.
-    await request(server)
+    // Reusing the old (already rotated) cookie must fail with REFRESH_REUSED
+    // and revoke the whole chain.
+    const reuse = await request(server)
       .post('/auth/refresh')
-      .set('Cookie', firstCookie as string)
+      .set('Cookie', firstCookie)
       .expect(401);
+    expect((reuse.body as { code: string }).code).toBe('REFRESH_REUSED');
 
     // The rotated token from the compromised chain is revoked too.
-    const rotatedCookie = (
-      rotated.headers['set-cookie'] as unknown as string[]
-    ).find((c) => c.startsWith('refresh_token='));
-    await request(server)
+    const rotatedCookie = refreshCookieOf(rotated);
+    const afterReuse = await request(server)
       .post('/auth/refresh')
-      .set('Cookie', rotatedCookie as string)
+      .set('Cookie', rotatedCookie)
       .expect(401);
+    expect((afterReuse.body as { code: string }).code).toBe('REFRESH_REUSED');
   });
 
-  it('sai mật khẩu 5 lần bị rate-limit 429', async () => {
+  it('expired token trả 401 INVALID_CREDENTIALS, không thu hồi chuỗi', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+
+    const loginRes = await request(server)
+      .post('/auth/login')
+      .send({ email: `${RUN}-mgr@qsystem.local`, password: PASSWORD })
+      .expect(201);
+    const liveCookie = refreshCookieOf(loginRes);
+
+    // Expire the live token directly (owner oracle): set expires_at in the past.
+    const raw = liveCookie.split(';')[0].split('=')[1];
+    const { createHash } = await import('node:crypto');
+    const tokenHash = createHash('sha256').update(raw).digest('hex');
+    await owner.$executeRawUnsafe(
+      `UPDATE refresh_tokens SET expires_at = now() - interval '1 second' WHERE token_hash = '${tokenHash}'`,
+    );
+
+    // Presenting the merely-expired token is a plain 401, no chain revocation.
+    const expired = await request(server)
+      .post('/auth/refresh')
+      .set('Cookie', liveCookie)
+      .expect(401);
+    expect((expired.body as { code: string }).code).toBe('INVALID_CREDENTIALS');
+
+    // A sibling session of the same user still refreshes (chain intact).
+    const login2 = await request(server)
+      .post('/auth/login')
+      .send({ email: `${RUN}-mgr@qsystem.local`, password: PASSWORD })
+      .expect(201);
+    await request(server)
+      .post('/auth/refresh')
+      .set('Cookie', refreshCookieOf(login2))
+      .expect(201);
+  });
+
+  it('logout thu hồi refresh, idempotent, cookie bị xóa', async () => {
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+
+    const loginRes = await request(server)
+      .post('/auth/login')
+      .send({ email: `${RUN}-emp@qsystem.local`, password: PASSWORD })
+      .expect(201);
+    const cookie = refreshCookieOf(loginRes);
+
+    // Logout revokes the token and clears the cookie.
+    const out = await request(server)
+      .post('/auth/logout')
+      .set('Cookie', cookie)
+      .expect(200);
+    const cleared = (out.headers['set-cookie'] as unknown as string[]).join(';');
+    expect(cleared).toMatch(/refresh_token=/);
+
+    // The logged-out token no longer refreshes.
+    const afterLogout = await request(server)
+      .post('/auth/refresh')
+      .set('Cookie', cookie)
+      .expect(401);
+    expect((afterLogout.body as { code: string }).code).toBe('REFRESH_REUSED');
+
+    // Second logout with no cookie is still 200 (idempotent).
+    await request(server).post('/auth/logout').expect(200);
+  });
+
+  it('sai mật khẩu 5 lần bị rate-limit 429 (per-account)', async () => {
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+    resetLoginLimits();
 
     for (let i = 0; i < 5; i++) {
       await request(server)
@@ -166,20 +240,73 @@ describe('IamModule (Task 3)', () => {
     expect((limited.body as { code: string }).code).toBe('RATE_LIMITED');
   });
 
-  it('đổi mật khẩu với mật khẩu cũ sai bị 400', async () => {
+  it('spray nhiều email từ 1 IP bị chặn per-IP 429', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+    resetLoginLimits();
 
-    // NOTE: uses the manager account — the employee login above is rate-limited.
+    // 5 attempts across DIFFERENT emails from this test process: the strict
+    // per-IP bucket counts every attempt, so the 6th (any email) is 429.
+    for (let i = 0; i < 5; i++) {
+      await request(server)
+        .post('/auth/login')
+        .send({ email: `${RUN}-spray-${i}@qsystem.local`, password: WRONG });
+    }
+    const limited = await request(server)
+      .post('/auth/login')
+      .send({ email: `${RUN}-emp@qsystem.local`, password: PASSWORD })
+      .expect(429);
+    expect((limited.body as { code: string }).code).toBe('RATE_LIMITED');
+    resetLoginLimits();
+  });
+
+  it('đổi mật khẩu với mật khẩu cũ sai bị 400; đổi đúng đá mọi session', async () => {
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+    resetLoginLimits();
+
     const loginRes = await request(server)
       .post('/auth/login')
       .send({ email: `${RUN}-mgr@qsystem.local`, password: PASSWORD })
       .expect(201);
+    const access = (loginRes.body as { accessToken: string }).accessToken as string;
+    const cookie = refreshCookieOf(loginRes);
 
     const res = await request(server)
       .patch('/me/password')
-      .set('Authorization', `Bearer ${(loginRes.body as { accessToken: string }).accessToken as string}`)
+      .set('Authorization', `Bearer ${access}`)
       .send({ oldPassword: WRONG, newPassword: 'Brand-new-pass-1!' })
       .expect(400);
     expect((res.body as { code: string }).code).toBe('WRONG_PASSWORD');
+
+    // Correct change revokes every live session: old refresh is dead.
+    const login2 = await request(server)
+      .post('/auth/login')
+      .send({ email: `${RUN}-mgr@qsystem.local`, password: PASSWORD })
+      .expect(201);
+    const access2 = (login2.body as { accessToken: string }).accessToken as string;
+    const cookie2 = refreshCookieOf(login2);
+
+    await request(server)
+      .patch('/me/password')
+      .set('Authorization', `Bearer ${access2}`)
+      .send({ oldPassword: PASSWORD, newPassword: 'Brand-new-pass-2!' })
+      .expect(200);
+
+    await request(server)
+      .post('/auth/refresh')
+      .set('Cookie', cookie2)
+      .expect(401);
+
+    // Restore the known password for later tests in this file order.
+    const login3 = await request(server)
+      .post('/auth/login')
+      .send({ email: `${RUN}-mgr@qsystem.local`, password: 'Brand-new-pass-2!' })
+      .expect(201);
+    const access3 = (login3.body as { accessToken: string }).accessToken as string;
+    await request(server)
+      .patch('/me/password')
+      .set('Authorization', `Bearer ${access3}`)
+      .send({ oldPassword: 'Brand-new-pass-2!', newPassword: PASSWORD })
+      .expect(200);
+    void cookie;
   });
 });

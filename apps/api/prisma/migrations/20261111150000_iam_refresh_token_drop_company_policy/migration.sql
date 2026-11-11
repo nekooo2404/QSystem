@@ -1,0 +1,15 @@
+-- IAM refresh tokens: drop unrequested company policy (forward fix, Task 3 round 1).
+--
+-- The Task 3 migration 20261111140000_iam_refresh_token created two RLS
+-- policies on refresh_tokens: refresh_tokens_self (correct, keyed on
+-- app.current_user_id) and refresh_tokens_company (unrequested dead code —
+-- it references app_current_role(), which no other migration defines for
+-- this flow, and the brief requires self-scoped tokens only).
+--
+-- This migration is FORWARD-ONLY: it drops the dead company policy and
+-- retains the self policy. It does NOT edit any existing migration (R1).
+-- Fresh deploys via `migrate deploy` apply 20261111140000 then this one in
+-- order and end with exactly one policy (refresh_tokens_self). Journal-vs-DB
+-- state is per-database: the earlier `resolve --applied` only affected the
+-- local dev DB journal; empty-DB deploys are unaffected.
+DROP POLICY IF EXISTS refresh_tokens_company ON refresh_tokens;

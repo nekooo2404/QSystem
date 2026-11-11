@@ -20,8 +20,9 @@ import {
   clearLoginFailures,
   isLoginLimited,
   loginLimitKey,
+  recordLoginAttempt,
   recordLoginFailure,
-} from './iam.service';
+} from './login-rate-limit';
 
 @Controller()
 export class IamController {
@@ -38,25 +39,28 @@ export class IamController {
     @Res({ passthrough: true }) res: ExpressResponse,
   ): Promise<{ accessToken: string }> {
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
-    const key = loginLimitKey(ip, body.email);
-    if (isLoginLimited(key)) {
+    const accountKey = loginLimitKey(ip, body?.email ?? '');
+    // Strict per-IP bucket: every attempt consumes, so spraying guesses across
+    // emails from one IP trips 5/min; the per-account bucket protects other
+    // users behind the same NAT from one account's failures.
+    if (isLoginLimited(ip, accountKey)) {
       throw new HttpException(
         { code: 'RATE_LIMITED', message: 'Too many login attempts, try again later' },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
+    recordLoginAttempt(ip);
     try {
-      const out = await this.iam.login(body.email, body.password, res);
-      clearLoginFailures(key);
+      const out = await this.iam.login(body?.email ?? '', body?.password ?? '', res);
+      clearLoginFailures(accountKey);
       return out;
     } catch (err) {
-      // Only failed attempts consume budget — a success always clears the key,
-      // so legit logins are never blocked by earlier failures.
+      // Only failures consume the per-account budget; a success clears it.
       if (
         err instanceof HttpException &&
         err.getStatus() === HttpStatus.UNAUTHORIZED
       ) {
-        recordLoginFailure(key);
+        recordLoginFailure(accountKey);
       }
       throw err;
     }
@@ -88,13 +92,13 @@ export class IamController {
   }
 
   @Get('me')
-  async me(@CurrentUser() user: { id: string; role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE' }): Promise<MeResponse> {
+  async me(@CurrentUser() user: { id: string; role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE' } | undefined): Promise<MeResponse> {
     return this.iam.me(user);
   }
 
   @Patch('me/password')
   async changePassword(
-    @CurrentUser() user: { id: string; role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE' },
+    @CurrentUser() user: { id: string; role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE' } | undefined,
     @Body() body: ChangePasswordDto,
   ): Promise<{ ok: true }> {
     await this.iam.changePassword(user, body.oldPassword, body.newPassword);

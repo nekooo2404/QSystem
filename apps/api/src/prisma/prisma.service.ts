@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, PrismaClient } from '@prisma/client';
 import {
@@ -224,7 +225,7 @@ function withoutRaw<T extends object>(client: T): T & ScopedClient {
   }) as unknown as T & ScopedClient;
 }
 
-export class PrismaService extends PrismaClient {
+export class PrismaService extends PrismaClient implements OnModuleDestroy {
   /**
    * Run `fn` with `viewer` as ambient context AND `SET LOCAL
    * app.current_user_id` active, so both the scope layer and the RLS
@@ -313,5 +314,39 @@ export class PrismaService extends PrismaClient {
       $executeRawUnsafe: refuse,
       $queryRawTyped: refuse,
     } as unknown as ScopedClient;
+  }
+
+  /**
+   * Run `fn` with `SET LOCAL app.current_user_id` active WITHOUT app-layer
+   * scope filters — for identity-owned writes where withScope would add
+   * filters the schema has no columns for (e.g. refresh_tokens). Postgres RLS
+   * policies still enforce the self/company boundary at the SQL level, and
+   * pre-identity reads go through SECURITY DEFINER functions only.
+   */
+  async withIdentity<T>(userId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT set_config('app.current_user_id', ${userId}, true)`,
+      );
+      return fn(tx);
+    });
+  }
+
+  /** Pre-identity lookup via SECURITY DEFINER — never queries users directly. */
+  async lookupIdentity(email: string): Promise<{ id: string; password_hash: string; role: string; department_id: string | null }[]> {
+    return this.$queryRaw<{ id: string; password_hash: string; role: string; department_id: string | null }[]>`
+      SELECT * FROM auth_user_lookup(${email})
+    `;
+  }
+
+  /** Pre-identity refresh-token lookup via DEFINER — never queries table directly. */
+  async lookupRefresh(tokenHash: string): Promise<{ id: string; user_id: string; expires_at: Date | string; revoked_at: Date | string | null; replaced_by_id: string | null }[]> {
+    return this.$queryRaw<{ id: string; user_id: string; expires_at: Date | string; revoked_at: Date | string | null; replaced_by_id: string | null }[]>`
+      SELECT * FROM auth_refresh_lookup(${tokenHash})
+    `;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.$disconnect();
   }
 }

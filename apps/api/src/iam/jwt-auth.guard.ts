@@ -4,10 +4,9 @@ import {
   Inject,
   Injectable,
   SetMetadata,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IamService } from './iam.service';
+import { codedUnauthorized, IamService } from './iam.service';
 
 export const PUBLIC_KEY = 'qsystem:isPublic';
 
@@ -33,7 +32,11 @@ export class JwtAuthGuard implements CanActivate {
       user?: { id: string; role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE' };
     }>();
     const header = req.headers.authorization;
-    if (!header?.startsWith('Bearer ')) throw new UnauthorizedException();
+    if (!header || !header.startsWith('Bearer ') || header.length <= 'Bearer '.length) {
+      // Coded 401 per brief minimum {code,message} — never Nest's default
+      // uncoded {statusCode,message} shape.
+      throw codedUnauthorized('UNAUTHORIZED', 'Missing or invalid access token');
+    }
     req.user = this.iam.verifyAccess(header.slice('Bearer '.length));
     return true;
   }
