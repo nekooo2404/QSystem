@@ -120,7 +120,6 @@ function scopedDelegate<T extends object>(delegate: T, model: ModelName, viewer:
         // and run isAllowed. A hidden-or-missing row is denied outright (no
         // existence oracle; nothing is applied when out of scope). Postgres
         // RLS WITH CHECK stays as the SQL-level backstop.
-        // upsert has no reliable pre-image — post-check only.
         return async (args?: Record<string, unknown>) => {
           if (dProp === 'update' || dProp === 'delete') {
             // Pre-image read through the UNSCOPED delegate, then isAllowed —
@@ -132,6 +131,31 @@ function scopedDelegate<T extends object>(delegate: T, model: ModelName, viewer:
             if (!pre || !isAllowed(model, viewer, pre as Record<string, unknown>)) {
               throw new Error(SCOPED_ACCESS_DENIED);
             }
+            return bound(args);
+          }
+          // dProp === 'upsert': pre-check BEFORE mutating. The upsert `where`
+          // is always unique, so findUnique on it is the right pre-image probe.
+          // Existing-but-out-of-scope row → throw, nothing applied. No
+          // pre-image → insert path: pin owner exactly like `create`, then run.
+          const finder = (
+            dTarget as unknown as { findUnique: (a: unknown) => Promise<unknown> }
+          ).findUnique;
+          const pre = await finder.call(dTarget, { where: args?.where });
+          if (pre) {
+            if (!isAllowed(model, viewer, pre as Record<string, unknown>)) {
+              throw new Error(SCOPED_ACCESS_DENIED);
+            }
+          } else if (
+            model === 'file' &&
+            viewer.role === 'EMPLOYEE' &&
+            args?.create &&
+            typeof args.create === 'object' &&
+            !Array.isArray(args.create)
+          ) {
+            return bound({
+              ...args,
+              create: { ...(args.create as Where), ownerId: viewer.id },
+            });
           }
           const row = (await bound(args)) as Record<string, unknown> | null;
           if (row && !isAllowed(model, viewer, row)) throw new Error(SCOPED_ACCESS_DENIED);

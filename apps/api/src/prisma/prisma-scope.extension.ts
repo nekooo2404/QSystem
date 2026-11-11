@@ -131,6 +131,24 @@ function denyIfOutOfScope(model: ModelName, viewer: ScopeViewer, row: unknown): 
 }
 
 /**
+ * Owner pinning for inserts: EMPLOYEE file uploads always belong to the
+ * uploader — never spoofable. Shared by `create` and the no-pre-image
+ * (insert) branch of `upsert` so both pin owner fields identically.
+ */
+function pinCreateOwner(model: ModelName, viewer: ScopeViewer, args: unknown): unknown {
+  const a = args as { data?: unknown; create?: unknown } | undefined;
+  if (model === 'file' && viewer.role === 'EMPLOYEE') {
+    if (a?.data && typeof a.data === 'object' && !Array.isArray(a.data)) {
+      return { ...(a as Record<string, unknown>), data: { ...(a.data as Where), ownerId: viewer.id } };
+    }
+    if (a?.create && typeof a.create === 'object' && !Array.isArray(a.create)) {
+      return { ...(a as Record<string, unknown>), create: { ...(a.create as Where), ownerId: viewer.id } };
+    }
+  }
+  return args;
+}
+
+/**
  * Prisma client extension enforcing scope on every ORM operation.
  * Raw queries ($queryRaw/$executeRaw) are NOT intercepted here — the scoped
  * client wrapper (PrismaService.forUser) refuses them outright so raw SQL can
@@ -195,7 +213,8 @@ const hooksFor = (model: ModelName, reader: ScopedReader): Record<string, (hook:
     // update/delete/upsert take unique-only `where` (no AND possible) →
     // pre-check the current row BEFORE mutating. A hidden-or-missing row is
     // denied outright (no existence oracle; nothing applied out of scope).
-    // upsert has no reliable pre-image — post-check only.
+    // upsert with no pre-image is an insert → the create branch below pins
+    // owner fields exactly like `create` before running.
     // RLS WITH CHECK stays as the SQL backstop.
     for (const op of SINGLE_WRITES) {
       hooks[op] = async ({ args, query }) => {
@@ -204,26 +223,26 @@ const hooksFor = (model: ModelName, reader: ScopedReader): Record<string, (hook:
           if (!pre || !isAllowed(model, viewer, pre)) {
             throw new Error(SCOPED_ACCESS_DENIED);
           }
+          return denyIfOutOfScope(model, viewer, await query(args));
+        }
+        // op === 'upsert': pre-check BEFORE mutating. The upsert `where` is
+        // always unique, so findUnique on it is the correct pre-image probe.
+        if (op === 'upsert') {
+          const upsertArgs = args as { where?: Where; create?: unknown; update?: unknown } | undefined;
+          const pre = await reader[model].findUnique({ where: upsertArgs?.where });
+          if (pre) {
+            if (!isAllowed(model, viewer, pre)) {
+              throw new Error(SCOPED_ACCESS_DENIED);
+            }
+            return denyIfOutOfScope(model, viewer, await query(args));
+          }
+          // No pre-image → insert path: pin owner exactly like `create`, then run.
+          return query(pinCreateOwner(model, viewer, args));
         }
         return denyIfOutOfScope(model, viewer, await query(args));
       };
     }
-    hooks.create = async ({ args, query }) => {
-      // EMPLOYEE uploads always belong to the uploader — never spoofable.
-      if (
-        model === 'file' &&
-        viewer.role === 'EMPLOYEE' &&
-        args?.data &&
-        typeof args.data === 'object' &&
-        !Array.isArray(args.data)
-      ) {
-        return query({
-          ...args,
-          data: { ...(args.data as Where), ownerId: viewer.id },
-        });
-      }
-      return query(args);
-    };
+    hooks.create = async ({ args, query }) => query(pinCreateOwner(model, viewer, args));
     return hooks;
   };
 

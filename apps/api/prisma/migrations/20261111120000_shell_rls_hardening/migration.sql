@@ -142,10 +142,14 @@ CREATE POLICY audit_logs_insert_self ON audit_logs
   );
 
 -- ============ restricted LOGIN role for app/test traffic ============
+-- No password is baked in here: tracked files must stay credential-free.
+-- The owner/bootstrap operator sets the password out-of-band via env, e.g.
+--   ALTER ROLE qsystem_app WITH LOGIN PASSWORD '<from env>';
+-- dev/test setups do this in migrate/seed/test bootstrap (gitignored .env).
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'qsystem_app') THEN
-    CREATE ROLE qsystem_app LOGIN PASSWORD 'qsystem_app_dev_only';
+    CREATE ROLE qsystem_app LOGIN;
   END IF;
 END
 $$;
