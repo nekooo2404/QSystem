@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import {
   isAllowed,
   scopeFor,
@@ -116,10 +116,23 @@ function scopedDelegate<T extends object>(delegate: T, model: ModelName, viewer:
         };
       }
       if (SINGLE_WRITES.has(dProp)) {
-        // unique-only `where` (no AND possible) → post-check. The mutation
-        // may already have applied before we throw; Postgres RLS WITH CHECK
-        // is the backstop for restricted-role deployments.
+        // Pre-check BEFORE mutating: re-read the row via its unique `where`
+        // and run isAllowed. A hidden-or-missing row is denied outright (no
+        // existence oracle; nothing is applied when out of scope). Postgres
+        // RLS WITH CHECK stays as the SQL-level backstop.
+        // upsert has no reliable pre-image — post-check only.
         return async (args?: Record<string, unknown>) => {
+          if (dProp === 'update' || dProp === 'delete') {
+            // Pre-image read through the UNSCOPED delegate, then isAllowed —
+            // throws before anything is applied.
+            const finder = (
+              dTarget as unknown as { findUnique: (a: unknown) => Promise<unknown> }
+            ).findUnique;
+            const pre = await finder.call(dTarget, { where: args?.where });
+            if (!pre || !isAllowed(model, viewer, pre as Record<string, unknown>)) {
+              throw new Error(SCOPED_ACCESS_DENIED);
+            }
+          }
           const row = (await bound(args)) as Record<string, unknown> | null;
           if (row && !isAllowed(model, viewer, row)) throw new Error(SCOPED_ACCESS_DENIED);
           return row;
@@ -140,7 +153,7 @@ function scopedDelegate<T extends object>(delegate: T, model: ModelName, viewer:
           return bound(args);
         };
       }
-      return (...rest: unknown[]) => invoke.apply(dTarget, rest);
+      return (...rest: unknown[]) => (invoke as (...a: unknown[]) => unknown).apply(dTarget, rest);
     },
   });
 }
@@ -184,7 +197,7 @@ function withoutRaw<T extends object>(client: T): T & ScopedClient {
     $executeRaw: refuse,
     $executeRawUnsafe: refuse,
     $queryRawTyped: refuse,
-  }) as T & ScopedClient;
+  }) as unknown as T & ScopedClient;
 }
 
 export class PrismaService extends PrismaClient {
@@ -196,10 +209,11 @@ export class PrismaService extends PrismaClient {
    */
   async runAsUser<T>(userId: string, fn: (tx: PrismaClient) => Promise<T>): Promise<T> {
     return this.$transaction(async (tx) => {
-      // SET LOCAL inside an explicit txn; raw is only used here for the
-      // bootstrap — never exposed to scoped consumers.
-      await (tx as PrismaClient).$executeRawUnsafe(
-        `SELECT set_config('app.current_user_id', '${userId.replace(/'/g, "''")}', true)`,
+      // SET LOCAL inside an explicit txn; parameterized via Prisma.sql —
+      // no string interpolation of the user id. Raw is only used here for
+      // the bootstrap — never exposed to scoped consumers.
+      await (tx as PrismaClient).$executeRaw(
+        Prisma.sql`SELECT set_config('app.current_user_id', ${userId}, true)`,
       );
       const viewer = await (tx as PrismaClient).user.findUnique({
         where: { id: userId },
@@ -216,12 +230,64 @@ export class PrismaService extends PrismaClient {
   }
 
   /**
-   * Read-side scoped client for an already-known viewer (no transaction).
-   * The caller runs inside `runAsUser`/request middleware that set SET LOCAL;
-   * the extension pins list filters to the same scope.
+   * Scoped client for an already-known viewer. Every model operation runs
+   * inside its own transaction with `SET LOCAL app.current_user_id`, so the
+   * Postgres RLS policies always see the request identity (the client holds
+   * a pool, and SET LOCAL is transaction-scoped — there is no safe
+   * session-level alternative). The scope layer pins the same SELF/
+   * DEPARTMENT/COMPANY filters on top.
+   *
+   * Raw SQL stays refused on the returned client (test #4); the sql-level
+   * negative test pins RLS directly via interactive transactions.
    */
   forUser(viewer: ScopeViewer): ScopedClient {
-    const scoped = (this as PrismaClient).$extends(withScope(viewer));
-    return withoutRaw(scoped as unknown as PrismaClient);
+    const self = this;
+    const refuse = () => Promise.reject(new Error(RAW_REFUSED));
+    const ops = (model: ModelName) =>
+      new Proxy(
+        {},
+        {
+          get(_oTarget, op) {
+            if (typeof op !== 'string') return undefined;
+            if (
+              op === '$queryRaw' ||
+              op === '$queryRawUnsafe' ||
+              op === '$executeRaw' ||
+              op === '$executeRawUnsafe' ||
+              op === '$queryRawTyped'
+            ) {
+              return refuse;
+            }
+            return (args?: Record<string, unknown>) =>
+              self.runAsUser(viewer.id, async (tx) => {
+                const delegate = (tx as unknown as Record<string, Record<string, (a: unknown) => Promise<unknown>>>)[
+                  model
+                ];
+                if (LIST_OPS.has(op)) {
+                  return delegate[op]({
+                    ...(args ?? {}),
+                    where: andWhere(args?.where as Where | undefined, scopeFor(model, viewer) as Where | undefined),
+                  });
+                }
+                return delegate[op](args);
+              });
+          },
+        },
+      );
+    return {
+      user: ops('user'),
+      department: ops('department'),
+      approvalDelegation: ops('approvalDelegation'),
+      auditLog: ops('auditLog'),
+      notification: ops('notification'),
+      file: ops('file'),
+      // Raw SQL entry points exist only to refuse: scoped work must go
+      // through the ORM delegates above, never raw queries.
+      $queryRaw: refuse,
+      $queryRawUnsafe: refuse,
+      $executeRaw: refuse,
+      $executeRawUnsafe: refuse,
+      $queryRawTyped: refuse,
+    } as unknown as ScopedClient;
   }
 }

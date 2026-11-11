@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { PrismaClient } from '@prisma/client';
 import { PrismaService, type ScopeViewer } from '../src/prisma/prisma.service';
 
 // Unique per run so repeat runs never clash with seed data or each other.
@@ -6,6 +7,12 @@ const RUN = `rls-${Date.now()}`;
 
 const prisma = new PrismaService();
 const prismaFor = (viewer: ScopeViewer) => prisma.forUser(viewer);
+
+// Owner-role connection: RLS-exempt bootstrap oracle used ONLY for fixtures
+// and read-back verification. Migrations/seeds stay owner per the same rule;
+// all behavior under test runs through the restricted qsystem_app connection.
+const OWNER_URL = "postgresql://qsystem:postgres@localhost:55433/qsystem?schema=public";
+const owner = new PrismaClient({ datasources: { db: { url: process.env.RLS_OWNER_URL ?? OWNER_URL } } });
 
 let empA!: { id: string };
 let mgr!: ScopeViewer;
@@ -15,37 +22,38 @@ let ALL!: number;
 
 beforeAll(async () => {
   await prisma.$connect();
+  await owner.$connect();
 
   // Departments: D1 + D2 managed by mgr, D3 unmanaged (outside mgr scope).
-  const d1 = await prisma.department.create({ data: { name: `${RUN}-d1`, tenantId: null } });
-  const d2 = await prisma.department.create({ data: { name: `${RUN}-d2`, tenantId: null } });
-  const d3 = await prisma.department.create({ data: { name: `${RUN}-d3`, tenantId: null } });
+  const d1 = await owner.department.create({ data: { name: `${RUN}-d1`, tenantId: null } });
+  const d2 = await owner.department.create({ data: { name: `${RUN}-d2`, tenantId: null } });
+  const d3 = await owner.department.create({ data: { name: `${RUN}-d3`, tenantId: null } });
 
-  const director = await prisma.user.create({
+  const director = await owner.user.create({
     data: { email: `${RUN}-dir@qsystem.local`, name: 'Director', passwordHash: 'seed', role: 'DIRECTOR', tenantId: null },
   });
-  const manager = await prisma.user.create({
+  const manager = await owner.user.create({
     data: { email: `${RUN}-mgr@qsystem.local`, name: 'Manager', passwordHash: 'seed', role: 'MANAGER', tenantId: null },
   });
-  const a = await prisma.user.create({
+  const a = await owner.user.create({
     data: {
       email: `${RUN}-empa@qsystem.local`, name: 'Emp A', passwordHash: 'seed', role: 'EMPLOYEE',
       departmentId: d1.id, reportsToId: manager.id, tenantId: null,
     },
   });
-  const b = await prisma.user.create({
+  const b = await owner.user.create({
     data: {
       email: `${RUN}-empb@qsystem.local`, name: 'Emp B', passwordHash: 'seed', role: 'EMPLOYEE',
       departmentId: d2.id, reportsToId: manager.id, tenantId: null,
     },
   });
-  const c = await prisma.user.create({
+  const c = await owner.user.create({
     data: { email: `${RUN}-empc@qsystem.local`, name: 'Emp C', passwordHash: 'seed', role: 'EMPLOYEE', departmentId: d3.id, tenantId: null },
   });
 
   // Manager owns D1 + D2 (two departments).
-  await prisma.department.update({ where: { id: d1.id }, data: { managerId: manager.id } });
-  await prisma.department.update({ where: { id: d2.id }, data: { managerId: manager.id } });
+  await owner.department.update({ where: { id: d1.id }, data: { managerId: manager.id } });
+  await owner.department.update({ where: { id: d2.id }, data: { managerId: manager.id } });
 
   empA = { id: a.id };
   mgr = { id: manager.id, role: 'MANAGER', managedDepartmentIds: [d1.id, d2.id] };
@@ -70,6 +78,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.$disconnect();
+  await owner.$disconnect();
 });
 
 describe('RLS scope', () => {
@@ -91,6 +100,44 @@ describe('RLS scope', () => {
   });
 
   it('raw query không bypass RLS', async () => {
-    await expect(prismaFor({ id: empA.id, role: 'EMPLOYEE', managedDepartmentIds: [] }).$queryRawUnsafe('SELECT * FROM files')).rejects.toThrow();
+    await expect(
+      (prismaFor({ id: empA.id, role: 'EMPLOYEE', managedDepartmentIds: [] }) as unknown as PrismaClient).$queryRawUnsafe('SELECT * FROM files'),
+    ).rejects.toThrow();
+  });
+
+  it('EMPLOYEE update row người khác bị chặn, dữ liệu giữ nguyên', async () => {
+    const victim = await owner.file.findFirstOrThrow({ where: { key: `${RUN}/f2.txt` } });
+    const before = victim.key;
+    await expect(
+      prisma.runAsUser(empA.id, (tx) =>
+        tx.file.update({ where: { id: victim.id }, data: { key: `${RUN}/hijacked.txt` } }),
+      ),
+    ).rejects.toThrow(/scoped access denied/i);
+    const after = await owner.file.findUniqueOrThrow({ where: { id: victim.id } });
+    expect(after.key).toBe(before);
+  });
+
+  it('RLS chặn read/write trực tiếp bằng SQL dưới quyền qsystem_app', async () => {
+    // Same restricted role, pure SQL level (interactive transaction with
+    // SET LOCAL, no app-layer filters): employee A must see ONLY their own
+    // files row, and a cross-owner UPDATE must be denied by RLS.
+    const victim = await owner.file.findFirstOrThrow({ where: { key: `${RUN}/f2.txt` } });
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.current_user_id', '${empA.id}', true)`,
+      );
+      const visible = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM files`,
+      );
+      expect(visible.map((r) => r.id)).toEqual([expect.any(String)]);
+      expect(visible).toHaveLength(1);
+      // RLS USING fails on the foreign row: UPDATE touches 0 rows instead of
+      // erroring — the write is denied all the same. Assert count 0.
+      const touched = await tx.$executeRawUnsafe(`UPDATE files SET key = '${RUN}/sql-hijack.txt' WHERE id = '${victim.id}'`);
+      expect(Number(touched)).toBe(0);
+    });
+    // Owner-role read-back (RLS-exempt owner is the test oracle): untouched.
+    const after = await owner.file.findUniqueOrThrow({ where: { id: victim.id } });
+    expect(after.key).toBe(`${RUN}/f2.txt`);
   });
 });

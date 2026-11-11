@@ -157,7 +157,20 @@ export function withScope(viewer: ScopeViewer) {
     'file',
   ];
 
-  const hooksFor = (model: ModelName): Record<string, (hook: QueryHookArgs) => Promise<unknown>> => {
+  interface ScopedReader {
+  user: ReaderDelegate;
+  department: ReaderDelegate;
+  approvalDelegation: ReaderDelegate;
+  auditLog: ReaderDelegate;
+  notification: ReaderDelegate;
+  file: ReaderDelegate;
+}
+
+interface ReaderDelegate {
+  findUnique(args: unknown): Promise<Row | null>;
+}
+
+const hooksFor = (model: ModelName, reader: ScopedReader): Record<string, (hook: QueryHookArgs) => Promise<unknown>> => {
     const hooks: Record<string, (hook: QueryHookArgs) => Promise<unknown>> = {};
 
     for (const op of LIST_OPS) {
@@ -179,12 +192,21 @@ export function withScope(viewer: ScopeViewer) {
         return row;
       };
     }
-    // update/delete/upsert take unique-only `where` (no AND possible) → post-check.
-    // Known limitation: the mutation may already have applied before we throw;
-    // Postgres RLS WITH CHECK is the backstop for restricted-role deployments.
+    // update/delete/upsert take unique-only `where` (no AND possible) →
+    // pre-check the current row BEFORE mutating. A hidden-or-missing row is
+    // denied outright (no existence oracle; nothing applied out of scope).
+    // upsert has no reliable pre-image — post-check only.
+    // RLS WITH CHECK stays as the SQL backstop.
     for (const op of SINGLE_WRITES) {
-      hooks[op] = async ({ args, query }) =>
-        denyIfOutOfScope(model, viewer, await query(args));
+      hooks[op] = async ({ args, query }) => {
+        if (op === 'update' || op === 'delete') {
+          const pre = await reader[model].findUnique({ where: (args as { where?: Where } | undefined)?.where });
+          if (!pre || !isAllowed(model, viewer, pre)) {
+            throw new Error(SCOPED_ACCESS_DENIED);
+          }
+        }
+        return denyIfOutOfScope(model, viewer, await query(args));
+      };
     }
     hooks.create = async ({ args, query }) => {
       // EMPLOYEE uploads always belong to the uploader — never spoofable.
@@ -208,12 +230,12 @@ export function withScope(viewer: ScopeViewer) {
   return Prisma.defineExtension((client) =>
     client.$extends({
       query: {
-        user: hooksFor('user'),
-        department: hooksFor('department'),
-        approvalDelegation: hooksFor('approvalDelegation'),
-        auditLog: hooksFor('auditLog'),
-        notification: hooksFor('notification'),
-        file: hooksFor('file'),
+        user: hooksFor('user', client as ScopedReader),
+        department: hooksFor('department', client as ScopedReader),
+        approvalDelegation: hooksFor('approvalDelegation', client as ScopedReader),
+        auditLog: hooksFor('auditLog', client as ScopedReader),
+        notification: hooksFor('notification', client as ScopedReader),
+        file: hooksFor('file', client as ScopedReader),
       },
     }),
   );
