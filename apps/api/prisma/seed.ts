@@ -1,16 +1,23 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import * as argon2 from 'argon2';
+
+// Seed password for local dev/test accounts only. Production users are
+// created through the API with their own passwords — no real credential
+// lives in this tracked file.
+const SEED_PASSWORD = 'Qsystem-dev-1!';
 
 async function main() {
   const prisma = new PrismaClient();
+  const passwordHash = await argon2.hash(SEED_PASSWORD);
 
   const director = await prisma.user.upsert({
     where: { email: 'director@qsystem.local' },
-    update: {},
+    update: { passwordHash },
     create: {
       email: 'director@qsystem.local',
       name: 'Director',
-      passwordHash: 'seed-only-not-a-real-hash',
+      passwordHash,
       role: 'DIRECTOR',
       tenantId: null,
     },
@@ -28,11 +35,11 @@ async function main() {
 
   const manager = await prisma.user.upsert({
     where: { email: 'manager@qsystem.local' },
-    update: {},
+    update: { passwordHash },
     create: {
       email: 'manager@qsystem.local',
       name: 'Manager',
-      passwordHash: 'seed-only-not-a-real-hash',
+      passwordHash,
       role: 'MANAGER',
       tenantId: null,
     },
@@ -45,11 +52,11 @@ async function main() {
   for (const [email, name] of [['employee-a@qsystem.local', 'Employee A'], ['employee-b@qsystem.local', 'Employee B']] as const) {
     await prisma.user.upsert({
       where: { email },
-      update: {},
+      update: { passwordHash },
       create: {
         email,
         name,
-        passwordHash: 'seed-only-not-a-real-hash',
+        passwordHash,
         role: 'EMPLOYEE',
         departmentId: dept.id,
         reportsToId: manager.id,

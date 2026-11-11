@@ -65,6 +65,7 @@ model User {
   receivedDelegations  ApprovalDelegation[]  @relation("DelegationTo")
   auditActions         AuditLog[]            @relation("AuditActor")
   notifications        Notification[]        @relation("NotificationRecipient")
+  refreshTokens        RefreshToken[]        @relation("RefreshTokenUser")
 
   @@map("users")
 }
@@ -134,4 +135,21 @@ model File {
 
   @@unique([bucket, key])
   @@map("files")
+}
+
+model RefreshToken {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @unique @map("replaced_by_id")
+  tenantId     String?   @map("tenant_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user       User          @relation("RefreshTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("RefreshTokenRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   RefreshToken? @relation("RefreshTokenRotation")
+
+  @@map("refresh_tokens")
 }
