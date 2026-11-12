@@ -83,30 +83,28 @@ async function loginAs(
 }
 
 /**
- * Meilisearch search is eventually consistent: even after the indexing task
- * reports `succeeded`, a filtered query can miss the fresh document for a
- * few tens of milliseconds (observed ~30-100ms on Meili 1.56). HTTP search
- * tests therefore poll a bounded time before asserting — the poll only
- * re-reads via the public API, it never mutates state.
+ * GET /search as `token`. No visibility polling: every index write in this
+ * suite goes through SearchService, which reads Meili's `taskUid` from the
+ * enqueue response and awaits that task — including the filtered-search
+ * reads below, which are immediately consistent afterwards (probed 125/125
+ * rounds with zero misses after the taskUid fix).
  */
-async function searchEventually(
+async function searchAs(
   token: string,
   query: Record<string, unknown>,
-  expectPredicate: (body: { hits: Array<Record<string, unknown>>; total: number }) => boolean,
 ): Promise<{ hits: Array<Record<string, unknown>>; total: number; limit: number; offset: number }> {
   const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
-  const deadline = Date.now() + 5000;
-  let last!: { hits: Array<Record<string, unknown>>; total: number; limit: number; offset: number };
-  for (;;) {
-    const res = await request(server)
-      .get('/search')
-      .query(query)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-    last = res.body as typeof last;
-    if (expectPredicate(last) || Date.now() > deadline) return last;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  const res = await request(server)
+    .get('/search')
+    .query(query)
+    .set('Authorization', `Bearer ${token}`)
+    .expect(200);
+  return res.body as {
+    hits: Array<Record<string, unknown>>;
+    total: number;
+    limit: number;
+    offset: number;
+  };
 }
 
 /** Signed PutBucket (header auth) — bootstrap only, mirrors storage sigv4 helper. */
@@ -302,52 +300,61 @@ describe('SearchModule + StorageModule (Task 7)', () => {
   it('search của EMPLOYEE không lọt doc phòng khác; DIRECTOR thấy cả hai', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
 
-    // EMPLOYEE A: only their own document (eventual-consistency poll).
-    const bodyA = await searchEventually(
-      tokenA,
-      { q: KEY_PREFIX },
-      (body) => body.hits.some((h) => h.id === fileA.id),
-    );
+    // EMPLOYEE A: only their own document.
+    const resA = await request(server)
+      .get('/search')
+      .query({ q: KEY_PREFIX })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const bodyA = resA.body as Record<string, unknown>;
     // Shape pinned by contracts (verbatim): hits/total/limit/offset.
     expect(() => SearchResultSchema.parse(bodyA)).not.toThrow();
-    const hitsA = bodyA.hits;
+    const hitsA = bodyA.hits as Array<Record<string, unknown>>;
     expect(hitsA).toHaveLength(1);
     expect(hitsA[0]!.id).toBe(fileA.id);
     expect(hitsA.some((h) => h.id === fileB.id)).toBe(false);
 
     // DIRECTOR: no scope filter → both documents.
-    const resDir = await searchEventually(
-      tokenDir,
-      { q: KEY_PREFIX },
-      (body) => body.hits.length === 2,
-    );
-    const hitsDir = resDir.hits;
+    const resDir = await request(server)
+      .get('/search')
+      .query({ q: KEY_PREFIX })
+      .set('Authorization', `Bearer ${tokenDir}`)
+      .expect(200);
+    const hitsDir = (resDir.body as { hits: Array<Record<string, unknown>> }).hits;
+    expect(hitsDir).toHaveLength(2);
     expect(new Set(hitsDir.map((h) => h.id))).toEqual(new Set([fileA.id, fileB.id]));
     expect(hitsDir.every((h) => typeof h.title === 'string')).toBe(true);
     expect(hitsDir.every((h) => typeof h.owner_id === 'string')).toBe(true);
   });
 
   it('Meili filter hoạt động: total/limit/offset hợp lệ khi limit < tổng hits', async () => {
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
     // 2 hits exist for the DIRECTOR; limit=1 must paginate (offset skips 1).
-    const page1 = await searchEventually(
-      tokenDir,
-      { q: KEY_PREFIX, limit: 1 },
-      (body) => body.total === 2 && body.hits.length === 1,
-    );
+    const res1 = await request(server)
+      .get('/search')
+      .query({ q: KEY_PREFIX, limit: 1 })
+      .set('Authorization', `Bearer ${tokenDir}`)
+      .expect(200);
+    const page1 = res1.body as { hits: unknown[]; total: number; limit: number; offset: number };
+    expect(page1.hits).toHaveLength(1);
     expect(page1.limit).toBe(1);
     expect(page1.offset).toBe(0);
     expect(page1.total).toBe(2);
 
-    const page2 = await searchEventually(
-      tokenDir,
-      { q: KEY_PREFIX, limit: 1, offset: 1 },
-      (body) => body.total === 2 && body.hits.length === 1,
-    );
+    const res2 = await request(server)
+      .get('/search')
+      .query({ q: KEY_PREFIX, limit: 1, offset: 1 })
+      .set('Authorization', `Bearer ${tokenDir}`)
+      .expect(200);
+    const page2 = res2.body as { hits: unknown[]; total: number; limit: number; offset: number };
+    expect(page2.hits).toHaveLength(1);
     expect(page2.limit).toBe(1);
     expect(page2.offset).toBe(1);
     expect(page2.total).toBe(2);
     // Pages are disjoint.
-    expect(page1.hits[0]!.id).not.toBe(page2.hits[0]!.id);
+    const ids1 = (res1.body as { hits: Array<{ id: string }> }).hits.map((h) => h.id);
+    const ids2 = (res2.body as { hits: Array<{ id: string }> }).hits.map((h) => h.id);
+    expect(ids1[0]).not.toBe(ids2[0]);
   });
 
   it('presign PUT rồi GET lại đúng nội dung (byte-for-byte)', async () => {
@@ -387,16 +394,72 @@ describe('SearchModule + StorageModule (Task 7)', () => {
     expect(await fetched.text()).toBe(payload);
 
     // The write-path indexing flow: syncFile(fileId, viewer) must surface the
-    // new file in search for its owner (eventual-consistency poll).
+    // new file in search for its owner. The service awaits the Meili task, so
+    // the follow-up search observes it immediately.
     const viewerA = { id: userA.id, role: 'EMPLOYEE' as const, managedDepartmentIds: [] };
     const presignedFileId = body.fileId;
     await sync.syncFile(presignedFileId, viewerA);
-    const found = await searchEventually(
-      tokenA,
-      { q: key },
-      (searchBody) => searchBody.hits.some((h) => h.id === presignedFileId),
-    );
+    const found = await searchAs(tokenA, { q: key });
     expect(found.hits.some((h) => h.id === presignedFileId)).toBe(true);
+  });
+
+  it('presign keys với ký tự đặc biệt (# ? %25) vẫn PUT/GET đúng nội dung', async () => {
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+    // Fix I2: `#`, `?`, and a literal `%` in a key used to make the sent path
+    // diverge from the signed canonical path (WHATWG URL swallowed `#`/`?`
+    // and left `%` raw) → S3 403. The presigned URL path must be
+    // byte-identical to the canonical path for every key.
+    const cases: Array<{ key: string; payload: string }> = [
+      { key: `${KEY_PREFIX}ha#sh.txt`, payload: `hash-payload-${RUN}` },
+      { key: `${KEY_PREFIX}que?ry.txt`, payload: `query-payload-${RUN}` },
+      { key: `${KEY_PREFIX}50%25.txt`, payload: `percent-payload-${RUN}` },
+    ];
+    for (const { key, payload } of cases) {
+      const res = await request(server)
+        .post('/files/presign')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ bucket: BUCKET, key, mimeType: 'text/plain' })
+        .expect(201);
+      const body = res.body as { fileId: string; uploadUrl: string };
+      uploadedFileIds.push(body.fileId);
+
+      // The sent path (before the query string) must equal the RFC3986-encoded
+      // canonical form of the raw key — no raw `#`, `?`, or `%` survives.
+      const sentPath = new URL(body.uploadUrl).pathname;
+      expect(sentPath).not.toMatch(/[?#%](?![0-9A-Fa-f]{2})/); // no bare %/#/?
+      expect(sentPath).not.toContain('#');
+      expect(sentPath).not.toContain('?');
+      expect(decodeURIComponent(sentPath)).toBe(`/${BUCKET}/${key}`);
+
+      const put = await fetch(body.uploadUrl, { method: 'PUT', body: payload });
+      expect(put.status).toBe(200);
+
+      const getRes = await request(server)
+        .get(`/files/${body.fileId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const getBody = getRes.body as { url: string };
+      const fetched = await fetch(getBody.url);
+      expect(fetched.status).toBe(200);
+      expect(await fetched.text()).toBe(payload);
+    }
+  });
+
+  it('presign trùng (bucket,key) với row ẩn của user khác → coded 409 (không 500)', async () => {
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+    // fileA exists under user A (hidden from EMPLOYEE B by scope). B presigns
+    // the same (bucket, key): the scoped pre-check misses, the INSERT hits the
+    // unique constraint → must surface as coded 409 CONFLICT (R26), never a
+    // raw 500 and never a 201 (no second row either way).
+    const res = await request(server)
+      .post('/files/presign')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ bucket: BUCKET, key: fileA.key, mimeType: 'text/plain' })
+      .expect(409);
+    expect(res.body).toEqual({
+      code: 'CONFLICT',
+      message: `a file with key ${fileA.key} already exists in bucket ${BUCKET}`,
+    });
   });
   it('sai scope bị 404 coded (không lộ existence); DIRECTOR vẫn thấy', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];

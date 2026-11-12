@@ -115,7 +115,14 @@ export function presignUrl(
 ): string {
   const endpoint = new URL(config.endpoint);
   const path = `/${bucket}${key ? `/${key}` : ''}`;
-  const url = new URL(`${endpoint.origin}${path}`);
+  // The SENT path must be byte-identical to the canonical path: percent-encode
+  // the raw path segment-wise FIRST (so `#`, `?`, `%` in a key cannot be
+  // swallowed by WHATWG URL parsing and `%` is never left raw), then build the
+  // URL from the already-encoded string (WHATWG URL does not re-encode
+  // percent-triplets it parses from a string, and assignment back to
+  // `url.pathname` would normalize them — string concat is the only exact way).
+  const canonicalPath = canonicalUri(path);
+  const url = new URL(`${endpoint.origin}${canonicalPath}`);
   const { amzDate, dateStamp } = amzDateParts(new Date());
   const scope = scopeOf(dateStamp, config.region);
 
@@ -127,7 +134,7 @@ export function presignUrl(
 
   const canonicalRequest = [
     method,
-    canonicalUri(path),
+    canonicalPath,
     canonicalQueryString(url.searchParams),
     `host:${endpoint.host}\n`,
     'host',

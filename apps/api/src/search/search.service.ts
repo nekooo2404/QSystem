@@ -62,10 +62,24 @@ interface MeiliSearchResponse {
   offset: number;
 }
 
+/**
+ * Enqueue response shape (POST/PUT/DELETE on documents, settings, indexes).
+ * Meili returns the task id as `taskUid` here — NOT `uid` (the GET /tasks/:uid
+ * detail response uses `uid`). Both shapes must be recognized separately or
+ * the await silently never happens.
+ */
+interface MeiliEnqueueResponse {
+  taskUid: number;
+  indexUid?: string;
+  status?: string;
+  type?: string;
+}
+
+/** GET /tasks/:uid response subset this service consumes. */
 interface MeiliTask {
   uid: number;
   status: 'enqueued' | 'processing' | 'succeeded' | 'failed' | 'canceled';
-  error?: { code?: string; message?: string } | null;
+  error?: { code?: string; type?: string; message?: string } | null;
 }
 
 /**
@@ -77,8 +91,12 @@ interface MeiliTask {
  * request. Result shape is pinned to SearchResultSchema (@qsystem/contracts,
  * verbatim).
  *
- * Writes await the Meili task so callers observe a settled index when the
- * method resolves (bounded poll of ONE task, not a scheduler).
+ * Every write (index creation, document add/delete, settings update) reads
+ * the `taskUid` from Meili's enqueue response and AWAITS that task before
+ * returning (bounded poll of ONE task, not a scheduler), so callers observe
+ * a settled index when the method resolves. Search itself remains
+ * eventually consistent (a finished task's writes are visible to unfiltered
+ * queries immediately; filtered queries can lag tens of milliseconds).
  */
 @Injectable()
 export class SearchService {
@@ -109,12 +127,15 @@ export class SearchService {
 
   /**
    * Create the five index uids (empty stubs for leads/contacts/deals/posts;
-   * `documents` also gets the scope-filter attributes). Idempotent.
+   * `documents` also gets the scope-filter attributes). Idempotent: Meili has
+   * no "create if missing" — a duplicate creation returns 202 with a task
+   * that FAILS with error code `index_already_exists`, which is success here.
    */
   async ensureIndexes(): Promise<void> {
     for (const uid of SEARCH_INDEXES) {
-      // A 409 (index already exists) is success for an idempotent bootstrap.
-      await this.post(`/indexes`, { uid, primaryKey: 'id' }, { allowStatuses: [409] });
+      await this.post(`/indexes`, { uid, primaryKey: 'id' }, {
+        tolerateTaskErrors: ['index_already_exists'],
+      });
     }
     await this.put(`/indexes/${DOCUMENTS_INDEX}/settings/filterable-attributes`, [
       ...FILTERABLE_ATTRIBUTES,
@@ -136,7 +157,7 @@ export class SearchService {
   private async post<T = void>(
     path: string,
     body: unknown,
-    options: { allowStatuses?: number[] } = {},
+    options: { tolerateTaskErrors?: string[] } = {},
   ): Promise<T> {
     return this.request<T>('POST', path, body, options);
   }
@@ -149,7 +170,7 @@ export class SearchService {
     method: 'POST' | 'PUT' | 'DELETE',
     path: string,
     body: unknown,
-    options: { allowStatuses?: number[] } = {},
+    options: { tolerateTaskErrors?: string[] } = {},
   ): Promise<T> {
     const res = await fetch(`${this.config.url}${path}`, {
       method,
@@ -159,19 +180,31 @@ export class SearchService {
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok && !(options.allowStatuses ?? []).includes(res.status)) {
+    if (!res.ok) {
       throw new Error(
         `qsystem: meili ${method} ${path} failed (${res.status}): ${(await res.text()).slice(0, 200)}`,
       );
     }
-    if (!res.ok) return undefined as T; // tolerated status (e.g. 409 exists)
-    const payload = (await res.json()) as MeiliTask | T;
-    if (isMeiliTask(payload)) await this.waitForTask(payload.uid);
+    // Enqueue responses carry the task id as `taskUid` (GET /tasks/:uid uses
+    // `uid`) — without reading THAT field the await below never happens.
+    const payload = (await res.json()) as MeiliEnqueueResponse | T;
+    if (isMeiliEnqueue(payload)) {
+      await this.waitForTask(payload.taskUid, options.tolerateTaskErrors);
+    }
     return payload as T;
   }
 
-  /** Await one Meili task (bounded); throws on failure/cancel/timeout. */
-  private async waitForTask(uid: number, timeoutMs = 10000): Promise<void> {
+  /**
+   * Await one Meili task (bounded); throws on failure/cancel/timeout unless
+   * the failure's error code is listed in `tolerate` (e.g. the duplicate
+   * index creation's `index_already_exists`, which is success for an
+   * idempotent bootstrap).
+   */
+  private async waitForTask(
+    uid: number,
+    tolerate: string[] = [],
+    timeoutMs = 10000,
+  ): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const res = await fetch(`${this.config.url}/tasks/${uid}`, {
@@ -183,8 +216,10 @@ export class SearchService {
       const task = (await res.json()) as MeiliTask;
       if (task.status === 'succeeded') return;
       if (task.status === 'failed' || task.status === 'canceled') {
+        const code = task.error?.code ?? '';
+        if (tolerate.includes(code)) return;
         throw new Error(
-          `qsystem: meili task ${uid} ${task.status}: ${task.error?.message ?? task.error?.code ?? 'unknown'}`,
+          `qsystem: meili task ${uid} ${task.status}: ${task.error?.message ?? code ?? 'unknown'}`,
         );
       }
       if (Date.now() > deadline) {
@@ -195,12 +230,11 @@ export class SearchService {
   }
 }
 
-function isMeiliTask(value: unknown): value is MeiliTask {
+function isMeiliEnqueue(value: unknown): value is MeiliEnqueueResponse {
   return (
     typeof value === 'object' &&
     value !== null &&
-    typeof (value as { uid?: unknown }).uid === 'number' &&
-    typeof (value as { status?: unknown }).status === 'string'
+    typeof (value as { taskUid?: unknown }).taskUid === 'number'
   );
 }
 

@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService, type ScopeViewer } from '../prisma/prisma.service';
 import { presignUrl, PRESIGN_EXPIRES_SECONDS, s3ConfigFromEnv } from './sigv4';
 
@@ -15,6 +16,19 @@ export class InvalidBucketError extends HttpException {
         message: `bucket must be one of ${ALLOWED_BUCKETS.join('|')}`,
       },
       HttpStatus.BAD_REQUEST,
+    );
+  }
+}
+
+/** Coded 409 for a (bucket, key) that already exists (out of the caller's scope). */
+export class PresignConflictError extends HttpException {
+  constructor(bucket: string, key: string) {
+    super(
+      {
+        code: 'CONFLICT',
+        message: `a file with key ${key} already exists in bucket ${bucket}`,
+      },
+      HttpStatus.CONFLICT,
     );
   }
 }
@@ -90,18 +104,31 @@ export class StorageService {
       });
       fileId = updated.id;
     } else {
-      const created = await this.prisma.forUser(viewer).file.create({
-        data: {
-          bucket: input.bucket,
-          key,
-          ownerId: viewer.id,
-          departmentId: viewer.departmentId ?? null,
-          mimeType: input.mimeType ?? null,
-          size: input.size ?? null,
-          tenantId: null,
-        },
-      });
-      fileId = created.id;
+      try {
+        const created = await this.prisma.forUser(viewer).file.create({
+          data: {
+            bucket: input.bucket,
+            key,
+            ownerId: viewer.id,
+            departmentId: viewer.departmentId ?? null,
+            mimeType: input.mimeType ?? null,
+            size: input.size ?? null,
+            tenantId: null,
+          },
+        });
+        fileId = created.id;
+      } catch (err) {
+        // R26: a hidden out-of-scope row with the same (bucket, key) makes the
+        // scoped pre-check miss (findUnique returns null) and the INSERT hit
+        // the unique constraint → Prisma P2002. That is a name collision, not
+        // a server error: coded 409 (never a raw 500, and 409-vs-201 does not
+        // act as an existence oracle across scopes — any caller that cannot
+        // see the row gets the same CONFLICT regardless of why).
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new PresignConflictError(input.bucket, key);
+        }
+        throw err;
+      }
     }
     return {
       fileId,

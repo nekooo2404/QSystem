@@ -28,8 +28,9 @@ interface DocumentRow {
  * policy and no scope bypass.
  *
  * Transport: shared Meili REST client (search.service.ts, plain fetch, R20
- * — no SDK). Writes await the enqueued Meili task so callers observe a
- * settled index when the method resolves.
+ * — no SDK). Every write reads the `taskUid` from the enqueue response and
+ * awaits that task, so callers observe a settled index when the method
+ * resolves.
  */
 @Injectable()
 export class SearchSyncWorker {
