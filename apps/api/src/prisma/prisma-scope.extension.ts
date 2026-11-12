@@ -45,6 +45,12 @@ function andWhere(
  * every other table denies by default when no viewer applies.
  */
 export function scopeFor(model: ModelName, viewer: ScopeViewer): Where | undefined {
+  // R22: a notification is a private recipient message — SELF-only for every
+  // role. Handled BEFORE the DIRECTOR company-bypass early-return below, which
+  // would otherwise leak all users' notifications to a DIRECTOR.
+  if (model === 'notification') {
+    return { recipientId: viewer.id };
+  }
   if (viewer.role === 'DIRECTOR') return undefined;
   const managed = { in: viewer.managedDepartmentIds };
 
@@ -53,8 +59,6 @@ export function scopeFor(model: ModelName, viewer: ScopeViewer): Where | undefin
       return viewer.role === 'MANAGER'
         ? { departmentId: managed }
         : { ownerId: viewer.id };
-    case 'notification':
-      return { recipientId: viewer.id };
     case 'auditLog':
       return viewer.role === 'MANAGER'
         ? {
@@ -83,6 +87,11 @@ export function scopeFor(model: ModelName, viewer: ScopeViewer): Where | undefin
 
 /** Row-level check used after single-row reads/writes (findUnique/update/delete). */
 export function isAllowed(model: ModelName, viewer: ScopeViewer, row: Row): boolean {
+  // R22: same SELF-only ordering as scopeFor — notifications never fall into
+  // the DIRECTOR company bypass.
+  if (model === 'notification') {
+    return row.recipientId === viewer.id;
+  }
   if (viewer.role === 'DIRECTOR') return true;
   const managed = viewer.managedDepartmentIds;
 
@@ -91,8 +100,6 @@ export function isAllowed(model: ModelName, viewer: ScopeViewer, row: Row): bool
       return viewer.role === 'MANAGER'
         ? typeof row.departmentId === 'string' && managed.includes(row.departmentId)
         : row.ownerId === viewer.id;
-    case 'notification':
-      return row.recipientId === viewer.id;
     case 'auditLog': {
       if (row.actorId === viewer.id) return true;
       if (viewer.role !== 'MANAGER') return false;

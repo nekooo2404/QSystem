@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { isAllowed, scopeFor } from '../src/prisma/prisma-scope.extension';
 import { NotifyService } from '../src/notify/notify.service';
 import { NotifyWorker } from '../src/notify/notify.worker';
 import { LocalEmailProvider } from '../src/notify/providers/local-email.provider';
@@ -46,8 +47,10 @@ let worker!: NotifyWorker;
 let email!: LocalEmailProvider;
 let userA!: { id: string; email: string };
 let userB!: { id: string; email: string };
+let userDir!: { id: string; email: string };
 let tokenA!: string;
 let tokenB!: string;
+let tokenDir!: string;
 
 async function loginAs(
   server: Parameters<typeof request>[0],
@@ -92,6 +95,15 @@ beforeAll(async () => {
       tenantId: null,
     },
   });
+  userDir = await owner.user.create({
+    data: {
+      email: `${RUN}-dir@qsystem.local`,
+      name: 'Notify Director',
+      passwordHash,
+      role: 'DIRECTOR',
+      tenantId: null,
+    },
+  });
 
   moduleRef = await Test.createTestingModule({
     imports: [AppModule],
@@ -115,6 +127,7 @@ beforeAll(async () => {
   resetLoginLimits();
   tokenA = await loginAs(server, userA.email);
   tokenB = await loginAs(server, userB.email);
+  tokenDir = await loginAs(server, userDir.email);
 }, 180000);
 
 afterAll(async () => {
@@ -123,6 +136,7 @@ afterAll(async () => {
       OR: [
         { recipientId: userA?.id },
         { recipientId: userB?.id },
+        { recipientId: userDir?.id },
         { recipient: { startsWith: `${RUN}-` } },
       ],
     },
@@ -315,5 +329,99 @@ describe('NotificationModule outbox + local workers (Task 6)', () => {
       'SELECT id FROM notifications',
     );
     expect(seenByWorker.some((r) => r.id === onlyA.id)).toBe(true);
+  });
+
+  it('R22: DIRECTOR chỉ thấy thông báo của mình (self-scope, không full-table)', async () => {
+    email.mode = 'ok';
+    // Employee-only payload: a private message that must never reach the DIRECTOR.
+    const employeeOnly = await notify.enqueue({
+      channel: 'SOCKET',
+      recipient: `${RUN}-emp-private@qsystem.local`,
+      recipientId: userA.id,
+      payload: { secret: 'employee-private-message' },
+    });
+    // The DIRECTOR's own notification.
+    const directorsOwn = await notify.enqueue({
+      channel: 'SOCKET',
+      recipient: `${RUN}-dir-own@qsystem.local`,
+      recipientId: userDir.id,
+      payload: { text: 'directors own message' },
+    });
+    await worker.tick();
+
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+    const resDir = await request(server)
+      .get('/notifications')
+      .set('Authorization', `Bearer ${tokenDir}`)
+      .expect(200);
+    const rowsDir = resDir.body as Array<Record<string, unknown>>;
+    // Exactly the director's own rows — never the employee's payload.
+    expect(rowsDir.some((r) => r.id === employeeOnly.id)).toBe(false);
+    expect(rowsDir.some((r) => r.id === directorsOwn.id)).toBe(true);
+    expect(
+      rowsDir.filter((r) => r.recipientId === userDir.id).length,
+    ).toBe(rowsDir.length);
+    expect(JSON.stringify(rowsDir)).not.toContain('employee-private-message');
+
+    // App-layer check (owner oracle): the scope filter itself is SELF-only for
+    // DIRECTOR, independent of HTTP wiring.
+    const dirViewer = { id: userDir.id, role: 'DIRECTOR' as const, managedDepartmentIds: [] };
+    expect(scopeFor('notification', dirViewer)).toEqual({ recipientId: userDir.id });
+    expect(isAllowed('notification', dirViewer, { recipientId: userA.id })).toBe(false);
+    expect(isAllowed('notification', dirViewer, { recipientId: userDir.id })).toBe(true);
+
+    const scoped = await prisma.forUser(dirViewer).notification.findMany();
+    expect(scoped.some((n) => n.id === employeeOnly.id)).toBe(false);
+    expect(scoped.every((n) => n.recipientId === userDir.id)).toBe(true);
+
+    // SQL-layer check: the company policy is gone — with identity DIRECTOR the
+    // employee row is invisible at raw-SQL level too.
+    const seenByDir = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT set_config('app.current_user_id', ${userDir.id}, true)`,
+      );
+      return tx.$queryRawUnsafe<Array<{ id: string }>>('SELECT id FROM notifications');
+    });
+    expect(seenByDir.some((r) => r.id === employeeOnly.id)).toBe(false);
+  });
+
+  it('R23: zombie PENDING attempts=3 (crash giữa attempt 3) → DEAD ở tick kế tiếp, 0 provider call', async () => {
+    email.mode = 'ok';
+    const callsBefore = email.calls.length;
+    // Seed a crash leftover: PENDING with attempts=3 — the eligibility filter
+    // (attempts < 3) excludes it from normal processing, so without the reaper
+    // it would sit as a zombie forever.
+    const zombie = await owner.notification.create({
+      data: {
+        channel: 'EMAIL',
+        recipient: `${RUN}-zombie@qsystem.local`,
+        recipientId: userB.id,
+        status: 'PENDING',
+        attempts: 3,
+      },
+    });
+
+    await worker.tick();
+
+    const reaped = await owner.notification.findUniqueOrThrow({ where: { id: zombie.id } });
+    expect(reaped.status).toBe('DEAD');
+    expect(reaped.attempts).toBe(3);
+    // Reaping is bookkeeping, not delivery: no provider call may happen.
+    expect(email.calls.length - callsBefore).toBe(0);
+
+    // A healthy row in the same tick still delivers — the reaper only touches
+    // PENDING rows that are already out of budget.
+    const healthy = await notify.enqueue({
+      channel: 'EMAIL',
+      recipient: `${RUN}-healthy@qsystem.local`,
+      recipientId: userB.id,
+    });
+    await worker.tick();
+    const healthyAfter = await owner.notification.findUniqueOrThrow({ where: { id: healthy.id } });
+    expect(healthyAfter.status).toBe('SENT');
+    expect(healthyAfter.attempts).toBe(1);
+    const reapedAgain = await owner.notification.findUniqueOrThrow({ where: { id: zombie.id } });
+    expect(reapedAgain.status).toBe('DEAD');
+    expect(reapedAgain.attempts).toBe(3);
   });
 });

@@ -1,0 +1,11 @@
+-- Notifications are private messages: SELF-only for every role (R22). Forward-only.
+--
+-- The shell_rls migration granted DIRECTOR full-table access via
+-- notifications_company USING (app_current_role() = 'DIRECTOR'), and the app
+-- scope layer returned "no filter" for DIRECTOR before reaching the
+-- notification case — together a DIRECTOR's GET /notifications returned every
+-- user's notifications. A notification is a private recipient message, not a
+-- company record: this migration drops the company policy (app layer fixed in
+-- prisma-scope.extension.ts by handling 'notification' before the DIRECTOR
+-- early-return). notifications_self and notifications_worker are unchanged.
+DROP POLICY IF EXISTS notifications_company ON notifications;

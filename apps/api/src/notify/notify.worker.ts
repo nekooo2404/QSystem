@@ -38,6 +38,15 @@ export class NotifyWorker {
 
   /** One poll pass over eligible PENDING outbox rows. */
   async tick(): Promise<void> {
+    // R23: reap zombies first. A crash (or DB error) between the attempt-3
+    // claim and the catch-block bookkeeping leaves PENDING rows with
+    // attempts >= MAX_ATTEMPTS that the eligibility filter below can never
+    // pick up — without this sweep they stay PENDING forever. Dead-lettering
+    // is bookkeeping only: no provider call for reaped rows.
+    await this.prisma.notification.updateMany({
+      where: { status: 'PENDING', attempts: { gte: MAX_ATTEMPTS } },
+      data: { status: 'DEAD' },
+    });
     const rows = await this.prisma.notification.findMany({
       where: { status: 'PENDING', attempts: { lt: MAX_ATTEMPTS } },
       orderBy: { createdAt: 'asc' },
@@ -80,11 +89,18 @@ export class NotifyWorker {
       }
     } catch {
       // Delivery failed: consume one retry. Out of budget → dead-letter.
+      // Best-effort (R23): a bookkeeping failure here must not swallow the
+      // verdict or mask the provider error — the tick-start reaper is the
+      // backstop that dead-letters this row on the next pass.
       const nextStatus = attempts >= MAX_ATTEMPTS ? 'DEAD' : 'PENDING';
-      await this.prisma.notification.update({
-        where: { id: row.id },
-        data: { status: nextStatus },
-      });
+      try {
+        await this.prisma.notification.update({
+          where: { id: row.id },
+          data: { status: nextStatus },
+        });
+      } catch {
+        // Left PENDING with attempts >= MAX — reaped to DEAD by the next tick.
+      }
     }
   }
 
