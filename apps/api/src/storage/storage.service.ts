@@ -20,6 +20,16 @@ export class InvalidBucketError extends HttpException {
   }
 }
 
+/** Coded 400 for an unusable object key (empty, whitespace, or too long). */
+export class InvalidKeyError extends HttpException {
+  constructor() {
+    super(
+      { code: 'INVALID_KEY', message: 'key must be 1-1024 chars and not blank' },
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+}
+
 /** Coded 409 for a (bucket, key) that already exists (out of the caller's scope). */
 export class PresignConflictError extends HttpException {
   constructor(bucket: string, key: string) {
@@ -90,6 +100,11 @@ export class StorageService {
       throw new InvalidBucketError(input.bucket);
     }
     const key = input.key;
+    // An empty key presigns the bucket root and permanently blocks it via
+    // the (bucket,key) unique constraint; cap the length before any write.
+    if (typeof key !== 'string' || key.trim().length === 0 || key.length > 1024) {
+      throw new InvalidKeyError();
+    }
     const existing = await this.prisma.forUser(viewer).file.findUnique({
       where: { bucket_key: { bucket: input.bucket, key } },
     });

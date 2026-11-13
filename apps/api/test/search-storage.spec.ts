@@ -445,6 +445,23 @@ describe('SearchModule + StorageModule (Task 7)', () => {
     }
   });
 
+  it('presign key rỗng hoặc quá dài → coded 400 INVALID_KEY, không tạo row', async () => {
+    const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
+    const countBefore = await owner.file.count({ where: { bucket: BUCKET } });
+
+    for (const key of ['', '   ', 'x'.repeat(1025)]) {
+      const res = await request(server)
+        .post('/files/presign')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ bucket: BUCKET, key, mimeType: 'text/plain' })
+        .expect(400);
+      expect((res.body as { code: string }).code).toBe('INVALID_KEY');
+    }
+
+    // No metadata row was created by any rejected request.
+    expect(await owner.file.count({ where: { bucket: BUCKET } })).toBe(countBefore);
+  });
+
   it('presign trùng (bucket,key) với row ẩn của user khác → coded 409 (không 500)', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
     // fileA exists under user A (hidden from EMPLOYEE B by scope). B presigns

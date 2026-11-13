@@ -173,10 +173,7 @@ describe('ExceptionFilter (Task 9)', () => {
     });
     filter.catch(zodLike, host);
     expect(status()).toBe(422);
-    expect(body()?.code).toBe('VALIDATION');
-    expect(typeof body()?.message).toBe('string');
-    // Details must not carry the raw Zod internals wholesale.
-    expect(JSON.stringify(body()?.details ?? {}).length).toBeLessThan(2000);
+    expect(body()).toEqual({ code: 'VALIDATION', message: 'validation failed' });
   });
 
   it('Prisma P2002 → 409 CONFLICT; generic Error → 500 INTERNAL without internals', () => {
@@ -231,10 +228,16 @@ describe('Audit trail (Task 9)', () => {
     expect(rows.length).toBeGreaterThanOrEqual(1);
     const row = rows[0]!;
     expect(row.entityId).toBe(deptId);
-    const before = row.oldData as { name?: string } | null;
-    const after = row.newData as { name?: string } | null;
+    const before = row.oldData as { name?: string; managerId?: string | null; parentId?: string | null } | null;
+    const after = row.newData as { name?: string; managerId?: string | null; parentId?: string | null } | null;
     expect(before?.name).toBe(`${RUN}-dept`);
     expect(after?.name).toBe(newName);
+    // All three mutable fields are captured — a rename must not record a
+    // manager/parent reassignment as a no-op.
+    expect(before).toHaveProperty('managerId');
+    expect(before).toHaveProperty('parentId');
+    expect(after).toHaveProperty('managerId');
+    expect(after).toHaveProperty('parentId');
   });
 
   it('createDepartment KHÔNG ghi audit (chỉ hành động nhạy cảm mới ghi)', async () => {

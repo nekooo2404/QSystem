@@ -1,6 +1,6 @@
 import { Module, Provider } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { AbilitiesFactory } from '../org/abilities.factory';
+import { IamModule } from '../iam/iam.module';
 import { OrgModule } from '../org/org.module';
 import { NotifyController } from './notify.controller';
 import { NotifyService } from './notify.service';
@@ -24,15 +24,14 @@ const consoleLog = (message: string): void => {
  * only — no real SMTP/Viber/Socket.IO/LiveKit/OpenAI, no credentials.
  *
  * OrgModule is imported for AbilitiesFactory (resolveViewer) — the same
- * viewer resolution the OrgController uses; PrismaService is re-provided
- * here following OrgModule's pattern (Nest treats them as the same
- * instance via the module-ref cache within an app).
+ * viewer resolution the OrgController uses. OrgModule in turn imports
+ * IamModule, which exports the app's single PrismaService instance (the
+ * worker used to get its own identity-less pool; one pool, one disconnect).
  */
 @Module({
-  imports: [OrgModule],
+  imports: [IamModule, OrgModule],
   controllers: [NotifyController],
   providers: [
-    PrismaService,
     NotifyService,
     NotifyWorker,
     // Explicit class-token DI (esbuild emits no param metadata): the logger

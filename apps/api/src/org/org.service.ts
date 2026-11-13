@@ -84,21 +84,31 @@ export class OrgService {
       }),
     );
     // Task 9 audit: department edits are sensitive (flow-2 style). The
-    // pre-image is `visible` (the scoped pre-check read). Additive only —
-    // the update semantics above are unchanged, and an audit-write failure
-    // must not fail the request (best-effort, same convention as the notify
-    // worker's bookkeeping).
+    // pre-image is `visible` (the scoped pre-check read). All three mutable
+    // fields are captured — a manager reassignment or re-parent is more
+    // sensitive than a rename and must not record as a no-op.
     try {
       await this.audit.writeAudit({
         actorId: viewer.id,
         action: 'UPDATE',
         entity: 'Department',
         entityId: id,
-        oldData: { name: visible.name },
-        newData: { name: updated.name },
+        oldData: {
+          name: visible.name,
+          managerId: visible.managerId,
+          parentId: visible.parentId,
+        },
+        newData: {
+          name: updated.name,
+          managerId: updated.managerId,
+          parentId: updated.parentId,
+        },
       });
-    } catch {
-      // best-effort: audit must never block the business write
+    } catch (auditErr) {
+      // Best-effort: audit must never block the business write, but a silent
+      // discard would leave a compliance hole with no signal.
+      // eslint-disable-next-line no-console
+      console.error('qsystem: audit write failed for department update', id, auditErr);
     }
     return updated;
   }

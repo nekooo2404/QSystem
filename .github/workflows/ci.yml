@@ -92,9 +92,13 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Migrate + create restricted role (owner connection)
+      - name: Migrate (owner connection) + set restricted role password
         run: |
-          pnpm --filter api exec prisma migrate deploy
+          # schema.prisma reads DATABASE_URL (the qsystem_app role), but that
+          # role is created BY the hardening migration and has no password
+          # until the ALTER below — migrating over it is a chicken-and-egg
+          # failure. The owner URL can run migrations.
+          DATABASE_URL="$RLS_OWNER_URL" pnpm --filter api exec prisma migrate deploy
           psql "$RLS_OWNER_URL" -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
       - name: Generate Prisma client
         run: pnpm --filter api exec prisma generate
