@@ -5,8 +5,8 @@ on:
     branches: [main]
   pull_request:
 
-# Task 9: lint/test/build for the three packages. The workflow file is
-# committed only — nothing is pushed or deployed from here.
+# Task 9: test + typecheck for the packages that exist today. Task 5-UI and
+# Task 8 (web) are deferred by R7, so no web job runs yet.
 #
 # Test prerequisites baked into the API job:
 # - Postgres 16 service container; `prisma migrate deploy` runs FIRST so the
@@ -92,32 +92,13 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Apply migrations (owner)
-        run: pnpm --filter api exec prisma migrate deploy
-      - name: Set restricted role password
+      - name: Migrate + create restricted role (owner connection)
         run: |
-          docker exec $(docker ps -qf "ancestor=postgres:16") psql -U qsystem -d qsystem \
-            -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
+          pnpm --filter api exec prisma migrate deploy
+          psql "$RLS_OWNER_URL" -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
       - name: Generate Prisma client
         run: pnpm --filter api exec prisma generate
       - name: Typecheck
         run: pnpm --filter api exec tsc --noEmit
       - name: API suite (sequential)
         run: pnpm --filter api exec vitest run --no-file-parallelism
-
-  web:
-    name: web (node ${{ matrix.node }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [20, 24]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter web test
-      - run: pnpm --filter web build
