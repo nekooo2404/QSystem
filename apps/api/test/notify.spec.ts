@@ -124,7 +124,7 @@ beforeAll(async () => {
   email.calls.length = 0;
 
   const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
-  resetLoginLimits();
+  await resetLoginLimits(owner);
   tokenA = await loginAs(server, userA.email);
   tokenB = await loginAs(server, userB.email);
   tokenDir = await loginAs(server, userDir.email);

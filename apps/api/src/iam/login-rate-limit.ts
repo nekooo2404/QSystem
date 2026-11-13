@@ -1,80 +1,68 @@
-/**
- * In-memory login rate limiter (Task 3).
- *
- * Two buckets, checked together on every POST /auth/login:
- * - per-IP bucket: 5 attempts / 60s, EVERY attempt consumes (success or
- *   failure, never cleared early). This is the brief's 5/min/IP rule: an
- *   attacker spraying guesses across many emails from one IP still trips it.
- * - per-account bucket (IP + lowercased email): 5 failures / 60s; only
- *   failures consume and a success clears the key, so one account's failures
- *   never lock out other users behind the same NAT.
- *
- * Single-process Map, replaceable with a shared store (Redis) when the API
- * runs multi-instance — documented per plan.
- */
+import { Inject, Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * Login rate limiter (Task 3), Postgres-backed so every API instance shares
+ * one budget (was a per-process Map).
+ *
+ * - per-IP bucket: 5 attempts / 60s, every attempt consumes, never cleared
+ *   early — spraying guesses across emails from one IP still trips it.
+ * - per-account bucket (IP + lowercased email): 5 failures / 60s; a success
+ *   clears it, so one account's failures never lock out others behind a NAT.
+ *
+ * Fail-open with a log on DB errors: a dead DB already breaks login itself.
+ */
 const WINDOW_MS = 60_000;
 const MAX_ATTEMPTS = 5;
 
-const ipAttempts = new Map<string, number[]>();
-const accountFailures = new Map<string, number[]>();
+@Injectable()
+export class LoginRateLimiter {
+  // Explicit token — esbuild (vitest) does not emit decorator metadata.
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-let lastSweep = 0;
-
-function prune(map: Map<string, number[]>, now: number): void {
-  for (const [key, hits] of map) {
-    const fresh = hits.filter((t) => t > now - WINDOW_MS);
-    if (fresh.length > 0) map.set(key, fresh);
-    else map.delete(key);
+  async isLimited(ip: string, accountKey: string): Promise<boolean> {
+    try {
+      const since = new Date(Date.now() - WINDOW_MS);
+      await this.prisma.rateLimitHit.deleteMany({ where: { at: { lte: since } } });
+      const [ipHits, accountHits] = await Promise.all([
+        this.prisma.rateLimitHit.count({ where: { bucket: 'ip', key: ip, at: { gt: since } } }),
+        this.prisma.rateLimitHit.count({ where: { bucket: 'account', key: accountKey, at: { gt: since } } }),
+      ]);
+      return ipHits >= MAX_ATTEMPTS || accountHits >= MAX_ATTEMPTS;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('qsystem: rate limiter unavailable; allowing attempt', err);
+      return false;
+    }
   }
-}
 
-function maybeSweep(now: number): void {
-  // Opportunistic TTL cleanup: a full sweep runs at most once per window, so
-  // idle keys cannot leak memory while the hot path stays O(bucket size).
-  if (now - lastSweep < WINDOW_MS) return;
-  lastSweep = now;
-  prune(ipAttempts, now);
-  prune(accountFailures, now);
-}
+  recordAttempt(ip: string): Promise<void> {
+    return this.write(() => this.prisma.rateLimitHit.create({ data: { bucket: 'ip', key: ip } }));
+  }
 
-function recent(map: Map<string, number[]>, key: string, now: number): number[] {
-  const hits = (map.get(key) ?? []).filter((t) => t > now - WINDOW_MS);
-  map.set(key, hits);
-  return hits;
+  recordFailure(accountKey: string): Promise<void> {
+    return this.write(() => this.prisma.rateLimitHit.create({ data: { bucket: 'account', key: accountKey } }));
+  }
+
+  clearFailures(accountKey: string): Promise<void> {
+    return this.write(() => this.prisma.rateLimitHit.deleteMany({ where: { bucket: 'account', key: accountKey } }));
+  }
+
+  private async write(op: () => Promise<unknown>): Promise<void> {
+    try {
+      await op();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('qsystem: rate limiter write failed', err);
+    }
+  }
 }
 
 export function loginLimitKey(ip: string, email: string): string {
   return `${ip}::${(email ?? '').toLowerCase()}`;
 }
 
-export function isLoginLimited(ip: string, accountKey: string): boolean {
-  const now = Date.now();
-  maybeSweep(now);
-  return (
-    recent(ipAttempts, ip, now).length >= MAX_ATTEMPTS ||
-    recent(accountFailures, accountKey, now).length >= MAX_ATTEMPTS
-  );
-}
-
-/** Every login attempt consumes IP budget — call BEFORE delegating to login. */
-export function recordLoginAttempt(ip: string): void {
-  ipAttempts.set(ip, [...(ipAttempts.get(ip) ?? []), Date.now()]);
-}
-
-/** Only failures consume the per-account budget. */
-export function recordLoginFailure(accountKey: string): void {
-  accountFailures.set(accountKey, [...(accountFailures.get(accountKey) ?? []), Date.now()]);
-}
-
-/** A success clears the per-account budget (the IP budget is never cleared early). */
-export function clearLoginFailures(accountKey: string): void {
-  accountFailures.delete(accountKey);
-}
-
-/** Test-only: isolate rate-limit assertions from each other (same-process Map). */
-export function resetLoginLimits(): void {
-  ipAttempts.clear();
-  accountFailures.clear();
-  lastSweep = 0;
+/** Test-only: wipe shared limiter state between assertions. */
+export async function resetLoginLimits(prisma: { rateLimitHit: { deleteMany: () => Promise<unknown> } }): Promise<void> {
+  await prisma.rateLimitHit.deleteMany();
 }

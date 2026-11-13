@@ -40,6 +40,9 @@ let deptId!: string;
 
 beforeAll(async () => {
   await owner.$connect();
+  // Shared limiter state lives in Postgres now: isolate this file from any
+  // earlier spec's logins before anything below performs one.
+  await resetLoginLimits(owner);
 
   const appPassword = process.env.QSYSTEM_APP_PASSWORD;
   if (!appPassword) {
@@ -225,7 +228,7 @@ describe('IamModule (Task 3)', () => {
 
   it('sai mật khẩu 5 lần bị rate-limit 429 (per-account)', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
-    resetLoginLimits();
+    await resetLoginLimits(owner);
 
     for (let i = 0; i < 5; i++) {
       await request(server)
@@ -242,7 +245,7 @@ describe('IamModule (Task 3)', () => {
 
   it('spray nhiều email từ 1 IP bị chặn per-IP 429', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
-    resetLoginLimits();
+    await resetLoginLimits(owner);
 
     // 5 attempts across DIFFERENT emails from this test process: the strict
     // per-IP bucket counts every attempt, so the 6th (any email) is 429.
@@ -256,12 +259,12 @@ describe('IamModule (Task 3)', () => {
       .send({ email: `${RUN}-emp@qsystem.local`, password: PASSWORD })
       .expect(429);
     expect((limited.body as { code: string }).code).toBe('RATE_LIMITED');
-    resetLoginLimits();
+    await resetLoginLimits(owner);
   });
 
   it('đổi mật khẩu với mật khẩu cũ sai bị 400; đổi đúng đá mọi session', async () => {
     const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
-    resetLoginLimits();
+    await resetLoginLimits(owner);
 
     const loginRes = await request(server)
       .post('/auth/login')

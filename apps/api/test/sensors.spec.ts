@@ -140,7 +140,7 @@ beforeAll(async () => {
   await app.init();
 
   const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
-  resetLoginLimits();
+  await resetLoginLimits(owner);
   // Four logins total — under the per-IP 5/min budget (same-process Map).
   dirToken = await loginAs(server, `${RUN}-dir@qsystem.local`);
   mgrAToken = await loginAs(server, `${RUN}-mgra@qsystem.local`);

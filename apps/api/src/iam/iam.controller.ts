@@ -16,19 +16,16 @@ import { IamService } from './iam.service';
 import { ChangePasswordDto, LoginDto, type MeResponse } from './dto/login.dto';
 import { CurrentUser } from './current-user.decorator';
 import { Public } from './jwt-auth.guard';
-import {
-  clearLoginFailures,
-  isLoginLimited,
-  loginLimitKey,
-  recordLoginAttempt,
-  recordLoginFailure,
-} from './login-rate-limit';
+import { LoginRateLimiter, loginLimitKey } from './login-rate-limit';
 
 @Controller()
 export class IamController {
   // NOTE: explicit @Inject — vitest runs through esbuild, which does not emit
   // decorator metadata, so constructor-param DI needs explicit tokens.
-  constructor(@Inject(IamService) private readonly iam: IamService) {}
+  constructor(
+    @Inject(IamService) private readonly iam: IamService,
+    @Inject(LoginRateLimiter) private readonly limiter: LoginRateLimiter,
+  ) {}
 
   @Public()
   @Post('auth/login')
@@ -43,16 +40,16 @@ export class IamController {
     // Strict per-IP bucket: every attempt consumes, so spraying guesses across
     // emails from one IP trips 5/min; the per-account bucket protects other
     // users behind the same NAT from one account's failures.
-    if (isLoginLimited(ip, accountKey)) {
+    if (await this.limiter.isLimited(ip, accountKey)) {
       throw new HttpException(
         { code: 'RATE_LIMITED', message: 'Too many login attempts, try again later' },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    recordLoginAttempt(ip);
+    await this.limiter.recordAttempt(ip);
     try {
       const out = await this.iam.login(body?.email ?? '', body?.password ?? '', res);
-      clearLoginFailures(accountKey);
+      await this.limiter.clearFailures(accountKey);
       return out;
     } catch (err) {
       // Only failures consume the per-account budget; a success clears it.
@@ -60,7 +57,7 @@ export class IamController {
         err instanceof HttpException &&
         err.getStatus() === HttpStatus.UNAUTHORIZED
       ) {
-        recordLoginFailure(accountKey);
+        await this.limiter.recordFailure(accountKey);
       }
       throw err;
     }

@@ -38,6 +38,32 @@ export class NotifyWorker {
 
   /** One poll pass over eligible PENDING outbox rows. */
   async tick(): Promise<void> {
+    // One delivery pass at a time across instances: the claim CAS stops two
+    // instances claiming the SAME row, but not both claiming different rows
+    // while the other is mid-delivery (the reap could then flip a row the
+    // other instance is still delivering → DEAD-then-SENT flicker, and a
+    // crash-mid-delivery row could be double-sent).
+    // shortcut: one advisory-lock slot serialises all passes on this key, so
+    // multi-instance safety is process-level, not row-level. When
+    // multi-instance delivery volume matters, replace with BullMQ job locks
+    // (one job at most-once per row) instead of a per-tick global lock.
+    const lockKey = 827_741_001; // arbitrary unique pg advisory lock id
+    const locked = await this.prisma.$queryRawUnsafe<{ ok: boolean }[]>(
+      `SELECT pg_try_advisory_lock(${lockKey}) AS ok`,
+    );
+    if (!locked[0]?.ok) {
+      // Another instance is mid-pass; skip this tick rather than contend.
+      return;
+    }
+    try {
+      await this.runPass();
+    } finally {
+      await this.prisma.$queryRawUnsafe(`SELECT pg_advisory_unlock(${lockKey})`);
+    }
+  }
+
+  /** The actual pass: reap zombies, then deliver eligible rows. */
+  private async runPass(): Promise<void> {
     // R23: reap zombies first. A crash (or DB error) between the attempt-3
     // claim and the catch-block bookkeeping leaves PENDING rows with
     // attempts >= MAX_ATTEMPTS that the eligibility filter below can never
@@ -87,19 +113,26 @@ export class NotifyWorker {
           data: { status: 'SENT' },
         });
       }
-    } catch {
+    } catch (deliveryErr) {
       // Delivery failed: consume one retry. Out of budget → dead-letter.
       // Best-effort (R23): a bookkeeping failure here must not swallow the
       // verdict or mask the provider error — the tick-start reaper is the
       // backstop that dead-letters this row on the next pass.
+      // eslint-disable-next-line no-console
+      console.error(
+        `qsystem: notification ${row.id} delivery failed (attempt ${attempts}/${MAX_ATTEMPTS}) on ${row.channel}`,
+        deliveryErr,
+      );
       const nextStatus = attempts >= MAX_ATTEMPTS ? 'DEAD' : 'PENDING';
       try {
         await this.prisma.notification.update({
           where: { id: row.id },
           data: { status: nextStatus },
         });
-      } catch {
+      } catch (bookkeepingErr) {
         // Left PENDING with attempts >= MAX — reaped to DEAD by the next tick.
+        // eslint-disable-next-line no-console
+        console.error(`qsystem: notification ${row.id} bookkeeping failed; left for the reaper`, bookkeepingErr);
       }
     }
   }

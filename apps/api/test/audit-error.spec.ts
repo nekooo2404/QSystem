@@ -146,7 +146,7 @@ beforeAll(async () => {
   prisma = moduleRef.get(PrismaService, { strict: false });
 
   const server = app.getHttpServer() as unknown as Parameters<typeof request>[0];
-  resetLoginLimits();
+  await resetLoginLimits(owner);
   mgrToken = await loginAs(server, `${RUN}-mgr@qsystem.local`);
   dirToken = await loginAs(server, `${RUN}-dir@qsystem.local`);
 }, 180000);
