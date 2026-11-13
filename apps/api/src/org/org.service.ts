@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { AuditService } from '../common/audit.service';
 import { PrismaService, type ScopeViewer } from '../prisma/prisma.service';
 
 function error(code: string, message: string, status: HttpStatus): HttpException {
@@ -9,7 +10,10 @@ function error(code: string, message: string, status: HttpStatus): HttpException
 export class OrgService {
   // NOTE: explicit @Inject — vitest runs through esbuild, which does not emit
   // decorator metadata, so constructor-param DI needs explicit tokens.
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
   private client(viewer: ScopeViewer) {
     return this.prisma.forUser({
@@ -69,7 +73,7 @@ export class OrgService {
       }
       throw error('FORBIDDEN', 'Insufficient permission', HttpStatus.FORBIDDEN);
     }
-    return this.prisma.runAsUser(viewer.id, (tx) =>
+    const updated = await this.prisma.runAsUser(viewer.id, (tx) =>
       tx.department.update({
         where: { id },
         data: {
@@ -79,6 +83,24 @@ export class OrgService {
         },
       }),
     );
+    // Task 9 audit: department edits are sensitive (flow-2 style). The
+    // pre-image is `visible` (the scoped pre-check read). Additive only —
+    // the update semantics above are unchanged, and an audit-write failure
+    // must not fail the request (best-effort, same convention as the notify
+    // worker's bookkeeping).
+    try {
+      await this.audit.writeAudit({
+        actorId: viewer.id,
+        action: 'UPDATE',
+        entity: 'Department',
+        entityId: id,
+        oldData: { name: visible.name },
+        newData: { name: updated.name },
+      });
+    } catch {
+      // best-effort: audit must never block the business write
+    }
+    return updated;
   }
 
   async listUsers(viewer: ScopeViewer) {

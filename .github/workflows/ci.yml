@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Task 9: lint/test/build for the three packages. The workflow file is
+# committed only — nothing is pushed or deployed from here.
+#
+# Test prerequisites baked into the API job:
+# - Postgres 16 service container; `prisma migrate deploy` runs FIRST so the
+#   RLS + notification-worker policies exist before any spec (follow-up from
+#   Task 6: specs are not self-bootstrapping).
+# - Meilisearch + RustFS (S3-compatible, same API as MinIO) service
+#   containers. CI uses the services' default ports (7700/9000); the local
+#   dev stack maps them to 17700/19000, which the specs read from env.
+# - The api suite runs sequentially (--no-file-parallelism): parallel vitest
+#   files race on shared Postgres DDL/DML and fail with
+#   `tuple concurrently updated`.
+
+jobs:
+  contracts:
+    name: contracts (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @qsystem/contracts test
+      - run: pnpm --filter @qsystem/contracts exec tsc --noEmit
+
+  api:
+    name: api (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 24]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qsystem
+          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD || 'ci-postgres-password' }}
+          POSTGRES_DB: qsystem
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qsystem -d qsystem"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      meilisearch:
+        image: getmeili/meilisearch
+        env:
+          MEILI_MASTER_KEY: ${{ secrets.CI_MEILI_MASTER_KEY || 'ci-meili-master-key-32-chars-min-000' }}
+          MEILI_NO_ANALYTICS: 'true'
+        ports:
+          - 7700:7700
+      s3:
+        image: rustfs/rustfs:latest
+        env:
+          MINIO_ROOT_USER: ${{ secrets.CI_S3_USER || 'ciadmin' }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
+        ports:
+          - 9000:9000
+    env:
+      # Restricted runtime role: app + specs connect as qsystem_app (never the
+      # owner). The owner URL is used only by test bootstrap and migrations.
+      DATABASE_URL: postgresql://qsystem_app:ci-app-password@localhost:5432/qsystem?schema=public
+      RLS_OWNER_URL: postgresql://qsystem:${{ secrets.CI_POSTGRES_PASSWORD || 'ci-postgres-password' }}@localhost:5432/qsystem?schema=public
+      QSYSTEM_APP_PASSWORD: ci-app-password
+      TEST_JWT_SECRET: ci-test-jwt-secret-64-hex-chars-do-not-reuse-in-prod
+      NODE_ENV: test
+      MEILI_URL: http://localhost:7700
+      MEILI_MASTER_KEY: ${{ secrets.CI_MEILI_MASTER_KEY || 'ci-meili-master-key-32-chars-min-000' }}
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY: ${{ secrets.CI_S3_USER || 'ciadmin' }}
+      S3_SECRET_KEY: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations (owner)
+        run: pnpm --filter api exec prisma migrate deploy
+      - name: Set restricted role password
+        run: |
+          docker exec $(docker ps -qf "ancestor=postgres:16") psql -U qsystem -d qsystem \
+            -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
+      - name: Generate Prisma client
+        run: pnpm --filter api exec prisma generate
+      - name: Typecheck
+        run: pnpm --filter api exec tsc --noEmit
+      - name: API suite (sequential)
+        run: pnpm --filter api exec vitest run --no-file-parallelism
+
+  web:
+    name: web (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web test
+      - run: pnpm --filter web build
