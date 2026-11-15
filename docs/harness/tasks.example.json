@@ -1,0 +1,19 @@
+{
+  "taskId": "notification-retry",
+  "objective": "Make notification retry behavior observable and reliable",
+  "tasks": [
+    {
+      "id": "backend-retry",
+      "title": "Implement retry and dead-letter handling",
+      "body": "Implement the approved retry design and include direct test evidence.",
+      "labels": ["qsystem", "backend"]
+    },
+    {
+      "id": "qa-verification",
+      "title": "Verify retry and dead-letter behavior",
+      "body": "Run the focused verification after backend-retry is complete.",
+      "dependsOn": ["backend-retry"],
+      "labels": ["qsystem", "qa"]
+    }
+  ]
+}

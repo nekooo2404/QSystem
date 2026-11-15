@@ -1,0 +1,129 @@
+{
+  "company": "qsystem-agent-company",
+  "workflow": ["constitution", "specify", "plan", "implement", "review", "verify", "tasks", "merge"],
+  "codingPolicy": {
+    "entrypoint": "corepack pnpm harness implement --task-id <id> --agents .harness/agents.json --objective <objective>",
+    "directCoding": "forbidden",
+    "requiredGates": ["named-owner", "independent-review", "verification"],
+    "frontendOwner": "frontend-engineer",
+    "securityOwner": "security-engineer",
+    "genericCommandFallback": "forbidden"
+  },
+  "workspacePolicy": {
+    "root": "D:/Projects/QSystem",
+    "scope": "qsystem-only",
+    "crossRepositoryAgents": "forbidden"
+  },
+  "agents": [
+    {
+      "id": "ceo-integrator",
+      "provider": "generic",
+      "mode": "cli",
+      "roles": ["ceo", "reviewer"],
+      "skills": ["team-agent-orchestration", "wayfinder", "context-and-decisions", "docs-governance"],
+      "capabilities": ["orchestration", "synthesis", "approval", "merge-gate"],
+      "scope": ["all"],
+      "mergeGate": "all predecessor stages, review, verification, security, and tasks evidence"
+    },
+    {
+      "id": "product-manager",
+      "provider": "generic",
+      "mode": "cli",
+      "roles": ["product"],
+      "skills": ["docs-governance", "context-and-decisions", "wayfinder"],
+      "capabilities": ["specification", "acceptance-criteria", "prioritization"],
+      "scope": ["docs/superpowers/specs", "docs/harness/tasks"],
+      "mergeGate": "spec artifact and acceptance criteria recorded"
+    },
+    {
+      "id": "chief-architect",
+      "provider": "generic",
+      "mode": "cli",
+      "roles": ["architect"],
+      "skills": ["wayfinder", "api-design", "module-governance", "change-impact", "codebase-design"],
+      "capabilities": ["architecture", "risk-register", "dependency-mapping"],
+      "scope": ["docs/superpowers/plans", "docs/architecture"],
+      "mergeGate": "plan, risks, seams, and verification plan recorded"
+    },
+    {
+      "id": "backend-engineer",
+      "provider": "claude",
+      "mode": "cli",
+      "roles": ["backend"],
+      "skills": ["backend-patterns", "api-design", "tdd-workflow", "coding-standards", "typescript-pro"],
+      "capabilities": ["nestjs", "prisma", "postgres", "contracts", "typescript"],
+      "scope": ["apps/api", "packages/contracts"],
+      "mergeGate": "focused RED/GREEN tests, typecheck, changed-file evidence"
+    },
+    {
+      "id": "frontend-engineer",
+      "provider": "claude",
+      "mode": "cli",
+      "roles": ["frontend"],
+      "skills": ["frontend-patterns", "nextjs-turbopack", "react-best-practices", "frontend-a11y", "hallmark", "unslop", "impeccable", "ui-ux-pro-max", "ui-taste"],
+      "capabilities": ["react", "nextjs", "accessibility", "ui", "responsive", "fragment-ui", "component-reuse", "blocks", "patterns"],
+      "scope": ["apps/web", "packages/ui", ".cursor", ".mcp.json", ".cursor/mcp.json"],
+      "requiredMcp": ["fragment-ui"],
+      "uiRules": [
+        "Inspect Fragment UI components, blocks, and patterns before creating a new UI primitive.",
+        "Prefer the closest Fragment UI component or block and preserve its API/accessibility behavior.",
+        "If Fragment UI has no suitable match, record the search result and reason in the handoff before inventing a local component.",
+        "Use the five frontend design skills together: ui-ux-pro-max for direction, Hallmark for design floor, Impeccable for craft, UI Taste for anti-slop judgment, and Unslop for final visual cleanup."
+      ],
+      "mergeGate": "Fragment UI and Kibo UI reuse evidence, browser QA, a11y evidence, responsive screenshots, reduced-motion check, and visual baseline where available"
+    },
+    {
+      "id": "qa-browser-engineer",
+      "provider": "claude",
+      "mode": "cli",
+      "roles": ["qa"],
+      "skills": ["browser-qa", "e2e-testing", "frontend-a11y", "verification-loop", "playwright-expert"],
+      "capabilities": ["playwright", "e2e", "visual-regression", "axe", "evidence"],
+      "scope": ["apps/*/test", "apps/*/e2e", "artifacts/qa"],
+      "mergeGate": "SHIP, SHIP WITH FIXES, or DO NOT SHIP report with direct evidence"
+    },
+    {
+      "id": "tester",
+      "provider": "generic",
+      "mode": "cli",
+      "roles": ["tester"],
+      "skills": ["tdd-workflow", "e2e-testing", "verification-loop", "browser-qa", "frontend-a11y", "playwright-expert"],
+      "capabilities": ["task-verification", "unit-tests", "integration-tests", "playwright", "evidence"],
+      "executionPolicy": "local-codebase-only",
+      "testCommand": "node scripts/harness/tester.mjs",
+      "network": "forbidden",
+      "scope": ["apps/*/test", "apps/*/e2e", "artifacts/tester"],
+      "mergeGate": "typed test-results evidence for the completed task"
+    },
+    {
+      "id": "security-engineer",
+      "provider": "codex",
+      "mode": "cli",
+      "roles": ["security"],
+      "skills": ["security-review", "code-review", "change-impact", "security-audit"],
+      "capabilities": ["jwt", "rls", "secrets", "authorization", "threat-model"],
+      "scope": ["apps/api/src/iam", "apps/api/src/prisma", "infra", "config"],
+      "mergeGate": "security findings resolved or explicitly accepted"
+    },
+    {
+      "id": "platform-sre",
+      "provider": "codex",
+      "mode": "cli",
+      "roles": ["devops"],
+      "skills": ["devops-engineer", "verification-loop", "coding-standards"],
+      "capabilities": ["pnpm", "docker", "github-actions", "observability", "rollback"],
+      "scope": ["infra", ".github", "package.json", "pnpm-lock.yaml"],
+      "mergeGate": "safe plan, health checks, rollback, and no unapproved production mutation"
+    },
+    {
+      "id": "independent-reviewer",
+      "provider": "generic",
+      "mode": "cli",
+      "roles": ["reviewer"],
+      "skills": ["code-review", "wayfinder", "verification-loop", "security-review"],
+      "capabilities": ["diff-review", "spec-review", "risk-review", "release-recommendation"],
+      "scope": ["all changed files"],
+      "mergeGate": "independent review report with no unresolved blocker"
+    }
+  ]
+}

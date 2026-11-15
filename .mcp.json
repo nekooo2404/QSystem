@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "fragment-ui": {
+      "command": "node",
+      "args": [
+        "D:\\Projects\\fragment-ui-public\\packages\\mcp-server\\dist\\index.js"
+      ],
+      "env": {
+        "FRAGMENT_UI_ROOT": "D:\\Projects\\fragment-ui-public"
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "taskId": "qsystem-production-readiness",
+  "objective": "Make QSystem backend and web deployable, move QTask from localStorage to PostgreSQL with RLS, finish missing product APIs and UI wiring, harden API security/rate-limiting, enforce full CI/Playwright gates, and document production operations.",
+  "tasks": [
+    {
+      "id": "pr-1-runtime-docker-health",
+      "title": "Wave 1: Deployable API/Web runtime, Dockerfiles, secret file hydration, and health/readiness",
+      "body": "Add contracts/api build, start, dev, typecheck, sequential vitest config, prisma migrate deploy script; add env validation and <KEY>_FILE secret loading; implement /health/live and /health/ready (Postgres, S3, Meilisearch); add Dockerfiles, prod compose, and staging/production env templates.",
+      "dependsOn": [],
+      "labels": ["qsystem", "backend", "infra", "health"]
+    },
+    {
+      "id": "pr-2-qtask-postgres-rls",
+      "title": "Wave 2: QTask PostgreSQL persistence, RLS policies, and tasks.adapter.ts migration",
+      "body": "Add Prisma Task model, task_code_seq, Notification.readAt, and migration 20261114120000_production_readiness with PostgreSQL RLS policies; wire PrismaService/scope extension; implement paginated filtered GET/POST/PATCH /org/tasks and remove localStorage source-of-truth from tasks.adapter.ts.",
+      "dependsOn": ["pr-1-runtime-docker-health"],
+      "labels": ["qsystem", "backend", "frontend", "rls", "qtask"]
+    },
+    {
+      "id": "pr-3-missing-apis-web-wiring",
+      "title": "Wave 3: Complete notification read-state & SSE stream, GET /files, POST /org/users, and GET /registry",
+      "body": "Implement PATCH /notifications/:id/read, POST /notifications/read-all, GET /notifications/stream SSE fan-out with polling fallback, GET /files scoped listing, POST /org/users role/department matrix + CreateUserModal, and GET /registry module filtering.",
+      "dependsOn": ["pr-2-qtask-postgres-rls"],
+      "labels": ["qsystem", "backend", "frontend", "notifications", "qhrm"]
+    },
+    {
+      "id": "pr-4-api-hardening-rate-limit",
+      "title": "Wave 4: API HTTP hardening, env-driven secure cookies, CSRF checks, shared Redis rate limiter & integration suite",
+      "body": "Add applyHttpHardening (X-Request-Id, Helmet security headers, structured JSON request logs, body limit 413 PAYLOAD_TOO_LARGE, strict allowlisted CORS); env-driven cookie flags; CSRF origin check on /auth/refresh and /auth/logout; Redis fixed-window RESP2 rate-limit store + x-test-suite-id isolation; add apps/api/test/production-readiness.spec.ts.",
+      "dependsOn": ["pr-3-missing-apis-web-wiring"],
+      "labels": ["qsystem", "backend", "security", "hardening"]
+    },
+    {
+      "id": "pr-5-playwright-e2e-cicd",
+      "title": "Wave 5: Live Playwright responsive Dark/Light E2E suite and full CI/CD release pipeline",
+      "body": "Add apps/web/e2e/console-ui.spec.ts covering 1440x900, 1024x768, 390x844 in Dark and Light across /login, QTask, QHRM, Ctrl+K, /files, and /notifications; add scripts/ops/run-playwright-e2e.mjs; update .github/workflows/ci.yml with contracts, harness, ui, sequential api, web, playwright, containers, and staging/production deploy/rollback gates.",
+      "dependsOn": ["pr-4-api-hardening-rate-limit"],
+      "labels": ["qsystem", "qa", "playwright", "ci"]
+    },
+    {
+      "id": "pr-6-ops-runbook-governance",
+      "title": "Wave 6: Production operations runbook, smoke check script, backlog closure, and Harness evidence",
+      "body": "Publish docs/ops/PRODUCTION_OPERATIONS.md (Postgres PITR/backup/restore/forward rollback, S3 lifecycle, Meilisearch alias rebuild, metrics/logs/alerts, secret rotation, audit retention, TLS/resources/autoscaling) and scripts/ops/smoke-check.mjs; close backend-companion-backlog.md; record Harness verification evidence.",
+      "dependsOn": ["pr-5-playwright-e2e-cicd"],
+      "labels": ["qsystem", "ops", "governance"]
+    }
+  ]
+}
+

@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  DIRECTOR
+  MANAGER
+  EMPLOYEE
+}
+
+enum NotifChannel {
+  EMAIL
+  VIBER
+  SOCKET
+}
+
+enum NotifStatus {
+  PENDING
+  SENT
+  FAILED
+  DEAD
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String
+  managerId String?  @map("manager_id")
+  parentId  String?  @map("parent_id")
+  tenantId  String?  @map("tenant_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  manager  User?        @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+  parent   Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Department[] @relation("DepartmentHierarchy")
+  members  User[]       @relation("UserDepartment")
+  files       File[]
+  tasks       Task[]
+  socialPosts SocialPost[]
+
+  @@map("departments")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  role         Role      @default(EMPLOYEE)
+  departmentId String?   @map("department_id")
+  reportsToId  String?   @map("reports_to_id")
+  tenantId     String?   @map("tenant_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  department           Department?           @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  reportsTo            User?                 @relation("UserReports", fields: [reportsToId], references: [id], onDelete: SetNull)
+  directReports        User[]                @relation("UserReports")
+  managedDepartments   Department[]          @relation("DepartmentManager")
+  ownedFiles           File[]                @relation("FileOwner")
+  ownedTasks           Task[]                @relation("TaskOwner")
+  sentDelegations      ApprovalDelegation[]  @relation("DelegationFrom")
+  receivedDelegations  ApprovalDelegation[]  @relation("DelegationTo")
+  auditActions         AuditLog[]            @relation("AuditActor")
+  notifications        Notification[]        @relation("NotificationRecipient")
+  refreshTokens        RefreshToken[]        @relation("RefreshTokenUser")
+  socialPosts          SocialPost[]          @relation("SocialPostAuthor")
+  socialComments       SocialComment[]       @relation("SocialCommentAuthor")
+  socialPostLikes      SocialPostLike[]      @relation("SocialPostLikeUser")
+
+  @@map("users")
+}
+
+model ApprovalDelegation {
+  id           String   @id @default(cuid())
+  fromUserId   String   @map("from_user_id")
+  toUserId     String   @map("to_user_id")
+  startsAt     DateTime @map("starts_at")
+  endsAt       DateTime @map("ends_at")
+  moduleScope  String?  @map("module_scope")
+  tenantId     String?  @map("tenant_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  from User @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to   User @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@map("approval_delegations")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?  @map("actor_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  oldData   Json?    @map("old_data")
+  newData   Json?    @map("new_data")
+  tenantId  String?  @map("tenant_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model Notification {
+  id            String       @id @default(cuid())
+  channel       NotifChannel @default(EMAIL)
+  recipient     String
+  recipientId   String?      @map("recipient_id")
+  payload       Json?
+  status        NotifStatus  @default(PENDING)
+  attempts      Int          @default(0)
+  readAt        DateTime?    @map("read_at")
+  tenantId      String?      @map("tenant_id")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  recipientUser User? @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, readAt])
+  @@map("notifications")
+}
+
+model Task {
+  id           String      @id @default(cuid())
+  code         String      @unique
+  title        String
+  what         String
+  who          String
+  when         String
+  where        String
+  status       String      @default("Đang làm")
+  priority     String      @default("NORMAL")
+  flow         String?
+  dueDate      String      @map("due_date")
+  assigneeId   String?     @map("assignee_id")
+  assigneeName String      @map("assignee_name")
+  ownerId      String      @map("owner_id")
+  owner        User        @relation("TaskOwner", fields: [ownerId], references: [id])
+  departmentId String?     @map("department_id")
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  tenantId     String?     @map("tenant_id")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  @@index([ownerId])
+  @@index([departmentId])
+  @@index([status])
+  @@index([assigneeId])
+  @@map("tasks")
+}
+
+model File {
+  id           String    @id @default(cuid())
+  bucket       String
+  key          String
+  ownerId      String    @map("owner_id")
+  departmentId String?   @map("department_id")
+  size         Int?
+  mimeType     String?   @map("mime_type")
+  tenantId     String?   @map("tenant_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  owner      User        @relation("FileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@unique([bucket, key])
+  @@map("files")
+}
+
+model RefreshToken {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @unique @map("replaced_by_id")
+  tenantId     String?   @map("tenant_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user       User          @relation("RefreshTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("RefreshTokenRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   RefreshToken? @relation("RefreshTokenRotation")
+
+  @@map("refresh_tokens")
+}
+
+/// Shared login rate-limit hits (pre-auth; no RLS, see migration).
+model RateLimitHit {
+  id     BigInt   @id @default(autoincrement())
+  bucket String
+  key    String
+  at     DateTime @default(now())
+
+  @@index([bucket, key, at])
+  @@map("rate_limit_hits")
+}
+
+model SocialPost {
+  id             String      @id @default(cuid())
+  authorId       String      @map("author_id")
+  authorName     String      @map("author_name")
+  authorRole     Role        @default(EMPLOYEE) @map("author_role")
+  departmentId   String?     @map("department_id")
+  departmentName String?     @map("department_name")
+  category       String      @default("SHARING")
+  content        String
+  pinned         Boolean     @default(false)
+  tenantId       String?     @map("tenant_id")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  author     User             @relation("SocialPostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  department Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  comments   SocialComment[]
+  likes      SocialPostLike[]
+
+  @@index([pinned, createdAt])
+  @@index([departmentId, createdAt])
+  @@index([authorId])
+  @@map("social_posts")
+}
+
+model SocialComment {
+  id         String   @id @default(cuid())
+  postId     String   @map("post_id")
+  authorId   String   @map("author_id")
+  authorName String   @map("author_name")
+  authorRole Role     @default(EMPLOYEE) @map("author_role")
+  content    String
+  tenantId   String?  @map("tenant_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  post   SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User       @relation("SocialCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([authorId])
+  @@map("social_comments")
+}
+
+model SocialPostLike {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User       @relation("SocialPostLikeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+  @@map("social_post_likes")
+}

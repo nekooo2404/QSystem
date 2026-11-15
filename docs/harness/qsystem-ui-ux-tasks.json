@@ -1,0 +1,113 @@
+{
+  "taskId": "qsystem-ui-ux",
+  "objective": "Implement QSystem Unified Console UI/UX across packages/ui and apps/web matching PRODUCT.md, DESIGN.md, and docs/design/references/*.",
+  "tasks": [
+    {
+      "id": "ui-tokens-bugfixes",
+      "title": "UI 1: Fix @qsystem/ui primitive bugs and apply Console Dark/Warm-Paper Light tokens",
+      "body": "Owner: frontend-engineer | Verify: tester | Review: independent-reviewer. Fix ToastRegion timer/listener stability & pointer-events, DataTable J/K nav & child-click guard, FormField aria-describedby merge & Input styling, Modal stacked Escape handling; apply #111418/#191D23 Dark, #FAF8F4/#F4F1EA Light, #E8AD45/#201708 CTA tokens in packages/ui/src/tokens.ts and styles.css. Evidence: @qsystem/ui tests + tsc --noEmit. Plan: docs/superpowers/plans/2026-11-14-qsystem-ui-ux-plan.md (Task 1).",
+      "dependsOn": [],
+      "labels": [
+        "qsystem",
+        "frontend",
+        "ui",
+        "accessibility"
+      ]
+    },
+    {
+      "id": "ui-console-primitives",
+      "title": "UI 2: Search Fragment UI MCP and add UnifiedShell, ModuleSwitcher, CommandPalette, and ResponsiveDetailDrawer",
+      "body": "Owner: frontend-engineer | Verify: tester | Review: independent-reviewer. Record Fragment UI MCP search evidence before implementation; install lucide-react (strokeWidth=1.5); build and test UnifiedShell (240px/56px), ModuleSwitcher, CommandPalette (640px, unnumbered groups), ResponsiveDetailDrawer (side-by-side >=1280px, overlay <1280px), UnderlineTabs, AttributeRowList, FilterPopover, and StateRegion. Plan: docs/superpowers/plans/2026-11-14-qsystem-ui-ux-plan.md (Task 2).",
+      "dependsOn": [
+        "ui-tokens-bugfixes"
+      ],
+      "labels": [
+        "qsystem",
+        "frontend",
+        "ui",
+        "enhancement"
+      ]
+    },
+    {
+      "id": "web-scaffold-theme-auth",
+      "title": "Web 3: Scaffold apps/web, Next.js /api rewrite, Inter + non-FOUC theme, single-flight auth, and /login",
+      "body": "Owner: frontend-engineer | Security: security-engineer | Verify: tester | Review: independent-reviewer. Prerequisite: expand .claude/settings.json allowlist to apps/web/**. Scaffold Next.js App Router with Inter (vietnamese + tabular-nums), blocking non-FOUC data-theme script, /api/* rewrite to apps/api :3001, apiFetch single-flight POST /api/auth/refresh lock, human Vietnamese error mapper, middleware.ts, and /login matching docs/design/references/03-login-dark.jpg. Plan: docs/superpowers/plans/2026-11-14-qsystem-ui-ux-plan.md (Task 3).",
+      "dependsOn": [
+        "ui-console-primitives"
+      ],
+      "labels": [
+        "qsystem",
+        "frontend",
+        "security"
+      ]
+    },
+    {
+      "id": "web-shell-adapters",
+      "title": "Web 4: Build AppWorkspaceShell and typed registry/tasks/notifications adapters",
+      "body": "Owner: frontend-engineer | Verify: tester | Review: independent-reviewer. Implement AppWorkspaceShell (contextual QTask/QHRM/QCRM/QSocial sidebar + fixed 56px topbar) and typed adapters in apps/web/src/lib/adapters/ (registry.adapter.ts, tasks.adapter.ts -> TaskPayload4W, notifications.adapter.ts with tab-visible polling and Vietnamese status labels). Plan: docs/superpowers/plans/2026-11-14-qsystem-ui-ux-plan.md (Task 4).",
+      "dependsOn": [
+        "web-scaffold-theme-auth"
+      ],
+      "labels": [
+        "qsystem",
+        "frontend",
+        "enhancement"
+      ]
+    },
+    {
+      "id": "web-qtask-workspace",
+      "title": "Web 5: Build QTask workspace (/, /tasks, /projects) matching 01-qtask-dark.jpg",
+      "body": "Owner: frontend-engineer | Verify: qa-browser-engineer | Review: independent-reviewer. Build QTaskWorkspace matching docs/design/references/01-qtask-dark.jpg: single amber + Giao viec CTA, minimal underline tabs (Tat ca / Cua toi / Qua han synced with ?view=), FilterPopover, wide table with CV-xxxx and full Vietnamese assignee names, closable ResponsiveDetailDrawer with inline Trang thai select, Trao doi & Tep dinh kem tabs (POST /files/presign, GET /files/:id), and subdued Hoan thanh viec button. Plan: docs/superpowers/plans/2026-11-14-qsystem-ui-ux-plan.md (Task 5).",
+      "dependsOn": [
+        "web-shell-adapters"
+      ],
+      "labels": [
+        "qsystem",
+        "frontend",
+        "qtask"
+      ]
+    },
+    {
+      "id": "web-qhrm-search-notify-account",
+      "title": "Web 6: Build QHRM (/org), global Ctrl+K search, /notifications, /files, /account, and module placeholders",
+      "body": "Owner: frontend-engineer | Verify: qa-browser-engineer | Review: independent-reviewer. Build QHRM matching docs/design/references/02-qhrm-light-cmdk.jpg (left Toan cong ty + dept list, dynamic heading Nhan su - [Phong ban], + Them nhan su gated to Giam doc/Quan ly, 5-column table), global Ctrl+K wired to GET /search, /notifications, /files, /account (PATCH /me/password, /auth/logout), and QCRM/QSocial placeholders. Plan: docs/superpowers/plans/2026-11-14-qsystem-ui-ux-plan.md (Task 6).",
+      "dependsOn": [
+        "web-shell-adapters"
+      ],
+      "labels": [
+        "qsystem",
+        "frontend",
+        "qhrm"
+      ]
+    },
+    {
+      "id": "ux-engineering-ui-improvement",
+      "title": "UX 7: UX engineering pass — interaction, copy, states, and visual refinement before QA",
+      "body": "Owner: frontend-engineer + ux-engineer | Verify: tester | Review: independent-reviewer. Pre-QA refinement pass over the shipped UI (packages/ui + apps/web). Run impeccable critique and fix what it finds, then verify by hand: every interactive element has hover/active/focus-visible/disabled states; every async region has loading skeleton, empty state, and human Vietnamese error with retry; all copy is 100% Vietnamese with zero dev jargon; tabular-nums on IDs/dates/counts; 44-48px table rows and 40-44px controls; single amber CTA per screen; no boxed pills where underline tabs belong; drawer/CommandPalette stacking and Escape order correct; reduced-motion respected. Produce a UX findings list with before/after evidence and fix every P1/P2 item; log P3 to the backlog instead of silently dropping. Evidence: @qsystem/ui and web test suites + typecheck + sloplint 0 FAIL + impeccable critique notes.",
+      "dependsOn": [
+        "web-qtask-workspace",
+        "web-qhrm-search-notify-account"
+      ],
+      "labels": [
+        "qsystem",
+        "frontend",
+        "ui",
+        "ux",
+        "accessibility"
+      ]
+    },
+    {
+      "id": "qa-hallmark-a11y-verification",
+      "title": "QA 8: Verify 100%-zoom Dark/Light Playwright, WCAG contrast, Hallmark sloplint, and Harness gates",
+      "body": "Owner: qa-browser-engineer, tester | Review: independent-reviewer | Gate: ceo-integrator. Run Playwright at 100% zoom across 1440x900, 1024x768, 390x844 in Dark (#111418) and Light (#F4F1EA/#FFFFFF), verify WCAG contrast, prefers-reduced-motion, zero forbidden dev jargon, Hallmark sloplint (node ~/.claude/skills/hallmark/scripts/sloplint.mjs --scope app --genre modern-minimal --render, 0 FAIL), impeccable design critique pass, node scripts/harness/tester.mjs, and log backend companion backlog. Plan: docs/superpowers/plans/2026-11-14-qsystem-ui-ux-plan.md (Task 7).",
+      "dependsOn": [
+        "ux-engineering-ui-improvement"
+      ],
+      "labels": [
+        "qsystem",
+        "qa",
+        "accessibility"
+      ]
+    }
+  ]
+}

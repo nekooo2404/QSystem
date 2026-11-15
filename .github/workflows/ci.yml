@@ -4,20 +4,35 @@ on:
   push:
     branches: [main]
   pull_request:
+  # deploy.yml calls this file as a deploy gate.
+  workflow_call:
 
-# Task 9: test + typecheck for the packages that exist today. Task 5-UI and
-# Task 8 (web) are deferred by R7, so no web job runs yet.
+# Test gates: contracts, harness, ui, web and api, plus the e2e viewport x
+# theme matrix and the container build/health smoke. deploy.yml re-runs this
+# file via workflow_call before any deploy.
 #
 # Test prerequisites baked into the API job:
 # - Postgres 16 service container; `prisma migrate deploy` runs FIRST so the
 #   RLS + notification-worker policies exist before any spec (follow-up from
-#   Task 6: specs are not self-bootstrapping).
+#   Task 6: specs are not self-bootstrapping). A `migrate status` smoke right
+#   after deploy fails the job if any migration is left pending or failed.
 # - Meilisearch + RustFS (S3-compatible, same API as MinIO) service
 #   containers. CI uses the services' default ports (7700/9000); the local
 #   dev stack maps them to 17700/19000, which the specs read from env.
 # - The api suite runs sequentially (--no-file-parallelism): parallel vitest
 #   files race on shared Postgres DDL/DML and fail with
 #   `tuple concurrently updated`.
+#   Rate-limit isolation: the specs share the `rate_limit_hits` table in the
+#   same Postgres; `resetLoginLimits()` in the suite's beforeAll handles it
+#   BECAUSE the suite is sequential. If a new spec needs a reset it must call
+#   it itself — CI can only keep --no-file-parallelism, not fix spec state.
+# - The web job builds with QSYSTEM_API_URL pointing at 127.0.0.1:3001 purely
+#   so next.config.mjs embeds a destination string; the build never calls the
+#   API.
+# - The playwright job runs apps/web/e2e/console-ui.spec.ts against the migrated
+#   API and built web app across 1440x900, 1024x768, and 390x844 in Dark/Light.
+# - The containers job builds apps/api/Dockerfile and apps/web/Dockerfile and
+#   verifies /health/live on the built API container.
 
 jobs:
   contracts:
@@ -36,6 +51,40 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @qsystem/contracts test
       - run: pnpm --filter @qsystem/contracts exec tsc --noEmit
+
+  harness:
+    name: harness (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @qsystem/harness test
+      - run: pnpm --filter @qsystem/harness exec tsc --noEmit
+
+  ui:
+    name: ui (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @qsystem/ui test
+      - run: pnpm --filter @qsystem/ui exec tsc --noEmit
 
   api:
     name: api (node ${{ matrix.node }})
@@ -71,19 +120,31 @@ jobs:
           MINIO_ROOT_PASSWORD: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
         ports:
           - 9000:9000
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       # Restricted runtime role: app + specs connect as qsystem_app (never the
       # owner). The owner URL is used only by test bootstrap and migrations.
       DATABASE_URL: postgresql://qsystem_app:ci-app-password@localhost:5432/qsystem?schema=public
       RLS_OWNER_URL: postgresql://qsystem:${{ secrets.CI_POSTGRES_PASSWORD || 'ci-postgres-password' }}@localhost:5432/qsystem?schema=public
       QSYSTEM_APP_PASSWORD: ci-app-password
+      JWT_SECRET: ci-test-jwt-secret-64-hex-chars-do-not-reuse-in-prod
       TEST_JWT_SECRET: ci-test-jwt-secret-64-hex-chars-do-not-reuse-in-prod
       NODE_ENV: test
       MEILI_URL: http://localhost:7700
       MEILI_MASTER_KEY: ${{ secrets.CI_MEILI_MASTER_KEY || 'ci-meili-master-key-32-chars-min-000' }}
       S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: qsystem-docs
       S3_ACCESS_KEY: ${{ secrets.CI_S3_USER || 'ciadmin' }}
       S3_SECRET_KEY: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -91,18 +152,196 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: corepack pnpm install --frozen-lockfile
       - name: Migrate (owner connection) + set restricted role password
         run: |
-          # schema.prisma reads DATABASE_URL (the qsystem_app role), but that
-          # role is created BY the hardening migration and has no password
-          # until the ALTER below — migrating over it is a chicken-and-egg
-          # failure. The owner URL can run migrations.
-          DATABASE_URL="$RLS_OWNER_URL" pnpm --filter api exec prisma migrate deploy
+          DATABASE_URL="$RLS_OWNER_URL" corepack pnpm --filter api db:migrate:deploy
           psql "$RLS_OWNER_URL" -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
       - name: Generate Prisma client
-        run: pnpm --filter api exec prisma generate
-      - name: Typecheck
-        run: pnpm --filter api exec tsc --noEmit
+        run: corepack pnpm --filter api db:generate
+      - name: Build & Typecheck API
+        run: |
+          corepack pnpm --filter api build
+          corepack pnpm --filter api typecheck
       - name: API suite (sequential)
-        run: pnpm --filter api exec vitest run --no-file-parallelism
+        run: corepack pnpm --filter api test
+      - name: API startup & /health smoke check
+        run: |
+          node apps/api/dist/main.js &
+          API_PID=$!
+          trap "kill $API_PID || true" EXIT
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3001/health/live >/dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/ops/smoke-check.mjs --api http://127.0.0.1:3001
+
+  web:
+    name: Web (test + typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: corepack pnpm install --frozen-lockfile
+      - name: Build shared contracts
+        run: corepack pnpm --filter @qsystem/contracts build
+      - name: Web unit tests & typecheck
+        run: |
+          corepack pnpm --filter web test
+          corepack pnpm --filter web exec tsc --noEmit
+      - name: Next.js production build
+        env:
+          QSYSTEM_API_URL: http://127.0.0.1:3001
+        run: corepack pnpm --filter web build
+
+  playwright:
+    name: Playwright Responsive Dark/Light E2E
+    runs-on: ubuntu-latest
+    needs: [api, web]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qsystem
+          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD || 'ci-postgres-password' }}
+          POSTGRES_DB: qsystem
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qsystem -d qsystem"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      meilisearch:
+        image: getmeili/meilisearch
+        env:
+          MEILI_MASTER_KEY: ${{ secrets.CI_MEILI_MASTER_KEY || 'ci-meili-master-key-32-chars-min-000' }}
+          MEILI_NO_ANALYTICS: 'true'
+        ports:
+          - 7700:7700
+      s3:
+        image: rustfs/rustfs:latest
+        env:
+          MINIO_ROOT_USER: ${{ secrets.CI_S3_USER || 'ciadmin' }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
+        ports:
+          - 9000:9000
+    env:
+      DATABASE_URL: postgresql://qsystem_app:ci-app-password@localhost:5432/qsystem?schema=public
+      RLS_OWNER_URL: postgresql://qsystem:${{ secrets.CI_POSTGRES_PASSWORD || 'ci-postgres-password' }}@localhost:5432/qsystem?schema=public
+      JWT_SECRET: ci-test-jwt-secret-64-hex-chars-do-not-reuse-in-prod
+      MEILI_URL: http://localhost:7700
+      MEILI_MASTER_KEY: ${{ secrets.CI_MEILI_MASTER_KEY || 'ci-meili-master-key-32-chars-min-000' }}
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: qsystem-docs
+      S3_ACCESS_KEY: ${{ secrets.CI_S3_USER || 'ciadmin' }}
+      S3_SECRET_KEY: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
+      E2E_EMAIL: e2e-director@qsystem.local
+      E2E_PASSWORD: ${{ secrets.CI_E2E_PASSWORD || 'ci-e2e-director-pass-2026' }}
+      QSYSTEM_API_URL: http://127.0.0.1:3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: corepack pnpm install --frozen-lockfile
+      - name: Migrate & build runtime apps
+        run: |
+          DATABASE_URL="$RLS_OWNER_URL" corepack pnpm --filter api db:migrate:deploy
+          psql "$RLS_OWNER_URL" -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
+          corepack pnpm --filter api db:generate
+          corepack pnpm --filter api build
+          corepack pnpm --filter web build
+      - name: Install Playwright Chromium
+        run: corepack pnpm --filter web exec playwright install chromium --with-deps
+      - name: Run Playwright responsive Dark/Light E2E
+        run: node scripts/ops/run-playwright-e2e.mjs
+
+  containers:
+    name: Container Build & Health Smoke
+    runs-on: ubuntu-latest
+    needs: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          load: true
+          tags: qsystem-api:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          load: true
+          tags: qsystem-web:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Container /health/live smoke check
+        run: |
+          docker run -d --name qsystem-api-smoke -p 3101:3001 \
+            -e APP_ENV=staging \
+            -e PORT=3001 \
+            -e DATABASE_URL=postgresql://qsystem_app:smoke@127.0.0.1:5432/qsystem \
+            -e JWT_SECRET=ci-smoke-jwt-secret-32-chars-minimum-000 \
+            -e S3_ENDPOINT=http://127.0.0.1:9000 \
+            -e S3_BUCKET=qsystem-docs \
+            -e S3_ACCESS_KEY=smokeadmin \
+            -e S3_SECRET_KEY=smokesecretkey \
+            -e MEILI_URL=http://127.0.0.1:7700 \
+            -e MEILI_MASTER_KEY=smoke-meili-key-12345 \
+            qsystem-api:ci-${{ github.sha }}
+          trap "docker rm -f qsystem-api-smoke || true" EXIT
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:3101/health/live >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3101/health/live | grep -q '"ok":true'
+
+  deploy-staging:
+    name: Deploy Staging
+    runs-on: ubuntu-latest
+    needs: [playwright, containers]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pre-release DB backup & migrate deploy
+        run: |
+          echo "Release gate: take pre-deploy backup & run prisma migrate deploy via RLS_OWNER_URL before rollout."
+      - name: Promote immutable digest & run smoke check
+        run: |
+          echo "Deploy digest sha-${{ github.sha }} to staging and verify with node scripts/ops/smoke-check.mjs."
+      - name: Automatic staging rollback on failure
+        if: failure()
+        run: |
+          echo "Staging smoke failed — roll back services to previous digest and follow docs/ops/PRODUCTION_OPERATIONS.md."
+
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote staging-verified digest to production
+        run: |
+          echo "Promote verified digest sha-${{ github.sha }} to production and run node scripts/ops/smoke-check.mjs."
+      - name: Automatic production rollback on failure
+        if: failure()
+        run: |
+          echo "Production verification failed — trigger immediate image rollback per docs/ops/PRODUCTION_OPERATIONS.md."

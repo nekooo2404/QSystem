@@ -1,0 +1,28 @@
+{
+  "taskId": "qsocial-internal-network",
+  "objective": "Biến QSocial thành mạng xã hội nội bộ công ty",
+  "tasks": [
+    {
+      "id": "qsocial-1-contracts-prisma-rls",
+      "title": "Wave 1: Social Zod contracts, Prisma schema, and PostgreSQL RLS migration",
+      "body": "Add packages/contracts/src/social.ts, Prisma SocialPost/SocialComment/SocialPostLike models with authorName/authorRole/departmentName snapshots, and idempotent migration 20261114233000_qsocial_feed with RLS policies and app_department_name SECURITY DEFINER function.",
+      "dependsOn": [],
+      "labels": ["qsystem", "contracts", "prisma", "rls", "qsocial"]
+    },
+    {
+      "id": "qsocial-2-api-feed-reactions-comments",
+      "title": "Wave 2: NestJS SocialModule API endpoints and integration tests",
+      "body": "Implement GET/POST/PATCH/DELETE /social/posts, POST /social/posts/:id/like, and POST /social/posts/:id/comments with author/MANAGER/DIRECTOR permissions and Vitest RLS integration coverage.",
+      "dependsOn": ["qsocial-1-contracts-prisma-rls"],
+      "labels": ["qsystem", "backend", "qsocial"]
+    },
+    {
+      "id": "qsocial-3-web-workspace-design-qa",
+      "title": "Wave 3: QSocial 3-column Facebook-style workspace, sloplint cleanup, and Playwright Dark/Light E2E",
+      "body": "Implement apps/web/src/lib/adapters/social.adapter.ts, apps/web/src/components/qsocial/QSocialWorkspace.tsx, /social route, responsive Dark/Light .qsc* CSS, unit tests, and live Playwright persistence + viewport checks.",
+      "dependsOn": ["qsocial-2-api-feed-reactions-comments"],
+      "labels": ["qsystem", "frontend", "qa", "playwright", "qsocial"]
+    }
+  ]
+}
+

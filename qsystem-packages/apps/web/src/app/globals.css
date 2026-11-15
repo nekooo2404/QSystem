@@ -1,0 +1,950 @@
+/* Hallmark · app: web console · genre: modern-minimal · theme: console · states: 6 · contrast: pass */
+@import '@qsystem/ui/styles.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: clip;
+}
+
+body {
+  background: var(--qs-bg);
+  color: var(--qs-fg);
+  font-family: var(--qs-font-sans, Inter, system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Codes, dates, timestamps and counters align digit-to-digit everywhere. */
+code,
+time,
+output,
+.qs-numeric,
+.qs-table td,
+.qs-table th {
+  font-variant-numeric: tabular-nums;
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-wrap: balance;
+  margin: 0;
+}
+
+/* --- /login (DESIGN.md §3.D) ------------------------------------------- */
+
+.qs-login {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--qs-bg);
+}
+
+/* Reference 03: the brand pane sits one step darker than the form pane, so
+   the card reads as a layer above the page instead of blending into it. */
+.qs-login__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--qs-bg-inverse);
+  border-right: 1px solid var(--qs-border);
+}
+@media (min-width: 901px) {
+  .qs-login__brand { border-right-color: color-mix(in srgb, var(--qs-border) 55%, transparent); }
+}
+
+.qs-login__brand-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.qs-login__mark {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border-radius: 16px;
+  background: var(--qs-brand);
+  color: var(--qs-on-brand);
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.qs-login__wordmark {
+  font-size: 44px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.qs-login__tagline {
+  margin: 0;
+  font-size: 16px;
+  color: var(--qs-fg-muted);
+}
+
+.qs-login__pane {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.qs-login__card {
+  width: 100%;
+  max-width: 400px;
+  padding: 24px;
+  border: 1px solid var(--qs-border);
+  border-radius: 8px;
+  /* Static card: depth comes from the surface step, never a shadow. */
+  background: var(--qs-surface-1);
+}
+
+.qs-login__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.qs-login__theme {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qs-fg-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.qs-login__theme:hover {
+  background: var(--qs-state-hover);
+  color: var(--qs-fg);
+}
+
+.qs-login__theme:active,
+.qs-login__reveal:active {
+  background: var(--qs-state-selected);
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.qs-login__password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.qs-login__password .qs-input {
+  padding-right: 44px;
+}
+
+.qs-login__reveal {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--qs-fg-muted);
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.qs-login__reveal:hover {
+  background: var(--qs-state-hover);
+  color: var(--qs-fg);
+}
+
+.qs-login__submit {
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+  min-height: 44px;
+}
+
+.qs-login__support {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--qs-fg-muted);
+  text-decoration: none;
+}
+
+.qs-login__support:hover {
+  color: var(--qs-fg);
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .qs-login {
+    grid-template-columns: 1fr;
+  }
+  .qs-login__brand {
+    border-right: 0;
+    border-bottom: 1px solid var(--qs-border);
+    padding: 32px 24px;
+  }
+  .qs-login__mark {
+    width: 56px;
+    height: 56px;
+    font-size: 34px;
+    border-radius: 12px;
+  }
+  .qs-login__wordmark {
+    font-size: 32px;
+  }
+  .qs-login__pane {
+    padding: 24px 16px 40px;
+  }
+}
+
+/* --- Workspace shell: contextual nav, top bar controls (DESIGN.md §3.A) -- */
+
+.qs-nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  color: var(--qs-fg-muted);
+  font: inherit;
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.qs-nav-link:hover {
+  background: var(--qs-state-hover);
+  color: var(--qs-fg);
+}
+
+.qs-nav-link:active { background: var(--qs-state-selected); }
+
+.qs-nav-link[aria-current='page'] {
+  background: var(--qs-state-selected);
+  color: var(--qs-fg);
+  font-weight: 500;
+}
+
+.qs-topbar__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qs-fg-muted);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.qs-topbar__icon:hover {
+  background: var(--qs-state-hover);
+  color: var(--qs-fg);
+}
+
+.qs-topbar__icon:active {
+  background: var(--qs-state-selected);
+}
+
+.qs-topbar__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--qs-state-selected);
+  color: var(--qs-fg);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.qs-account { position: relative; }
+
+/* Floating layer: elevation only, no hairline edge. */
+.qs-account__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 200px;
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  background: var(--qs-surface-1);
+  border-radius: 8px;
+  box-shadow: var(--qs-float-shadow);
+}
+
+.qs-account__identity {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-bottom: 1px solid var(--qs-border);
+  margin-bottom: 4px;
+}
+
+.qs-account__name { font-weight: 500; }
+.qs-account__role { font-size: 13px; color: var(--qs-fg-muted); }
+
+.qs-account__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qs-fg);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.qs-account__item:hover { background: var(--qs-state-hover); }
+.qs-account__item:active { background: var(--qs-state-selected); }
+
+@media (prefers-reduced-motion: reduce) {
+  .qs-nav-link,
+  .qs-topbar__icon,
+  .qs-account__item,
+  .qs-login__theme,
+  .qs-login__reveal,
+  .qs-qhrm__dept {
+    transition: none;
+  }
+}
+
+.qs-page { display: grid; gap: 8px; }
+.qs-page__note { margin: 0; color: var(--qs-fg-muted); }
+.qs-session-loading { min-height: 100vh; background: var(--qs-bg); }
+
+/* Controls built from a div/span inherit no ring from the global
+   button/input rule, so they opt in explicitly (DESIGN.md §1.7). */
+.qs-login__theme:focus-visible,
+.qs-login__reveal:focus-visible,
+.qs-nav-link:focus-visible,
+.qs-topbar__icon:focus-visible,
+.qs-account__item:focus-visible,
+.qs-qhrm__dept:focus-visible,
+.qs-shell__search:focus-visible,
+.qs-shell__nav-toggle:focus-visible {
+  outline: 2px solid var(--qs-focus);
+  outline-offset: 2px;
+}
+
+/* --- QTask workspace (DESIGN.md §3.B) ----------------------------------- */
+
+.qtk { display: grid; gap: 16px; min-width: 0; }
+
+.qtk__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.qtk__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 16px;
+  border-bottom: 1px solid var(--qs-border);
+}
+
+/* The tabs bring their own hairline; the toolbar must not double it. */
+.qtk__toolbar .qs-tabs { border-bottom: 0; flex: 1; min-width: 0; }
+.qtk__toolbar .qs-filter-popover__trigger { margin-bottom: 8px; }
+
+/* Split viewport: table on the left, 390px inspector on the right at >= 1280px. */
+.qtk__body { display: flex; align-items: flex-start; gap: 16px; min-width: 0; }
+.qtk__table { flex: 1; min-width: 0; }
+.qtk__body .qs-drawer--inline { align-self: stretch; max-height: calc(100vh - 200px); position: sticky; top: 16px; }
+
+.qtk-code { font-variant-numeric: tabular-nums; color: var(--qs-fg-muted); }
+.qtk__table .qs-table td:nth-child(2) { color: var(--qs-fg); }
+
+.qtk__table .qs-table tbody tr { height: 46px; }
+.qtk__table .qs-table td { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+
+/* Fixed layout: the name column takes every pixel the others do not need.
+   Each fixed column is exactly as wide as its longest Vietnamese value plus
+   its 12px padding pairs; anything narrower truncates "Nguyễn Minh Tuấn".
+   The min-width keeps the name readable next to a 390px drawer at 1280px —
+   below it the table scrolls sideways instead of crushing the title. */
+@media (min-width: 641px) {
+  .qtk__table .qs-table { table-layout: fixed; min-width: 684px; }
+  .qtk__table .qs-table th,
+  .qtk__table .qs-table td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qtk__table .qs-table th:nth-child(1),
+  .qtk__table .qs-table td:nth-child(1) { width: 96px; padding-right: 8px; }
+  .qtk__table .qs-table th:nth-child(3),
+  .qtk__table .qs-table td:nth-child(3) { width: 152px; }
+  .qtk__table .qs-table th:nth-child(4),
+  .qtk__table .qs-table td:nth-child(4) { width: 112px; }
+  .qtk__table .qs-table th:nth-child(5),
+  .qtk__table .qs-table td:nth-child(5) { width: 124px; }
+}
+
+@media (max-width: 640px) {
+  .qtk__table .qs-table { table-layout: fixed; width: 100%; min-width: 0; }
+  .qtk__table .qs-table th,
+  .qtk__table .qs-table td {
+    padding: 8px 4px;
+    font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .qtk__table .qs-table th:nth-child(1),
+  .qtk__table .qs-table td:nth-child(1) { width: 58px; }
+  .qtk__table .qs-table th:nth-child(3),
+  .qtk__table .qs-table td:nth-child(3) { width: 68px; }
+  .qtk__table .qs-table th:nth-child(4),
+  .qtk__table .qs-table td:nth-child(4) { width: 52px; }
+  .qtk__table .qs-table th:nth-child(5),
+  .qtk__table .qs-table td:nth-child(5) { width: 72px; }
+  .qtk__table .qtk-badge { font-size: 11px; padding: 2px 4px; white-space: normal; line-height: 1.3; }
+}
+
+/* Status is text with a tinted outline, not a boxed pill row. */
+.qtk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--qs-border);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.qtk-badge[data-status='Đang làm'] { color: var(--qs-info); border-color: color-mix(in srgb, var(--qs-info) 45%, transparent); }
+.qtk-badge[data-status='Chờ duyệt'] { color: var(--qs-fg); }
+.qtk-badge[data-status='Quá hạn'] { color: var(--qs-error); border-color: color-mix(in srgb, var(--qs-error) 45%, transparent); }
+.qtk-badge[data-status='Hoàn thành'] { color: var(--qs-success); border-color: color-mix(in srgb, var(--qs-success) 45%, transparent); }
+
+.qtk-panel__tabs { margin: 24px 0 12px; }
+.qtk-panel__note { margin: 0; font-size: 13px; color: var(--qs-fg-muted); }
+.qtk-status-select { max-width: 160px; }
+
+.qtk-filter__field { display: grid; gap: 4px; }
+.qtk-filter__label { font-size: 13px; color: var(--qs-fg-muted); }
+
+/* Desktop keeps the task name on one line; below 1280px the drawer turns into
+   an overlay so the table never has to squeeze that column. */
+@media (min-width: 1280px) {
+  .qtk__table .qs-table td:nth-child(2) {
+    width: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 1279px) {
+  .qtk__body .qs-drawer--inline { display: none; }
+}
+
+/* The shared dialog close control has no size of its own; anchor it top-right
+   at the 32px hit area the rest of the console uses. */
+.qs-modal__dialog { position: relative; }
+.qs-modal__dialog > [data-qs-modal-close] {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--qs-fg-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.qs-modal__dialog > [data-qs-modal-close]:hover { background: var(--qs-state-hover); color: var(--qs-fg); }
+
+/* --- QHRM directory + Ctrl+K + notifications/files/account (DESIGN.md §3.C) -- */
+
+.qs-qhrm { display: grid; gap: 20px; min-width: 0; }
+
+.qs-qhrm__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.qs-qhrm__body {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.qs-qhrm__depts { display: grid; gap: 2px; }
+
+.qs-qhrm__dept {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qs-fg-muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.qs-qhrm__dept:hover { background: var(--qs-state-hover); color: var(--qs-fg); }
+
+.qs-qhrm__dept:active { background: var(--qs-state-selected); }
+
+.qs-qhrm__dept.is-active {
+  background: var(--qs-state-selected);
+  border-color: var(--qs-border);
+  color: var(--qs-fg);
+  font-weight: 500;
+}
+
+.qs-qhrm__dept-count { flex: 0 0 auto; font-size: 13px; color: var(--qs-fg-muted); font-variant-numeric: tabular-nums; }
+
+/* Static table surface: hairline border, no shadow (DESIGN.md §1.5). */
+.qs-qhrm__table {
+  min-width: 0;
+  padding: 0 16px;
+  border: 1px solid var(--qs-border);
+  border-radius: 8px;
+  background: var(--qs-surface-1);
+}
+
+.qs-qhrm__table .qs-table tbody tr { height: 48px; }
+.qs-qhrm__table .qs-table caption {
+  padding: 12px 0;
+  text-align: left;
+  font-size: 13px;
+  color: var(--qs-fg-muted);
+}
+.qs-qhrm__name { font-weight: 500; }
+.qs-qhrm__role, .qs-qhrm__empty-cell { color: var(--qs-fg-muted); }
+
+@media (max-width: 900px) {
+  .qs-qhrm__body { grid-template-columns: 1fr; gap: 16px; }
+  .qs-qhrm__depts { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; }
+}
+
+.qs-notifications__list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+
+.qs-notifications__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--qs-border);
+}
+
+.qs-notifications__main { display: grid; gap: 2px; min-width: 0; }
+.qs-notifications__title { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.qs-notifications__time { font-size: 12px; color: var(--qs-fg-muted); }
+
+.qs-notifications__status {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--qs-border);
+  font-size: 12px;
+}
+
+/* Status colours hang off the Vietnamese label so no backend enum reaches
+   the stylesheet either. */
+.qs-notifications__status[data-status='Đã gửi'] { color: var(--qs-success); }
+.qs-notifications__status[data-status='Gửi lỗi'] { color: var(--qs-error); }
+
+.qs-page__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+
+.qs-files__list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+
+.qs-files__item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--qs-border);
+}
+
+.qs-files__title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+/* The upload control is a <label> wrapping a visually hidden file input; the
+   ring has to come from the wrapper. */
+label.qs-btn:focus-within,
+label.qs-btn:hover { outline: 2px solid var(--qs-focus); outline-offset: 2px; }
+
+.qs-account-page { max-width: 560px; }
+.qs-account-page__card {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--qs-border);
+  border-radius: 8px;
+  background: var(--qs-surface-1);
+}
+.qs-account-page__card h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.qs-account-page__profile { display: grid; gap: 8px; margin: 0; }
+.qs-account-page__profile > div { display: flex; justify-content: space-between; gap: 16px; }
+.qs-account-page__profile dt { color: var(--qs-fg-muted); font-size: 13px; }
+.qs-account-page__profile dd { margin: 0; min-width: 0; overflow-wrap: anywhere; text-align: right; }
+.qs-account-page__profile dt { flex-shrink: 0; }
+.qs-account-page__card { min-width: 0; }
+.qs-files__title, .qs-account__name { min-width: 0; overflow-wrap: anywhere; }
+.qs-files__item > button { flex-shrink: 0; }
+.qs-files label:focus-within { outline: 2px solid var(--qs-focus); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .qs-topbar__icon { min-width: 44px; height: 44px; padding-inline: 4px; }
+  .qs-shell__top-actions { gap: 4px; }
+  .qs-account-page input { font-size: 16px; }
+  .qs-modal__dialog > [data-qs-modal-close] { width: 44px; height: 44px; }
+}
+
+/* --- QSocial internal company network (/social) ------------------------- */
+
+.qsc { display: grid; gap: 20px; min-width: 0; }
+
+.qsc__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.qsc__head h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.qsc__count { font-size: 13px; color: var(--qs-fg-muted); font-variant-numeric: tabular-nums; }
+
+.qsc__body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+  min-width: 0;
+}
+
+.qsc__channels { display: grid; gap: 16px; min-width: 0; }
+.qsc__channel-group { display: grid; gap: 2px; min-width: 0; }
+.qsc__channel-heading {
+  margin: 0 0 4px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--qs-fg-muted);
+}
+.qsc__channel-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.qsc__channel-name > svg { flex: 0 0 auto; }
+.qsc__channel-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qsc__main { display: grid; gap: 16px; min-width: 0; }
+
+.qsc-composer {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--qs-border);
+  border-radius: 6px;
+  background: var(--qs-bg-sidebar);
+}
+.qsc-composer__head { display: flex; align-items: center; gap: 12px; }
+.qsc-composer__who { display: grid; gap: 2px; min-width: 0; }
+.qsc-composer__name { font-weight: 500; }
+.qsc-composer__role { font-size: 12px; color: var(--qs-fg-muted); }
+.qsc-composer__textarea {
+  min-height: 84px;
+  padding: 8px 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.qsc-composer__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.qsc-composer__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.qsc-composer__select { width: auto; min-width: 148px; max-width: 220px; }
+
+.qsc-pin-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--qs-fg-muted);
+  cursor: pointer;
+}
+.qsc-pin-check input { width: 16px; height: 16px; accent-color: var(--qs-focus); cursor: pointer; }
+
+.qsc__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 16px;
+  border-bottom: 1px solid var(--qs-border);
+}
+.qsc__toolbar .qs-tabs { border-bottom: 0; flex: 1 1 auto; min-width: 0; }
+.qsc__search { min-width: 220px; max-width: 280px; margin-bottom: 8px; }
+
+.qsc-avatar {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--qs-border);
+  background: var(--qs-bg-inverse);
+  color: var(--qs-fg);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.qsc-avatar--sm { width: 28px; height: 28px; font-size: 12px; }
+
+.qsc-feed { display: grid; gap: 16px; min-width: 0; }
+
+.qsc-post {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--qs-border);
+  border-radius: 6px;
+  background: var(--qs-surface-1);
+  min-width: 0;
+}
+.qsc-post[data-pinned='true'] {
+  border-color: color-mix(in srgb, var(--qs-focus) 45%, var(--qs-border));
+}
+
+.qsc-post__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.qsc-post__author-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.qsc-post__meta { display: grid; gap: 2px; min-width: 0; }
+.qsc-post__author-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.qsc-post__author { font-weight: 600; }
+.qsc-post__role { font-size: 12px; color: var(--qs-fg-muted); }
+.qsc-post__subline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--qs-fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.qsc-post__badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qtk-badge[data-category='Thông báo'] {
+  color: var(--qs-focus);
+  border-color: color-mix(in srgb, var(--qs-focus) 45%, transparent);
+}
+.qtk-badge[data-category='Tuyên dương'] {
+  color: var(--qs-success);
+  border-color: color-mix(in srgb, var(--qs-success) 45%, transparent);
+}
+.qtk-badge[data-category='Hỏi đáp'] {
+  color: var(--qs-info);
+  border-color: color-mix(in srgb, var(--qs-info) 45%, transparent);
+}
+.qtk-badge[data-category='Chia sẻ'] { color: var(--qs-fg-muted); }
+
+.qsc-post__content {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.qsc-post__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid var(--qs-border);
+  font-variant-numeric: tabular-nums;
+}
+.qsc-like-btn.is-liked { color: var(--qs-focus); font-weight: 500; }
+
+.qsc-comments {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--qs-border);
+}
+.qsc-comments__list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.qsc-comment { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.qsc-comment__body { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.qsc-comment__head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.qsc-comment__author { font-weight: 500; font-size: 13px; }
+.qsc-comment__role,
+.qsc-comment__time {
+  font-size: 12px;
+  color: var(--qs-fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.qsc-comment__text { margin: 0; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+
+.qsc-comment-form { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.qsc-comment-form .qs-input { flex: 1; min-width: 0; }
+
+.qsc__aside { display: grid; gap: 16px; min-width: 0; }
+.qsc__aside-block {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--qs-border);
+  min-width: 0;
+}
+.qsc__aside-block:first-child { padding-top: 0; border-top: 0; }
+.qsc__aside-block h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.qsc__aside-empty { margin: 0; font-size: 13px; color: var(--qs-fg-muted); }
+.qsc__aside-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.qsc__aside-item {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--qs-border);
+  min-width: 0;
+}
+.qsc__aside-item:first-child { padding-top: 0; border-top: 0; }
+.qsc__aside-title { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.qsc__aside-snippet {
+  font-size: 13px;
+  color: var(--qs-fg-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.qsc__aside-sub { font-size: 12px; color: var(--qs-fg-muted); }
+.qsc__member { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.qsc__member-meta { display: grid; gap: 2px; min-width: 0; }
+
+@media (max-width: 1279px) {
+  .qsc__body { grid-template-columns: 200px minmax(0, 1fr); }
+  .qsc__aside {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .qsc__aside-block:nth-child(2) { padding-top: 0; border-top: 0; }
+}
+
+@media (max-width: 900px) {
+  .qsc__body { grid-template-columns: 1fr; gap: 16px; }
+  .qsc__channels {
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+  .qsc__channel-group { display: contents; }
+  .qsc__channel-heading { display: none; }
+  .qsc__aside { grid-column: 1; grid-template-columns: 1fr; }
+  .qsc__aside-block:nth-child(2) { padding-top: 16px; border-top: 1px solid var(--qs-border); }
+}
+
+@media (max-width: 640px) {
+  .qsc__search { width: 100%; min-width: 0; max-width: none; }
+  .qsc-composer__controls { width: 100%; }
+  .qsc-composer__select { flex: 1 1 140px; max-width: none; }
+}
+

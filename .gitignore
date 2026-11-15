@@ -5,9 +5,3 @@ dist/
 .next/
 *.local
 .env
-.harness/agents.json
-.harness/runs.jsonl
-.harness/memory.jsonl
-.harness/governance.jsonl
-.harness/processes/
-packages/harness/.harness/

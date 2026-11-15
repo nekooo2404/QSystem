@@ -1,0 +1,122 @@
+{
+  "taskId": "qsystem-shell",
+  "objective": "Deliver the QSystem shell through the approved constitution, specification, plan, implementation, and task-tracking workflow.",
+  "tasks": [
+    {
+      "id": "task-1-infra",
+      "title": "Task 1: monorepo and infrastructure",
+      "body": "Status: completed. Verify or preserve the pnpm workspace and four-service development infrastructure. Evidence: commit c409e80 and SDD Task 1 report.",
+      "labels": [
+        "qsystem",
+        "completed",
+        "infra"
+      ]
+    },
+    {
+      "id": "task-2-rls",
+      "title": "Task 2: schema and RLS",
+      "body": "Status: completed. Preserve restricted qsystem_app access, RLS policies, scoped Prisma access, and negative tests. Evidence: commits ee6d164, c3c14da, 8db2414; 7/7 RLS tests.",
+      "dependsOn": [
+        "task-1-infra"
+      ],
+      "labels": [
+        "qsystem",
+        "completed",
+        "security"
+      ]
+    },
+    {
+      "id": "task-3-iam",
+      "title": "Task 3: JWT IAM and refresh rotation",
+      "body": "Status: completed. Preserve JWT IAM, refresh rotation/reuse detection, rate limits, logout, password change, and /me. Evidence: commits 8ce9586 and 16d9ee0; IAM tests pass.",
+      "dependsOn": [
+        "task-2-rls"
+      ],
+      "labels": [
+        "qsystem",
+        "completed",
+        "security"
+      ]
+    },
+    {
+      "id": "task-4-org-sensors",
+      "title": "Task 4: OrgModule and CASL sensors",
+      "body": "Status: completed. Preserve organization scope, 4W guard, flow-2 monitor-only rule, audit stub, and field filtering. Evidence: commits a86742f and 40a765c; sensors tests pass.",
+      "dependsOn": [
+        "task-3-iam"
+      ],
+      "labels": [
+        "qsystem",
+        "completed",
+        "backend"
+      ]
+    },
+    {
+      "id": "task-5-contracts",
+      "title": "Task 5: shared contracts",
+      "body": "Status: completed for backend contracts. Preserve Zod auth/org/notify/search contracts and API DTO parity. Evidence: commit 0d1e5b5; 7 contract tests pass.",
+      "dependsOn": [
+        "task-4-org-sensors"
+      ],
+      "labels": [
+        "qsystem",
+        "completed",
+        "contracts"
+      ]
+    },
+    {
+      "id": "task-6-notifications",
+      "title": "Task 6: notification outbox and workers",
+      "body": "Status: pending. Implement outbox transaction, BullMQ notify/scheduled workers, retry 3, dead-letter handling, provider adapters, and offline notification sync. Use NotifyPayload from contracts.",
+      "dependsOn": [
+        "task-5-contracts"
+      ],
+      "labels": [
+        "qsystem",
+        "pending",
+        "backend"
+      ]
+    },
+    {
+      "id": "task-7-search-storage",
+      "title": "Task 7: scoped search and storage",
+      "body": "Status: pending. Implement Meilisearch scope filtering, MinIO-compatible presigned storage, and scope checks on reads.",
+      "dependsOn": [
+        "task-4-org-sensors",
+        "task-6-notifications"
+      ],
+      "labels": [
+        "qsystem",
+        "pending",
+        "backend"
+      ]
+    },
+    {
+      "id": "task-8-web-shell",
+      "title": "Task 8: web shell and App Switcher",
+      "body": "Status: deferred by approved R7 scope. Implement only after explicit frontend approval, using the contracts and registry produced by the backend sequence.",
+      "dependsOn": [
+        "task-7-search-storage"
+      ],
+      "labels": [
+        "qsystem",
+        "deferred",
+        "frontend"
+      ]
+    },
+    {
+      "id": "task-9-audit-ci",
+      "title": "Task 9: audit errors and CI",
+      "body": "Status: pending. Add standard exception shape, audit interceptor coverage, and CI lint/test/build gates.",
+      "dependsOn": [
+        "task-6-notifications",
+        "task-7-search-storage"
+      ],
+      "labels": [
+        "qsystem",
+        "pending",
+        "backend"
+      ]
+    }
+  ]
+}

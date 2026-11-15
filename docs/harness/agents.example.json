@@ -1,0 +1,101 @@
+{
+  "agents": [
+    {
+      "id": "ceo-integrator",
+      "provider": "claude",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "claude",
+      "args": ["-p", "--output-format", "stream-json"],
+      "roles": ["ceo", "reviewer"],
+      "capabilities": ["orchestration", "synthesis", "approval", "merge-gate"]
+    },
+    {
+      "id": "product-manager",
+      "provider": "claude",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "claude",
+      "args": ["-p", "--output-format", "stream-json"],
+      "roles": ["product"],
+      "capabilities": ["specification", "acceptance-criteria", "prioritization"]
+    },
+    {
+      "id": "chief-architect",
+      "provider": "codex",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "codex",
+      "roles": ["architect"],
+      "capabilities": ["architecture", "risk-register", "dependency-mapping"]
+    },
+    {
+      "id": "backend-engineer",
+      "provider": "claude",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "claude",
+      "args": ["-p", "--output-format", "stream-json"],
+      "roles": ["backend"],
+      "capabilities": ["nestjs", "prisma", "postgres", "contracts", "typescript"]
+    },
+    {
+      "id": "frontend-engineer",
+      "provider": "claude",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "claude",
+      "args": ["-p", "--output-format", "json"],
+      "roles": ["frontend"],
+      "capabilities": ["react", "nextjs", "accessibility", "fragment-ui", "kibo-ui"]
+    },
+    {
+      "id": "qa-browser-engineer",
+      "provider": "claude",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "claude",
+      "args": ["-p", "--output-format", "stream-json"],
+      "roles": ["qa"],
+      "capabilities": ["playwright", "e2e", "visual-regression", "axe", "evidence"]
+    },
+    {
+      "id": "tester",
+      "provider": "generic",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/harness/tester.mjs"],
+      "roles": ["tester"],
+      "capabilities": ["task-verification", "unit-tests", "integration-tests", "playwright", "evidence"]
+    },
+    {
+      "id": "security-engineer",
+      "provider": "codex",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "codex",
+      "roles": ["security"],
+      "capabilities": ["jwt", "rls", "secrets", "authorization", "threat-model"]
+    },
+    {
+      "id": "platform-sre",
+      "provider": "codex",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "codex",
+      "roles": ["devops"],
+      "capabilities": ["pnpm", "docker", "github-actions", "observability", "rollback"]
+    },
+    {
+      "id": "independent-reviewer",
+      "provider": "claude",
+      "mode": "cli",
+      "cwd": ".",
+      "command": "claude",
+      "args": ["-p", "--output-format", "stream-json"],
+      "roles": ["reviewer"],
+      "capabilities": ["diff-review", "spec-review", "risk-review", "release-recommendation"]
+    }
+  ]
+}

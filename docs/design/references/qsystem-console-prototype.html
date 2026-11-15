@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QSystem: Không gian làm việc nội bộ</title>
+  <meta name="description" content="Không gian làm việc thống nhất cho công việc, nhân sự, tài liệu và thông báo nội bộ." />
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* Hallmark · shape: app screen · genre: modern-minimal · theme: console · font: Inter (by user request) · modes: light+dark · scope: app · v2.0.0 */
+    [data-mode="dark"] {
+      --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --paper: #111418;
+      --paper-2: #191d23;
+      --paper-3: #0d1014;
+      --surface-hover: #222731;
+      --surface-active: #252b36;
+      --ink: #f3f4f6;
+      --ink-2: #d1d5db;
+      --muted: #9ca3af;
+      --rule: #30363d;
+      --rule-2: #444c56;
+      --accent: #e8ad45;
+      --accent-ink: #201708;
+      --accent-text: #e8ad45;
+      --ok: #3fb950;
+      --ok-soft: rgba(63, 185, 80, 0.14);
+      --bad: #f85149;
+      --bad-soft: rgba(248, 81, 73, 0.14);
+      --focus: #e8ad45;
+      --scrim: rgba(8, 10, 14, 0.68);
+      --float-shadow: 0 20px 44px rgba(0, 0, 0, 0.45);
+      color-scheme: dark;
+    }
+
+    [data-mode="light"] {
+      --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --paper: #faf8f4;
+      --paper-sidebar: #f4f1ea;
+      --paper-2: #ffffff;
+      --paper-3: #f3f0e8;
+      --surface-hover: #efece4;
+      --surface-active: #e8e4da;
+      --ink: #18181b;
+      --ink-2: #3f3f46;
+      --muted: #52525b;
+      --rule: #dedad0;
+      --rule-2: #c4bfb3;
+      --accent: #e8ad45;
+      --accent-ink: #201708;
+      --accent-text: #8a5600;
+      --ok: #15803d;
+      --ok-soft: rgba(21, 128, 61, 0.11);
+      --bad: #b91c1c;
+      --bad-soft: rgba(185, 28, 28, 0.11);
+      --focus: #8a5600;
+      --scrim: rgba(24, 24, 27, 0.36);
+      --float-shadow: 0 18px 40px rgba(24, 24, 27, 0.14);
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+    html {
+      font-size: 16px;
+      margin: 0;
+      padding: 0;
+      overflow-x: clip;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      overflow-x: clip;
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    .text-xs { font-size: 12px !important; line-height: 1.4 !important; }
+    h1, h2, h3 { text-wrap: balance; }
+    p { text-wrap: pretty; }
+
+    .wb-shell { background: var(--paper); color: var(--ink); min-height: 100vh; }
+    .wb-sidebar { background: var(--paper-sidebar, var(--paper-2)); }
+    .wb-surface { background: var(--paper-2); }
+    .wb-sunken { background: var(--paper-3); }
+    .wb-border { border-color: var(--rule); }
+    .wb-border-strong { border-color: var(--rule-2); }
+    .wb-muted { color: var(--muted); }
+    .wb-ink-2 { color: var(--ink-2); }
+    .wb-float { box-shadow: var(--float-shadow); }
+
+    .wb-nowrap { white-space: nowrap; }
+    .mono { font-family: var(--font-body); font-variant-numeric: tabular-nums; }
+    .tabular { font-variant-numeric: tabular-nums; }
+
+    .wb-ctrl {
+      transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                  border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                  color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                  opacity 150ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .wb-ctrl:active:not(:disabled) { transform: translateY(1px); }
+    .wb-ctrl:disabled, button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .wb-ctrl:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .wb-input {
+      background: var(--paper-3);
+      color: var(--ink);
+      border: 1px solid var(--muted);
+      border-radius: 6px;
+      height: 40px;
+    }
+    .wb-input:focus {
+      outline: 2px solid var(--focus);
+      outline-offset: -1px;
+      border-color: var(--focus);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border: 1px solid var(--accent);
+      font-weight: 500;
+      border-radius: 6px;
+    }
+    .btn-primary:hover { filter: brightness(0.95); }
+
+    .btn-secondary {
+      background: var(--paper-2);
+      color: var(--ink);
+      border: 1px solid var(--rule-2);
+      font-weight: 500;
+      border-radius: 6px;
+    }
+    .btn-secondary:hover { background: var(--surface-hover); }
+
+    @keyframes pulse-bar { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.8; } }
+    .skeleton-bar { background: var(--rule); border-radius: 4px; animation: pulse-bar 1.5s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .wb-ctrl { transition: none !important; }
+      .skeleton-bar { animation: none !important; opacity: 0.6; }
+    }
+  </style>
+</head>
+<body>
+  <div id="qsystem-workbench" data-mode="dark" class="wb-shell flex flex-col">
+
+    <!-- Thanh thử nghiệm trạng thái mẫu (không thuộc giao diện sản phẩm) -->
+    <div class="wb-sunken border-b wb-border px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded border wb-border wb-surface font-medium">Bản xem trước đồng nhất</span>
+        <span class="wb-muted">Dùng <span class="mono px-1 rounded border wb-border" style="color: var(--ink);">Ctrl+K</span> để chuyển QTask/QHRM, hoặc đóng/mở panel chi tiết</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="flex items-center gap-1.5 wb-muted">
+          Tình huống:
+          <select id="demo-state-select" class="wb-input !h-8 px-2 text-xs">
+            <option value="full">Dữ liệu đầy đủ</option>
+            <option value="loading">Đang tải dữ liệu</option>
+            <option value="empty">Danh sách trống</option>
+            <option value="error">Mất kết nối</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1.5 wb-muted">
+          Quyền:
+          <select id="demo-role-select" class="wb-input !h-8 px-2 text-xs">
+            <option value="Giám đốc">Giám đốc</option>
+            <option value="Quản lý">Quản lý</option>
+            <option value="Nhân viên">Nhân viên</option>
+          </select>
+        </label>
+        <button type="button" id="demo-login-toggle" class="btn-secondary wb-ctrl h-8 px-2.5 text-xs whitespace-nowrap">
+          Xem trang Đăng nhập
+        </button>
+      </div>
+    </div>
+
+    <!-- Màn hình Đăng nhập tối giản (logo thống nhất + form trọng tâm 400px) -->
+    <div id="login-view" class="hidden flex-1 flex items-center justify-center p-6">
+      <div class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+        <!-- Cột trái: Logo đồng nhất + một câu ngắn -->
+        <div class="md:col-span-6 space-y-4 px-2">
+          <div class="flex items-center gap-3">
+            <span class="w-9 h-9 rounded-lg flex items-center justify-center font-semibold text-lg" style="background: var(--accent); color: var(--accent-ink);">Q</span>
+            <span class="text-xl font-semibold tracking-tight">QSystem</span>
+          </div>
+          <h1 class="text-[28px] font-medium tracking-tight leading-snug">
+            Không gian làm việc của QSystem.
+          </h1>
+          <p class="text-sm wb-muted max-w-sm">
+            Công việc, nhân sự và tài liệu doanh nghiệp trên cùng một hệ thống thống nhất.
+          </p>
+        </div>
+
+        <!-- Cột phải: Form rộng 400px -->
+        <div class="md:col-span-6 flex justify-end">
+          <div class="w-full max-w-[400px] wb-surface border wb-border rounded-lg p-6 space-y-6">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[26px] font-medium leading-tight">Đăng nhập</h2>
+              <button type="button" onclick="toggleTheme()" class="btn-secondary wb-ctrl h-8 px-2.5 text-xs whitespace-nowrap">
+                <span class="theme-label">Sáng</span>
+              </button>
+            </div>
+
+            <form onsubmit="event.preventDefault(); closeLoginPreview();" class="space-y-4">
+              <div class="space-y-1.5">
+                <label for="login-email" class="block text-[13px] font-medium wb-ink-2">Email công việc</label>
+                <input id="login-email" type="email" value="minh.tuan@qsystem.vn" class="wb-input w-full !h-11 px-3 text-sm" />
+              </div>
+
+              <div class="space-y-1.5">
+                <label for="login-password" class="block text-[13px] font-medium wb-ink-2">Mật khẩu</label>
+                <div class="relative">
+                  <input id="login-password" type="password" value="matkhau123" class="wb-input w-full !h-11 pl-3 pr-16 text-sm" />
+                  <button type="button" onclick="togglePw()" id="pw-toggle-btn" class="wb-ctrl absolute right-2 top-1.5 h-8 px-2 text-xs wb-muted hover:text-[var(--ink)]">Hiện</button>
+                </div>
+              </div>
+
+              <div class="pt-2">
+                <button type="submit" class="btn-primary wb-ctrl w-full h-11 text-sm">
+                  Đăng nhập
+                </button>
+              </div>
+            </form>
+
+            <div class="pt-2 flex items-center justify-between text-xs wb-muted">
+              <button type="button" onclick="closeLoginPreview()" class="underline wb-ctrl hover:text-[var(--ink)]">Cần hỗ trợ đăng nhập?</button>
+              <button type="button" onclick="closeLoginPreview()" class="wb-ctrl hover:text-[var(--ink)] whitespace-nowrap">Quay lại mẫu</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Khung Shell Thống nhất -->
+    <div id="shell-view" class="flex-1 flex min-h-0">
+      <!-- Thanh bên 240px: Logo QSystem cố định + Bộ chọn phân hệ + Mục chỉ thuộc phân hệ đó -->
+      <aside class="hidden md:flex w-[240px] shrink-0 wb-sidebar border-r wb-border flex-col justify-between">
+        <div>
+          <!-- Thương hiệu Q hổ phách + QSystem đồng nhất -->
+          <div class="p-4 border-b wb-border space-y-3">
+            <div class="flex items-center gap-2.5">
+              <span class="w-7 h-7 rounded-md flex items-center justify-center font-semibold text-sm shrink-0" style="background: var(--accent); color: var(--accent-ink);">Q</span>
+              <span class="font-semibold text-[15px] tracking-tight">QSystem</span>
+            </div>
+
+            <!-- Bộ chọn phân hệ dưới logo -->
+            <div class="relative">
+              <button type="button" id="module-btn" onclick="toggleModuleMenu()" class="wb-ctrl w-full h-10 wb-surface border wb-border hover:border-[var(--rule-2)] rounded-md px-3 flex items-center justify-between text-left whitespace-nowrap">
+                <span id="active-module-name" class="text-[13px] font-medium">QTask</span>
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="wb-muted">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+
+              <div id="module-menu" class="hidden absolute left-0 right-0 mt-1.5 wb-surface border wb-border-strong rounded-lg p-1.5 z-40 wb-float space-y-0.5">
+                <button type="button" onclick="selectModule('QTask')" class="wb-ctrl w-full px-2.5 py-2 rounded-md text-left hover:bg-[var(--surface-hover)] flex items-start gap-2.5 whitespace-nowrap">
+                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mt-0.5 shrink-0 wb-muted"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+                  <span class="min-w-0">
+                    <span class="block text-[13px] font-medium">QTask</span>
+                    <span class="block text-xs wb-muted truncate">Công việc & dự án</span>
+                  </span>
+                </button>
+                <button type="button" onclick="selectModule('QHRM')" class="wb-ctrl w-full px-2.5 py-2 rounded-md text-left hover:bg-[var(--surface-hover)] flex items-start gap-2.5 whitespace-nowrap">
+                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mt-0.5 shrink-0 wb-muted"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                  <span class="min-w-0">
+                    <span class="block text-[13px] font-medium">QHRM</span>
+                    <span class="block text-xs wb-muted truncate">Nhân sự & phòng ban</span>
+                  </span>
+                </button>
+                <button type="button" onclick="selectModule('QCRM')" class="wb-ctrl wb-nowrap w-full px-2.5 py-2 rounded-md text-left hover:bg-[var(--surface-hover)] flex items-start gap-2.5">
+                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mt-0.5 shrink-0 wb-muted"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>
+                  <span class="min-w-0">
+                    <span class="block text-[13px] font-medium">QCRM</span>
+                    <span class="block text-xs wb-muted truncate">Khách hàng & hợp đồng</span>
+                  </span>
+                </button>
+                <button type="button" onclick="selectModule('QSocial')" class="wb-ctrl w-full px-2.5 py-2 rounded-md text-left hover:bg-[var(--surface-hover)] flex items-start gap-2.5 whitespace-nowrap">
+                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mt-0.5 shrink-0 wb-muted"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                  <span class="min-w-0">
+                    <span class="block text-[13px] font-medium">QSocial</span>
+                    <span class="block text-xs wb-muted truncate">Bảng tin nội bộ</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Điều hướng theo ngữ cảnh phân hệ đang mở -->
+          <nav id="contextual-nav" aria-label="Điều hướng phân hệ" class="p-3 space-y-1"></nav>
+        </div>
+
+        <div class="p-4 border-t wb-border text-xs wb-muted">
+          <div class="font-medium wb-ink-2">Nguyễn Minh Tuấn</div>
+          <div id="sidebar-role-badge">Giám đốc</div>
+        </div>
+      </aside>
+
+      <!-- Vùng bên phải: Top Bar cố định vị trí + Nội dung phân hệ -->
+      <div class="flex-1 flex flex-col min-w-0">
+        <!-- Thanh trên cố định ở mọi phân hệ -->
+        <header class="h-14 px-4 md:px-6 wb-surface border-b wb-border flex items-center justify-between gap-2 sm:gap-4 shrink-0">
+          <div id="hdr-breadcrumb" class="text-[13px] wb-muted whitespace-nowrap min-w-0 truncate">
+            <span>QTask</span>
+            <span class="mx-1.5">/</span>
+            <span style="color: var(--ink);" class="font-medium">Tất cả công việc</span>
+          </div>
+
+          <button type="button" onclick="openPalette()" class="wb-input wb-ctrl wb-nowrap !h-9 px-2.5 sm:px-3 sm:w-full sm:max-w-md flex items-center justify-between gap-3 text-[13px] wb-muted hover:border-[var(--rule-2)] shrink-0 sm:shrink">
+            <span class="flex items-center gap-2 whitespace-nowrap">
+              <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+              <span class="hidden sm:inline whitespace-nowrap">Tìm việc, nhân sự, tài liệu…</span>
+            </span>
+            <span class="hidden sm:inline mono text-xs px-1.5 py-0.5 rounded border wb-border wb-surface whitespace-nowrap">Ctrl K</span>
+          </button>
+
+          <!-- Vị trí cố định bên phải: Sáng/Tối · Thông báo · Tài khoản -->
+          <div class="flex items-center gap-2 shrink-0 relative">
+            <button type="button" onclick="toggleTheme()" aria-label="Đổi giao diện Sáng hoặc Tối" class="btn-secondary wb-ctrl h-9 px-3 flex items-center gap-1.5 text-[13px] whitespace-nowrap">
+              <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>
+              <span class="theme-label">Sáng</span>
+            </button>
+
+            <button type="button" onclick="toggleNotifPopover()" aria-label="Thông báo" class="btn-secondary wb-ctrl h-9 px-3 flex items-center gap-1.5 text-[13px] whitespace-nowrap">
+              <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              <span class="tabular font-medium">3</span>
+            </button>
+
+            <button type="button" onclick="switchSubView('account')" class="btn-secondary wb-ctrl h-9 px-3 flex items-center gap-2 text-[13px] whitespace-nowrap">
+              <span class="w-5 h-5 rounded-full wb-sunken border wb-border flex items-center justify-center text-[11px] font-medium">NT</span>
+              <span class="hidden sm:inline">Tài khoản</span>
+            </button>
+
+            <!-- Popover Thông báo cố định trên Top Bar -->
+            <div id="notif-popover" class="hidden absolute right-0 top-11 w-96 wb-surface border wb-border-strong rounded-lg p-3 z-40 wb-float space-y-2">
+              <div class="flex items-center justify-between pb-2 border-b wb-border text-[13px] font-medium">
+                <span>Thông báo mới</span>
+                <button type="button" onclick="NOTIFICATIONS.forEach(n=>n.unread=false); renderNotifList();" class="text-xs wb-muted hover:text-[var(--ink)]">Đánh dấu đã đọc</button>
+              </div>
+              <div id="notif-list" class="divide-y wb-border max-h-72 overflow-auto"></div>
+            </div>
+          </div>
+        </header>
+
+        <main id="main-viewport" class="flex-1 min-h-0 overflow-auto"></main>
+      </div>
+    </div>
+
+    <!-- Hộp tìm nhanh Ctrl+K (rộng 640px, bỏ số 1-2-3, tô mục chọn trung tính) -->
+    <div id="cmd-palette" class="hidden fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4" style="background: var(--scrim);" onclick="if(event.target===this) closePalette()">
+      <div role="dialog" aria-modal="true" aria-label="Tìm kiếm và điều hướng nhanh" class="w-full max-w-[640px] wb-surface border wb-border-strong rounded-lg overflow-hidden wb-float">
+        <div class="px-4 py-2.5 border-b wb-border flex items-center gap-3">
+          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="wb-muted shrink-0"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+          <input id="palette-input" type="text" placeholder="Tìm nhanh công việc, nhân sự, tài liệu hoặc lệnh…" class="flex-1 h-9 bg-transparent border-none text-sm focus:outline-none" oninput="renderPaletteList(this.value)" />
+          <button type="button" onclick="closePalette()" class="mono text-xs px-2 py-0.5 rounded border wb-border wb-muted">Esc</button>
+        </div>
+        <div id="palette-results" class="max-h-96 overflow-y-auto p-2 space-y-3"></div>
+        <div class="px-4 py-2 wb-sunken border-t wb-border flex items-center justify-between text-xs wb-muted">
+          <span>Chọn mục, nhấn Enter để mở, Esc để đóng</span>
+          <span>Ctrl+K</span>
+        </div>
+      </div>
+    </div>
+    <!-- Phản hồi Toast nổi góc dưới phải -->
+    <div id="toast-region" aria-live="polite" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+  </div>
+
+  <script>
+    const MODULE_NAV = {
+      QTask: [
+        { id: 'all_tasks', label: 'Tất cả công việc' },
+        { id: 'my_tasks', label: 'Công việc của tôi' },
+        { id: 'projects', label: 'Dự án' }
+      ],
+      QHRM: [
+        { id: 'directory', label: 'Danh bạ nhân sự' },
+        { id: 'departments', label: 'Phòng ban' },
+        { id: 'attendance', label: 'Chấm công' }
+      ],
+      QCRM: [
+        { id: 'customers', label: 'Khách hàng' },
+        { id: 'contracts', label: 'Hợp đồng' }
+      ],
+      QSocial: [
+        { id: 'feed', label: 'Bảng tin nội bộ' }
+      ]
+    };
+
+    const TASKS = [
+      { id: 'CV-1042', what: 'Rà soát danh sách chi nhánh quý 4', who: 'Nguyễn Minh Tuấn', dept: 'Phòng Kỹ thuật', when: '15/11 14:30', status: 'in_progress', overdue: false,
+        comments: [
+          { actor: 'Nguyễn Minh Tuấn', time: '14/11 09:15', note: 'Đã cập nhật xong số liệu 12 chi nhánh miền Nam.' },
+          { actor: 'Trần Thảo Vy', time: '13/11 16:40', note: 'Nhờ kiểm tra lại thời gian chốt báo cáo trước thứ Sáu.' }
+        ],
+        files: [{ name: 'Danh-sach-chi-nhanh-Q4.xlsx', size: '420 KB' }]
+      },
+      { id: 'CV-1041', what: 'Duyệt bảng chấm công và nghỉ phép tháng 10', who: 'Trần Thảo Vy', dept: 'Phòng Nhân sự', when: '14/11 14:30', status: 'overdue', overdue: true,
+        comments: [{ actor: 'Trần Thảo Vy', time: '14/11 08:20', note: 'Đang đối chiếu ngày nghỉ bù của nhóm thiết kế.' }],
+        files: [{ name: 'Bang-cham-cong-T10.pdf', size: '1.2 MB' }]
+      },
+      { id: 'CV-1039', what: 'Hoàn thiện báo giá khách hàng mới khu vực phía Bắc', who: 'Lê Hoàng Nam', dept: 'Phòng Kinh doanh', when: '15/11 11:00', status: 'pending', overdue: false,
+        comments: [{ actor: 'Lê Hoàng Nam', time: '13/11 11:05', note: 'Đã tổng hợp xong bảng giá theo gói doanh nghiệp.' }],
+        files: []
+      },
+      { id: 'CV-1035', what: 'Cập nhật quy trình bảo mật tài khoản nhân sự mới', who: 'Phạm Gia Huy', dept: 'Phòng Vận hành', when: '16/11 18:00', status: 'done', overdue: false,
+        comments: [{ actor: 'Phạm Gia Huy', time: '13/11 19:10', note: 'Đã gửi tài liệu mới lên thư mục chung.' }],
+        files: [{ name: 'Huong-dan-bao-mat.pdf', size: '840 KB' }]
+      },
+      { id: 'CV-1028', what: 'Kiểm tra danh sách tài khoản nhân sự thử việc tháng 11', who: 'Trần Thảo Vy', dept: 'Phòng Sản phẩm', when: '18/11 16:30', status: 'in_progress', overdue: false,
+        comments: [{ actor: 'Trần Thảo Vy', time: '12/11 10:00', note: 'Đã tiếp nhận 4 nhân sự mới gia nhập tuần này.' }],
+        files: []
+      }
+    ];
+
+    const ORGS = [
+      { id: 'PB-01', name: 'Phòng Kỹ thuật', count: 14 },
+      { id: 'PB-02', name: 'Phòng Sản phẩm', count: 9 },
+      { id: 'PB-03', name: 'Phòng Vận hành', count: 7 }
+    ];
+
+    const USERS = [
+      { name: 'Nguyễn Minh Tuấn', title: 'Giám đốc Kỹ thuật', role: 'Giám đốc', manager: 'Ban Điều hành', dept: 'PB-01', status: 'Đang làm việc' },
+      { name: 'Trần Thảo Vy', title: 'Trưởng nhóm Sản phẩm', role: 'Quản lý', manager: 'Nguyễn Minh Tuấn', dept: 'PB-02', status: 'Đang làm việc' },
+      { name: 'Lê Hoàng Nam', title: 'Trưởng nhóm Vận hành', role: 'Quản lý', manager: 'Nguyễn Minh Tuấn', dept: 'PB-03', status: 'Đang làm việc' },
+      { name: 'Phạm Gia Huy', title: 'Kỹ sư Hệ thống', role: 'Nhân viên', manager: 'Nguyễn Minh Tuấn', dept: 'PB-01', status: 'Đang làm việc' },
+      { name: 'Võ Lan Anh', title: 'Chuyên viên Thiết kế', role: 'Nhân viên', manager: 'Trần Thảo Vy', dept: 'PB-02', status: 'Đang làm việc' }
+    ];
+
+    const NOTIFICATIONS = [
+      { id: '1', title: 'Công việc CV-1041 đã quá hạn hoàn thành (14/11 14:30)', time: '12 phút trước', unread: true },
+      { id: '2', title: 'Phạm Gia Huy vừa hoàn thành công việc CV-1035', time: '38 phút trước', unread: true },
+      { id: '3', title: 'Trần Thảo Vy nhắc bạn tại CV-1042', time: '2 giờ trước', unread: true }
+    ];
+
+    let state = {
+      module: 'QTask',
+      navId: 'all_tasks',
+      dataState: 'full',
+      role: 'Giám đốc',
+      viewTab: 'all',
+      filterOpen: false,
+      filterDept: 'ALL',
+      selectedTaskId: 'CV-1042',
+      detailOpen: true,
+      detailTab: 'comments',
+      selectedDept: 'ALL',
+      showNewTaskBar: false
+    };
+
+    const STATUS_MAP = {
+      pending: { text: 'Chờ duyệt', color: 'var(--ink-2)', bg: 'var(--surface-hover)' },
+      in_progress: { text: 'Đang làm', color: 'var(--ink)', bg: 'var(--surface-active)' },
+      overdue: { text: 'Quá hạn', color: 'var(--bad)', bg: 'var(--bad-soft)' },
+      done: { text: 'Hoàn thành', color: 'var(--ok)', bg: 'var(--ok-soft)' }
+    };
+
+    function toggleTheme() {
+      const root = document.getElementById('qsystem-workbench');
+      const next = root.getAttribute('data-mode') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-mode', next);
+      document.querySelectorAll('.theme-label').forEach(el => {
+        el.textContent = next === 'dark' ? 'Sáng' : 'Tối';
+      });
+    }
+
+    function togglePw() {
+      const input = document.getElementById('login-password');
+      const btn = document.getElementById('pw-toggle-btn');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? 'Ẩn' : 'Hiện';
+    }
+
+    function closeLoginPreview() {
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('shell-view').classList.remove('hidden');
+    }
+
+    function toggleModuleMenu() {
+      document.getElementById('module-menu').classList.toggle('hidden');
+    }
+
+    function toggleNotifPopover() {
+      const pop = document.getElementById('notif-popover');
+      pop.classList.toggle('hidden');
+      if (!pop.classList.contains('hidden')) renderNotifList();
+    }
+
+    function renderNotifList() {
+      document.getElementById('notif-list').innerHTML = NOTIFICATIONS.map(n => `
+        <div class="py-2.5 text-[13px] space-y-0.5 ${n.unread ? '' : 'wb-muted'}">
+          <div class="font-medium">${n.title}</div>
+          <div class="text-xs wb-muted">${n.time}</div>
+        </div>
+      `).join('');
+    }
+
+    function selectModule(mod) {
+      state.module = mod;
+      state.navId = MODULE_NAV[mod][0].id;
+      document.getElementById('module-menu').classList.add('hidden');
+      document.getElementById('active-module-name').textContent = mod;
+      render();
+    }
+
+    function switchSubView(navId) {
+      state.navId = navId;
+      if (navId === 'my_tasks') state.viewTab = 'mine';
+      if (navId === 'all_tasks') state.viewTab = 'all';
+      render();
+    }
+
+    function getFilteredTasks() {
+      return TASKS.filter(t => {
+        if (state.viewTab === 'mine' && t.who !== 'Nguyễn Minh Tuấn') return false;
+        if (state.viewTab === 'overdue' && !t.overdue) return false;
+        if (state.filterDept !== 'ALL' && t.dept !== state.filterDept) return false;
+        return true;
+      });
+    }
+
+    function renderLoadingSkeleton() {
+      return `
+        <div class="p-6 space-y-6">
+          <div class="flex items-center justify-between">
+            <div class="skeleton-bar h-8 w-44"></div>
+            <div class="skeleton-bar h-10 w-32"></div>
+          </div>
+          <div class="wb-surface border wb-border rounded-lg p-4 space-y-3">
+            ${Array.from({length: 5}).map(() => `<div class="skeleton-bar h-11 w-full"></div>`).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEmptyState() {
+      return `
+        <div class="h-full flex items-center justify-center p-8">
+          <div class="max-w-md w-full wb-surface border wb-border rounded-lg p-6 space-y-3">
+            <h2 class="text-[17px] font-medium">Chưa có công việc phù hợp</h2>
+            <p class="text-sm wb-muted">Bạn có thể hiển thị lại toàn bộ danh sách công việc hoặc tạo một đầu việc mới.</p>
+            <div class="pt-2 flex items-center gap-3">
+              <button type="button" onclick="state.viewTab='all'; state.filterDept='ALL'; document.getElementById('demo-state-select').value='full'; state.dataState='full'; render();" class="btn-primary wb-ctrl h-10 px-4 text-sm">Xem tất cả công việc</button>
+              <button type="button" onclick="state.dataState='full'; state.showNewTaskBar=true; document.getElementById('demo-state-select').value='full'; render();" class="btn-secondary wb-ctrl h-10 px-4 text-sm">+ Giao việc</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderErrorState() {
+      return `
+        <div class="h-full flex items-center justify-center p-8">
+          <div class="max-w-md w-full wb-surface border rounded-lg p-6 space-y-3" style="border-color: var(--bad);">
+            <h2 class="text-[17px] font-medium">Không thể tải dữ liệu lúc này</h2>
+            <p class="text-sm wb-muted">Kết nối máy chủ tạm thời bị gián đoạn. Nội dung bạn đang nhập vẫn được giữ nguyên.</p>
+            <div class="pt-2 flex items-center gap-3">
+              <button type="button" onclick="document.getElementById('demo-state-select').value='full'; state.dataState='full'; render();" class="btn-primary wb-ctrl h-10 px-4 text-sm">Thử tải lại</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQTaskView() {
+      const rows = getFilteredTasks();
+      const selected = rows.find(r => r.id === state.selectedTaskId) || rows[0] || TASKS[0];
+
+      return `
+        <div class="h-full flex flex-col relative">
+          <!-- Đầu trang: Công việc + nút chính + Giao việc -->
+          <div class="px-4 md:px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+            <h1 class="text-[26px] font-medium tracking-tight leading-tight">Công việc</h1>
+            <button type="button" onclick="state.showNewTaskBar = !state.showNewTaskBar; render();" class="btn-primary wb-ctrl h-10 px-4 text-sm whitespace-nowrap">
+              + Giao việc
+            </button>
+          </div>
+
+          ${state.showNewTaskBar ? `
+            <form onsubmit="event.preventDefault(); createInlineTask();" class="mx-4 md:mx-6 mb-4 p-4 wb-surface border wb-border rounded-lg grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              <div class="md:col-span-5 space-y-1.5">
+                <label for="new-what" class="block text-xs font-medium wb-muted">Tên công việc</label>
+                <input id="new-what" required placeholder="Nhập nội dung cần thực hiện" class="wb-input w-full px-3 text-sm" />
+              </div>
+              <div class="md:col-span-3 space-y-1.5">
+                <label for="new-who" class="block text-xs font-medium wb-muted">Người phụ trách</label>
+                <select id="new-who" class="wb-input w-full px-3 text-sm">
+                  ${USERS.map(u => `<option value="${u.name}">${u.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="md:col-span-2 space-y-1.5">
+                <label for="new-when" class="block text-xs font-medium wb-muted">Thời hạn</label>
+                <input id="new-when" value="18/11 17:00" class="wb-input w-full px-3 text-sm tabular" />
+              </div>
+              <div class="md:col-span-2 flex items-center gap-2">
+                <button type="submit" class="btn-primary wb-ctrl h-10 px-3 text-sm flex-1">Tạo</button>
+                <button type="button" onclick="state.showNewTaskBar=false; render();" class="btn-secondary wb-ctrl h-10 px-3 text-sm">Hủy</button>
+              </div>
+            </form>
+          ` : ''}
+
+          <!-- Thanh tối giản ngay trên bảng: tab gạch chân + Bộ lọc -->
+          <div class="px-4 md:px-6 mb-4 border-b wb-border flex flex-wrap items-center justify-between gap-3 relative">
+            <div class="flex items-center gap-4 sm:gap-6 text-sm -mb-px">
+              <button type="button" onclick="state.viewTab='all'; render();" class="wb-ctrl h-9 px-1 inline-flex items-center whitespace-nowrap font-medium border-b-2 ${state.viewTab==='all' ? 'border-[var(--ink)]' : 'border-transparent wb-muted hover:text-[var(--ink)]'}">Tất cả</button>
+              <button type="button" onclick="state.viewTab='mine'; render();" class="wb-ctrl h-9 px-1 inline-flex items-center whitespace-nowrap font-medium border-b-2 ${state.viewTab==='mine' ? 'border-[var(--ink)]' : 'border-transparent wb-muted hover:text-[var(--ink)]'}">Của tôi</button>
+              <button type="button" onclick="state.viewTab='overdue'; render();" class="wb-ctrl h-9 px-1 inline-flex items-center whitespace-nowrap font-medium border-b-2 ${state.viewTab==='overdue' ? 'border-[var(--ink)]' : 'border-transparent wb-muted hover:text-[var(--ink)]'}">Quá hạn</button>
+            </div>
+
+            <div class="pb-2 flex items-center gap-2 relative">
+              <button type="button" onclick="state.filterOpen = !state.filterOpen; render();" class="btn-secondary wb-ctrl h-9 px-3 text-[13px] flex items-center gap-1.5 whitespace-nowrap">
+                <span>Bộ lọc${state.filterDept !== 'ALL' ? ': ' + state.filterDept : ''}</span>
+              </button>
+
+              ${state.filterOpen ? `
+                <div class="absolute right-0 top-10 w-64 wb-surface border wb-border-strong rounded-lg p-3 z-30 wb-float space-y-3 text-[13px]">
+                  <div class="font-medium">Lọc theo phòng ban</div>
+                  <select onchange="state.filterDept=this.value; state.filterOpen=false; render();" class="wb-input w-full px-2.5 text-[13px]">
+                    <option value="ALL" ${state.filterDept==='ALL'?'selected':''}>Tất cả phòng ban</option>
+                    <option value="Phòng Kỹ thuật" ${state.filterDept==='Phòng Kỹ thuật'?'selected':''}>Phòng Kỹ thuật</option>
+                    <option value="Phòng Nhân sự" ${state.filterDept==='Phòng Nhân sự'?'selected':''}>Phòng Nhân sự</option>
+                    <option value="Phòng Kinh doanh" ${state.filterDept==='Phòng Kinh doanh'?'selected':''}>Phòng Kinh doanh</option>
+                    <option value="Phòng Vận hành" ${state.filterDept==='Phòng Vận hành'?'selected':''}>Phòng Vận hành</option>
+                  </select>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Nội dung chính: Bảng công việc (toàn chiều rộng nếu đóng panel) + Panel chi tiết -->
+          <div class="flex-1 min-h-0 px-4 md:px-6 pb-6 flex gap-6 relative">
+            <!-- Bảng công việc rộng -->
+            <div class="flex-1 min-w-0 wb-surface border wb-border rounded-lg overflow-auto">
+              <table class="w-full table-fixed sm:table-auto text-left border-collapse text-xs sm:text-sm">
+                <thead class="border-b wb-border text-xs wb-muted">
+                  <tr>
+                    <th class="py-3 px-1.5 sm:px-4 font-medium w-14 sm:w-24">Mã</th>
+                    <th class="py-3 px-1.5 sm:px-4 font-medium">Tên công việc</th>
+                    <th class="py-3 px-1.5 sm:px-4 font-medium w-16 sm:w-44">Phụ trách</th>
+                    <th class="py-3 px-1.5 sm:px-4 font-medium w-14 sm:w-32">Thời hạn</th>
+                    <th class="py-3 px-1.5 sm:px-4 font-medium w-[72px] sm:w-32">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y wb-border">
+                  ${rows.map(r => {
+                    const isSel = state.detailOpen && r.id === selected.id;
+                    const st = STATUS_MAP[r.status];
+                    return `
+                      <tr onclick="state.selectedTaskId='${r.id}'; state.detailOpen=true; render();" class="wb-ctrl cursor-pointer h-[48px] ${isSel ? 'bg-[var(--surface-active)]' : 'hover:bg-[var(--surface-hover)]'}">
+                        <td class="px-1.5 sm:px-4 mono text-xs sm:text-[13px] wb-muted sm:whitespace-nowrap break-words">${r.id}</td>
+                        <td class="px-1.5 sm:px-4 font-medium break-words">${r.what}</td>
+                        <td class="px-1.5 sm:px-4 sm:whitespace-nowrap wb-ink-2 break-words">${r.who}</td>
+                        <td class="px-1.5 sm:px-4 tabular text-xs sm:text-[13px] sm:whitespace-nowrap wb-muted break-words">${r.when}</td>
+                        <td class="px-1.5 sm:px-4 sm:whitespace-nowrap">
+                          <span class="inline-block px-1.5 sm:px-2.5 py-1 rounded text-xs font-medium" style="color: ${st.color}; background: ${st.bg};">${st.text}</span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            ${state.detailOpen ? `
+              <!-- Panel chi tiết: song song trên xl (>=1280px), ngăn trượt phủ trên màn hẹp -->
+              <aside aria-label="Chi tiết công việc" class="left-4 right-4 sm:left-auto sm:w-[390px] xl:w-[390px] shrink-0 wb-surface border wb-border rounded-lg flex flex-col justify-between xl:static fixed top-20 bottom-4 z-30 xl:shadow-none wb-float">
+                <div class="p-5 overflow-auto space-y-5">
+                  <!-- Đầu panel: mã việc nhỏ + tên việc + nút đóng -->
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="space-y-1">
+                      <div class="mono text-xs wb-muted">${selected.id}</div>
+                      <h2 class="text-[17px] font-medium leading-snug">${selected.what}</h2>
+                    </div>
+                    <button type="button" onclick="state.detailOpen=false; render();" aria-label="Đóng chi tiết" class="btn-secondary wb-ctrl w-8 h-8 flex items-center justify-center shrink-0 text-sm">×</button>
+                  </div>
+
+                  <!-- Thuộc tính xếp dòng nhãn trái - giá trị phải, đổi trạng thái ngay tại dòng Trạng thái -->
+                  <div class="divide-y wb-border border-y wb-border text-[13px]">
+                    <div class="py-2.5 flex items-center justify-between gap-4">
+                      <span class="wb-muted">Người phụ trách</span>
+                      <span class="font-medium">${selected.who}</span>
+                    </div>
+                    <div class="py-2.5 flex items-center justify-between gap-4">
+                      <span class="wb-muted">Thời hạn</span>
+                      <span class="tabular font-medium">${selected.when}</span>
+                    </div>
+                    <div class="py-2.5 flex items-center justify-between gap-4">
+                      <span class="wb-muted">Phòng ban</span>
+                      <span>${selected.dept}</span>
+                    </div>
+                    <div class="py-2 flex items-center justify-between gap-4">
+                      <label for="inline-status" class="wb-muted">Trạng thái</label>
+                      <select id="inline-status" onchange="updateSelectedStatus(this.value)" class="wb-input !h-8 px-2.5 text-[13px]">
+                        <option value="pending" ${selected.status==='pending'?'selected':''}>Chờ duyệt</option>
+                        <option value="in_progress" ${selected.status==='in_progress'?'selected':''}>Đang làm</option>
+                        <option value="overdue" ${selected.status==='overdue'?'selected':''}>Quá hạn</option>
+                        <option value="done" ${selected.status==='done'?'selected':''}>Hoàn thành</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- 2 Tab: Trao đổi | Tệp đính kèm -->
+                  <div class="space-y-3">
+                    <div class="flex items-center gap-4 border-b wb-border text-[13px]">
+                      <button type="button" onclick="state.detailTab='comments'; render();" class="wb-ctrl h-9 px-1 inline-flex items-center whitespace-nowrap font-medium border-b-2 ${state.detailTab==='comments' ? 'border-[var(--ink)]' : 'border-transparent wb-muted'}">Trao đổi (${selected.comments.length})</button>
+                      <button type="button" onclick="state.detailTab='files'; render();" class="wb-ctrl h-9 px-1 inline-flex items-center whitespace-nowrap font-medium border-b-2 ${state.detailTab==='files' ? 'border-[var(--ink)]' : 'border-transparent wb-muted'}">Tệp đính kèm (${selected.files.length})</button>
+                    </div>
+
+                    ${state.detailTab === 'comments' ? `
+                      <div class="space-y-3">
+                        ${selected.comments.map(c => `
+                          <div class="space-y-0.5 text-[13px]">
+                            <div class="flex items-center justify-between text-xs">
+                              <span class="font-medium">${c.actor}</span>
+                              <span class="wb-muted tabular">${c.time}</span>
+                            </div>
+                            <p class="wb-ink-2">${c.note}</p>
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : `
+                      <div class="space-y-2 text-[13px]">
+                        ${selected.files.length ? selected.files.map(f => `
+                          <div class="p-2.5 rounded border wb-border flex items-center justify-between">
+                            <span class="truncate font-medium">${f.name}</span>
+                            <span class="text-xs wb-muted tabular shrink-0">${f.size}</span>
+                          </div>
+                        `).join('') : `<div class="text-xs wb-muted py-2">Chưa có tệp đính kèm.</div>`}
+                      </div>
+                    `}
+                  </div>
+                </div>
+
+                <!-- Nút Hoàn thành việc cấp hiển thị phụ (nhẹ hơn nút Giao việc) -->
+                <div class="p-4 border-t wb-border flex items-center justify-end">
+                  <button type="button" onclick="updateSelectedStatus('done')" class="btn-secondary wb-ctrl h-9 px-4 text-[13px]">Hoàn thành việc</button>
+                </div>
+              </aside>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQHRMView() {
+      const canManage = state.role === 'Giám đốc' || state.role === 'Quản lý';
+      const activeDeptName = state.selectedDept === 'ALL' ? 'Toàn công ty' : (ORGS.find(o => o.id === state.selectedDept)?.name || '');
+      const list = USERS.filter(u => state.selectedDept === 'ALL' || u.dept === state.selectedDept);
+
+      return `
+        <div class="p-6 space-y-6">
+          <div class="flex items-center justify-between gap-4">
+            <h1 class="text-[26px] font-medium tracking-tight">Nhân sự · ${activeDeptName}</h1>
+            ${canManage ? `<button type="button" class="btn-primary wb-ctrl h-10 px-4 text-sm whitespace-nowrap">+ Thêm nhân sự</button>` : ''}
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <!-- Cột trái nhẹ: Bộ lọc Phòng ban -->
+            <div class="lg:col-span-3 space-y-1 text-[13px]">
+              <button type="button" onclick="state.selectedDept='ALL'; render();" class="wb-ctrl w-full h-10 px-3 rounded-md flex items-center justify-between ${state.selectedDept==='ALL' ? 'bg-[var(--surface-active)] font-medium border wb-border' : 'wb-muted hover:bg-[var(--surface-hover)]'}">
+                <span>Toàn công ty</span>
+                <span class="tabular">${USERS.length}</span>
+              </button>
+              ${ORGS.map(o => {
+                const count = USERS.filter(u => u.dept === o.id).length;
+                const sel = state.selectedDept === o.id;
+                return `
+                  <button type="button" onclick="state.selectedDept='${o.id}'; render();" class="wb-ctrl w-full h-10 px-3 rounded-md flex items-center justify-between ${sel ? 'bg-[var(--surface-active)] font-medium border wb-border' : 'wb-muted hover:bg-[var(--surface-hover)]'}">
+                    <span>${o.name}</span>
+                    <span class="tabular">${count}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+
+            <!-- Bảng Nhân sự nổi bật bên phải -->
+            <div class="lg:col-span-9 wb-surface border wb-border rounded-lg overflow-auto">
+              <table class="w-full text-left border-collapse text-sm">
+                <thead class="border-b wb-border text-xs wb-muted">
+                  <tr>
+                    <th class="py-3 px-4 font-medium">Họ tên</th>
+                    <th class="py-3 px-4 font-medium">Chức danh</th>
+                    <th class="py-3 px-4 font-medium">Vai trò</th>
+                    <th class="py-3 px-4 font-medium">Quản lý trực tiếp</th>
+                    <th class="py-3 px-4 font-medium">Tình trạng</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y wb-border">
+                  ${list.map(u => `
+                    <tr class="h-[48px] hover:bg-[var(--surface-hover)]">
+                      <td class="px-4 font-medium">${u.name}</td>
+                      <td class="px-4 wb-ink-2">${u.title}</td>
+                      <td class="px-4 wb-muted">${u.role}</td>
+                      <td class="px-4 wb-ink-2">${u.manager}</td>
+                      <td class="px-4">
+                        <span class="px-2.5 py-1 rounded text-xs font-medium" style="color: var(--ok); background: var(--ok-soft);">${u.status}</span>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAccountView() {
+      return `
+        <div class="p-6 max-w-xl space-y-6">
+          <h1 class="text-[26px] font-medium">Tài khoản & Bảo mật</h1>
+          <div class="wb-surface border wb-border rounded-lg p-6 space-y-4">
+            <div class="space-y-1 text-sm">
+              <div class="font-medium">Nguyễn Minh Tuấn</div>
+              <div class="wb-muted">${state.role} · Phòng Kỹ thuật</div>
+            </div>
+            <div class="pt-4 border-t wb-border space-y-3">
+              <h2 class="text-base font-medium">Đổi mật khẩu</h2>
+              <input type="password" placeholder="Mật khẩu hiện tại" class="wb-input w-full px-3 text-sm" />
+              <input type="password" placeholder="Mật khẩu mới" class="wb-input w-full px-3 text-sm" />
+              <button type="button" class="btn-primary wb-ctrl h-10 px-4 text-sm">Cập nhật mật khẩu</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSimplePlaceholder(title, desc) {
+      return `
+        <div class="p-6 max-w-xl space-y-4">
+          <h1 class="text-[26px] font-medium">${title}</h1>
+          <div class="wb-surface border wb-border rounded-lg p-6 space-y-3">
+            <p class="text-sm wb-muted">${desc}</p>
+            <button type="button" onclick="selectModule('QTask')" class="btn-secondary wb-ctrl h-9 px-4 text-[13px]">Quay lại QTask</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function showToast(msg) {
+      const region = document.getElementById('toast-region');
+      if (!region) return;
+      const el = document.createElement('div');
+      el.className = 'wb-surface border wb-border-strong rounded-md px-3.5 py-2.5 text-[13px] wb-float pointer-events-auto';
+      el.textContent = msg;
+      region.appendChild(el);
+      setTimeout(() => { el.remove(); }, 2800);
+    }
+
+    function createInlineTask() {
+      const what = document.getElementById('new-what').value.trim();
+      const who = document.getElementById('new-who').value;
+      const when = document.getElementById('new-when').value.trim();
+      if (!what) return;
+      const nextId = 'CV-' + (1043 + TASKS.length);
+      TASKS.unshift({ id: nextId, what, who, dept: 'Phòng Kỹ thuật', when, status: 'pending', overdue: false, comments: [{ actor: 'Nguyễn Minh Tuấn', time: 'Vừa xong', note: 'Giao việc mới.' }], files: [] });
+      state.selectedTaskId = nextId;
+      state.detailOpen = true;
+      state.showNewTaskBar = false;
+      render();
+      showToast('Đã tạo ' + nextId + ' và giao cho ' + who);
+    }
+
+    function updateSelectedStatus(status) {
+      const t = TASKS.find(x => x.id === state.selectedTaskId);
+      if (!t) return;
+      t.status = status;
+      t.overdue = status === 'overdue';
+      render();
+      showToast('Đã chuyển ' + t.id + ' sang ' + STATUS_MAP[status].text);
+    }
+
+    function openPalette() {
+      document.getElementById('cmd-palette').classList.remove('hidden');
+      const input = document.getElementById('palette-input');
+      input.value = '';
+      renderPaletteList('');
+      setTimeout(() => input.focus(), 10);
+    }
+
+    function closePalette() {
+      document.getElementById('cmd-palette').classList.add('hidden');
+    }
+
+    function renderPaletteList(q) {
+      const groups = [
+        { title: 'Đi tới', items: [
+          { label: 'Tất cả công việc', desc: 'Danh sách việc QTask', hint: 'G T', act: () => { selectModule('QTask'); } },
+          { label: 'Danh bạ nhân sự', desc: 'Thành viên và phòng ban', hint: 'G N', act: () => { selectModule('QHRM'); } },
+          { label: 'Tài khoản cá nhân', desc: 'Hồ sơ và mật khẩu', hint: 'G A', act: () => { switchSubView('account'); } }
+        ]},
+        { title: 'Chuyển ứng dụng', items: [
+          { label: 'QTask', desc: 'Quản lý công việc và dự án', hint: state.module==='QTask'?'Đang mở':'', active: state.module==='QTask', act: () => selectModule('QTask') },
+          { label: 'QHRM', desc: 'Danh bạ nhân sự và phòng ban', hint: state.module==='QHRM'?'Đang mở':'', active: state.module==='QHRM', act: () => selectModule('QHRM') },
+          { label: 'QCRM', desc: 'Khách hàng và hợp đồng', hint: '', act: () => selectModule('QCRM') },
+          { label: 'QSocial', desc: 'Bảng tin truyền thông nội bộ', hint: '', act: () => selectModule('QSocial') }
+        ]},
+        { title: 'Thao tác nhanh', items: [
+          { label: 'Giao việc mới', desc: 'Mở khung tạo nhanh trong QTask', hint: 'C', act: () => { selectModule('QTask'); state.showNewTaskBar=true; render(); } },
+          { label: 'Đổi giao diện Sáng hoặc Tối', desc: 'Chuyển nhanh màu nền làm việc', hint: 'Shift T', act: () => toggleTheme() }
+        ]}
+      ];
+
+      window.__pActs = [];
+      const html = groups.map(g => {
+        const matched = g.items.filter(i => (i.label + ' ' + i.desc).toLowerCase().includes(q.toLowerCase()));
+        if (!matched.length) return '';
+        return `
+          <div class="space-y-1">
+            <div class="px-2.5 text-xs font-medium wb-muted">${g.title}</div>
+            ${matched.map(item => {
+              const idx = window.__pActs.push(item.act) - 1;
+              return `
+                <button type="button" onclick="window.__pActs[${idx}](); closePalette();" class="wb-ctrl w-full px-3 py-2 rounded-md flex items-center justify-between text-left ${item.active ? 'bg-[var(--surface-active)]' : 'hover:bg-[var(--surface-hover)]'}">
+                  <span class="min-w-0">
+                    <span class="block text-[13px] font-medium">${item.label}</span>
+                    <span class="block text-xs wb-muted">${item.desc}</span>
+                  </span>
+                  ${item.hint ? `<span class="mono text-xs px-1.5 py-0.5 rounded border wb-border wb-muted shrink-0">${item.hint}</span>` : ''}
+                </button>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('palette-results').innerHTML = html || `<div class="p-4 text-sm wb-muted">Không tìm thấy kết quả cho "${q}".</div>`;
+    }
+
+    function render() {
+      const navItems = MODULE_NAV[state.module] || [];
+      const activeNav = navItems.find(n => n.id === state.navId) || navItems[0];
+      document.getElementById('hdr-breadcrumb').innerHTML = state.navId === 'account'
+        ? `<span>QSystem</span><span class="mx-1.5">/</span><span style="color: var(--ink);" class="font-medium">Tài khoản</span>`
+        : `<span>${state.module}</span><span class="mx-1.5">/</span><span style="color: var(--ink);" class="font-medium">${activeNav ? activeNav.label : ''}</span>`;
+
+      document.getElementById('contextual-nav').innerHTML = navItems.map(item => {
+        const isAct = item.id === state.navId;
+        return `
+          <button type="button" onclick="switchSubView('${item.id}')" class="wb-ctrl w-full h-10 px-3 rounded-md text-left text-[13px] font-medium ${isAct ? 'bg-[var(--surface-active)] border wb-border' : 'wb-muted hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]'}">
+            ${item.label}
+          </button>
+        `;
+      }).join('');
+
+      document.getElementById('sidebar-role-badge').textContent = state.role;
+
+      const main = document.getElementById('main-viewport');
+      if (state.dataState === 'loading') { main.innerHTML = renderLoadingSkeleton(); return; }
+      if (state.dataState === 'empty') { main.innerHTML = renderEmptyState(); return; }
+      if (state.dataState === 'error') { main.innerHTML = renderErrorState(); return; }
+
+      if (state.navId === 'account') { main.innerHTML = renderAccountView(); return; }
+      if (state.module === 'QTask') main.innerHTML = state.navId === 'projects' ? renderSimplePlaceholder('Dự án', 'Danh sách dự án theo nhóm đang được hoàn thiện.') : renderQTaskView();
+      else if (state.module === 'QHRM') main.innerHTML = state.navId === 'directory' ? renderQHRMView() : renderSimplePlaceholder(activeNav.label, 'Mục ' + activeNav.label + ' thuộc phân hệ QHRM.');
+      else main.innerHTML = renderSimplePlaceholder(state.module, 'Phân hệ ' + state.module + ' sẽ sớm ra mắt.');
+    }
+
+    document.getElementById('demo-state-select').addEventListener('change', e => { state.dataState = e.target.value; render(); });
+    document.getElementById('demo-role-select').addEventListener('change', e => { state.role = e.target.value; render(); });
+    document.getElementById('demo-login-toggle').addEventListener('click', () => {
+      const loginEl = document.getElementById('login-view');
+      const shellEl = document.getElementById('shell-view');
+      const showingLogin = !loginEl.classList.contains('hidden');
+      loginEl.classList.toggle('hidden', showingLogin);
+      shellEl.classList.toggle('hidden', !showingLogin);
+    });
+
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+      else if (e.key === 'Escape') { closePalette(); document.getElementById('module-menu').classList.add('hidden'); document.getElementById('notif-popover').classList.add('hidden'); }
+      else if (state.module === 'QTask' && state.detailOpen && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+        const rows = getFilteredTasks();
+        const idx = rows.findIndex(r => r.id === state.selectedTaskId);
+        if (e.key.toLowerCase() === 'j' && idx < rows.length - 1) { state.selectedTaskId = rows[idx + 1].id; render(); }
+        else if (e.key.toLowerCase() === 'k' && idx > 0) { state.selectedTaskId = rows[idx - 1].id; render(); }
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>
