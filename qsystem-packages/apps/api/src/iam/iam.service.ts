@@ -31,6 +31,8 @@ type TxClient = Prisma.TransactionClient;
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const REFRESH_COOKIE = 'refresh_token';
+const JWT_ISSUER = 'qsystem-api';
+const JWT_AUDIENCE = 'qsystem-web';
 
 function failFastJwtSecret(): string {
   // JWT_SECRET is required everywhere (prod and test). The spec sets a
@@ -83,7 +85,13 @@ export class IamService {
     return jwt.sign(
       { sub: viewer.id, role: viewer.role },
       this.jwtSecret,
-      { expiresIn: ACCESS_TTL_SECONDS },
+      {
+        algorithm: 'HS256',
+        expiresIn: ACCESS_TTL_SECONDS,
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE,
+        jwtid: crypto.randomUUID(),
+      },
     );
   }
 
@@ -111,13 +119,13 @@ export class IamService {
     return raw;
   }
 
-  private refreshCookieOptions(): {
+  private refreshCookieOptions(remember = true): {
     httpOnly: boolean;
     secure: boolean;
     sameSite: 'lax' | 'strict' | 'none';
     path: string;
     domain?: string;
-    maxAge: number;
+    maxAge?: number;
   } {
     const sameSiteRaw = (process.env.COOKIE_SAME_SITE ?? 'lax').trim().toLowerCase();
     const sameSite: 'lax' | 'strict' | 'none' =
@@ -133,7 +141,7 @@ export class IamService {
           : sameSite === 'none'
             ? true
             : isProductionLike();
-    const path = process.env.COOKIE_PATH?.trim() || '/auth';
+    const path = process.env.COOKIE_PATH?.trim() || '/';
     const domain = process.env.COOKIE_DOMAIN?.trim();
     return {
       httpOnly: true,
@@ -141,7 +149,7 @@ export class IamService {
       sameSite,
       path,
       ...(domain ? { domain } : {}),
-      maxAge: REFRESH_TTL_MS,
+      ...(remember ? { maxAge: REFRESH_TTL_MS } : {}),
     };
   }
 
@@ -149,6 +157,7 @@ export class IamService {
     email: string,
     password: string,
     res: { cookie: (name: string, val: string, opts: Record<string, unknown>) => void },
+    remember = true,
   ): Promise<{ accessToken: string }> {
     const identity = await this.lookupIdentity(email);
     // No oracle: wrong email and wrong password both yield INVALID_CREDENTIALS.
@@ -161,7 +170,7 @@ export class IamService {
     const raw = await this.prisma.withIdentity(identity.id, (tx) =>
       this.createRefreshToken(tx, identity.id),
     );
-    res.cookie(REFRESH_COOKIE, raw, this.refreshCookieOptions());
+    res.cookie(REFRESH_COOKIE, raw, this.refreshCookieOptions(remember));
     return { accessToken: this.signAccess({ id: identity.id, role: identity.role }) };
   }
 
@@ -236,6 +245,11 @@ export class IamService {
     }
   }
 
+  clearRefreshCookie(res: { clearCookie: (name: string, opts: Record<string, unknown>) => void }): void {
+    const { maxAge: _maxAge, ...clearOpts } = this.refreshCookieOptions();
+    res.clearCookie(REFRESH_COOKIE, clearOpts);
+  }
+
   async logout(
     rawToken: string | undefined,
     res: { clearCookie: (name: string, opts: Record<string, unknown>) => void },
@@ -252,8 +266,7 @@ export class IamService {
         );
       }
     }
-    const { maxAge: _maxAge, ...clearOpts } = this.refreshCookieOptions();
-    res.clearCookie(REFRESH_COOKIE, clearOpts);
+    this.clearRefreshCookie(res);
   }
 
   async me(viewer: RequestViewer | undefined): Promise<{
@@ -319,7 +332,11 @@ export class IamService {
 
   verifyAccess(token: string): RequestViewer {
     try {
-      const payload = jwt.verify(token, this.jwtSecret) as { sub: string; role: RequestViewer['role'] };
+      const payload = jwt.verify(token, this.jwtSecret, {
+        algorithms: ['HS256'],
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE,
+      }) as { sub: string; role: RequestViewer['role'] };
       if (!payload?.sub || !payload?.role) throw new Error('bad payload');
       return { id: payload.sub, role: payload.role };
     } catch {

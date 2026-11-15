@@ -136,8 +136,20 @@ export class SocialService {
       throw error('INVALID_INPUT', 'Invalid social post payload', HttpStatus.BAD_REQUEST, parsed.error.issues);
     }
     const body = parsed.data;
-    if (body.pinned === true && viewer.role === 'EMPLOYEE') {
-      throw error('FORBIDDEN', 'Only DIRECTOR or MANAGER may pin posts', HttpStatus.FORBIDDEN);
+    if (body.pinned === true) {
+      if (viewer.role === 'EMPLOYEE') {
+        throw error('FORBIDDEN', 'Only DIRECTOR or MANAGER may pin posts', HttpStatus.FORBIDDEN);
+      }
+      if (
+        viewer.role === 'MANAGER' &&
+        (!body.departmentId || !viewer.managedDepartmentIds.includes(body.departmentId))
+      ) {
+        throw error(
+          'FORBIDDEN',
+          'MANAGER may only pin posts in their own managed department',
+          HttpStatus.FORBIDDEN,
+        );
+      }
     }
 
     try {
@@ -199,8 +211,20 @@ export class SocialService {
       throw error('NOT_FOUND', 'Post not found', HttpStatus.NOT_FOUND);
     }
 
-    if (body.pinned !== undefined && viewer.role === 'EMPLOYEE') {
-      throw error('FORBIDDEN', 'Only DIRECTOR or MANAGER may pin posts', HttpStatus.FORBIDDEN);
+    if (body.pinned !== undefined) {
+      if (viewer.role === 'EMPLOYEE') {
+        throw error('FORBIDDEN', 'Only DIRECTOR or MANAGER may pin posts', HttpStatus.FORBIDDEN);
+      }
+      if (
+        viewer.role === 'MANAGER' &&
+        (!existing.departmentId || !viewer.managedDepartmentIds.includes(existing.departmentId))
+      ) {
+        throw error(
+          'FORBIDDEN',
+          'MANAGER may only pin posts in their own managed department',
+          HttpStatus.FORBIDDEN,
+        );
+      }
     }
     if (
       (body.content !== undefined || body.category !== undefined) &&

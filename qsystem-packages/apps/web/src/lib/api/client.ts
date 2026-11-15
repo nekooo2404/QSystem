@@ -20,6 +20,7 @@ export class ApiError extends Error {
   constructor(
     readonly code: string | undefined,
     readonly status: number,
+    readonly details?: unknown,
   ) {
     // `message` carries the human sentence, never the raw code or a stack.
     super(code ?? 'REQUEST_FAILED');
@@ -34,12 +35,18 @@ function refreshOnce(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
       .then(async (res) => {
-        if (!res.ok) return null;
+        if (!res.ok) {
+          accessToken = null;
+          return null;
+        }
         const body = (await res.json()) as { accessToken?: string };
         accessToken = body.accessToken ?? null;
         return accessToken;
       })
-      .catch(() => null)
+      .catch(() => {
+        accessToken = null;
+        return null;
+      })
       .finally(() => {
         refreshPromise = null;
       });
@@ -58,18 +65,25 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   return fetch(path, { ...init, credentials: 'include', headers });
 }
 
+const SKIP_REFRESH_PATHS = new Set(['/api/auth/refresh', '/api/auth/login', '/api/auth/logout']);
+
 export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit<T> = {}): Promise<T> {
   const { schema, ...requestInit } = init;
   let res = await send(path, requestInit);
 
-  if (res.status === 401 && path !== '/api/auth/refresh') {
+  if (res.status === 401 && !SKIP_REFRESH_PATHS.has(path)) {
     const fresh = await refreshOnce();
     if (fresh) res = await send(path, requestInit);
+    else accessToken = null;
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new ApiError(body && typeof body.code === 'string' ? body.code : undefined, res.status);
+    throw new ApiError(
+      body && typeof body.code === 'string' ? body.code : undefined,
+      res.status,
+      body && typeof body === 'object' && 'details' in body ? body.details : undefined,
+    );
   }
 
   if (res.status === 204) return undefined as T;

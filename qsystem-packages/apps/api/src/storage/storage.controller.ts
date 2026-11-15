@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpException,
   HttpStatus,
   Inject,
   Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import type { PresignInput } from './storage.service';
@@ -128,5 +130,43 @@ export class StorageController {
       url: file.url,
       expiresInSeconds: file.expiresInSeconds,
     };
+  }
+
+  @Patch(':id')
+  async updateFile(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: { key?: string; mimeType?: string },
+  ) {
+    if (!user?.id) {
+      throw codedUnauthorized();
+    }
+    const viewer: ScopeViewer = await this.abilities.resolveViewer({
+      id: user.id,
+      role: user.role,
+    });
+    const updated = await this.storage.updateFile(viewer, id, {
+      key: typeof body?.key === 'string' ? body.key : undefined,
+      mimeType: typeof body?.mimeType === 'string' ? body.mimeType : undefined,
+    });
+    if (!updated) throw codedNotFound();
+    return updated;
+  }
+
+  @Delete(':id')
+  async deleteFile(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+  ) {
+    if (!user?.id) {
+      throw codedUnauthorized();
+    }
+    const viewer: ScopeViewer = await this.abilities.resolveViewer({
+      id: user.id,
+      role: user.role,
+    });
+    const deleted = await this.storage.deleteFile(viewer, id);
+    if (!deleted) throw codedNotFound();
+    return deleted;
   }
 }

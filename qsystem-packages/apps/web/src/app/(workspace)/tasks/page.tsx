@@ -1,10 +1,10 @@
 import { Suspense } from 'react';
-import { QTaskWorkspace } from '../../../components/qtask/QTaskWorkspace';
+import { MyTasksView } from '../../../components/qtask/MyTasksView';
 
 export default function Page() {
   return (
     <Suspense fallback={null}>
-      <QTaskWorkspace initialView="mine" />
+      <MyTasksView />
     </Suspense>
   );
 }

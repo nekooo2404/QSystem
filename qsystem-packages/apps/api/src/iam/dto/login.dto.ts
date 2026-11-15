@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import type {
   ChangePasswordInput,
   LoginInput,
@@ -11,17 +11,24 @@ export class LoginDto implements LoginInput {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(128)
   password!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  remember?: boolean;
 }
 
 /** PATCH /me/password body. Rules mirror ChangePasswordSchema. */
 export class ChangePasswordDto implements ChangePasswordInput {
   @IsString()
   @MinLength(1)
+  @MaxLength(128)
   oldPassword!: string;
 
   @IsString()
   @MinLength(8)
+  @MaxLength(128)
   newPassword!: string;
 }
 

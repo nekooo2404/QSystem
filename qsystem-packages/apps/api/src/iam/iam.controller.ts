@@ -57,7 +57,10 @@ export class IamController {
     }
 
     if (!requestOrigin) {
-      if (process.env.STRICT_CSRF_ORIGIN === 'true') {
+      const requireOrigin =
+        process.env.STRICT_CSRF_ORIGIN === 'true' ||
+        (isProductionLike() && process.env.STRICT_CSRF_ORIGIN !== 'false');
+      if (requireOrigin) {
         throw new HttpException(
           { code: 'CSRF_FORBIDDEN', message: 'Origin header is required for cookie auth requests' },
           HttpStatus.FORBIDDEN,
@@ -74,14 +77,18 @@ export class IamController {
       }
     }
 
-    const protoRaw = req.get('x-forwarded-proto')?.split(',')[0]?.trim() || req.protocol || 'http';
+    const trustProxy = process.env.TRUST_PROXY?.trim() === 'true';
+    const protoRaw =
+      (trustProxy ? req.get('x-forwarded-proto')?.split(',')[0]?.trim() : undefined) ||
+      req.protocol ||
+      'http';
     const proto = protoRaw.toLowerCase();
     const host = req.get('host')?.trim();
     if (host) {
       allowed.add(`${proto}://${host.toLowerCase()}`);
     }
     const forwardedHost = req.get('x-forwarded-host')?.split(',')[0]?.trim();
-    if (forwardedHost && (!isProductionLike() || Boolean(process.env.TRUST_PROXY?.trim()))) {
+    if (forwardedHost && (!isProductionLike() || trustProxy)) {
       allowed.add(`${proto}://${forwardedHost.toLowerCase()}`);
     }
 
@@ -115,7 +122,12 @@ export class IamController {
       );
     }
     try {
-      const out = await this.iam.login(body?.email ?? '', body?.password ?? '', res);
+      const out = await this.iam.login(
+        body?.email ?? '',
+        body?.password ?? '',
+        res,
+        body?.remember ?? true,
+      );
       await this.limiter.clearFailures(accountKey);
       return out;
     } catch (err) {
@@ -166,8 +178,10 @@ export class IamController {
   async changePassword(
     @CurrentUser() user: { id: string; role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE' } | undefined,
     @Body() body: ChangePasswordDto,
+    @Res({ passthrough: true }) res: ExpressResponse,
   ): Promise<{ ok: true }> {
     await this.iam.changePassword(user, body.oldPassword, body.newPassword);
+    this.iam.clearRefreshCookie(res);
     return { ok: true };
   }
 }

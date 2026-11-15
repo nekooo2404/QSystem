@@ -9,6 +9,7 @@ let pathname = '/';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({
     push: (href: string) => {
       push(href);
@@ -27,6 +28,7 @@ beforeEach(() => {
   push.mockReset();
   pathname = '/';
   calls.length = 0;
+  window.localStorage.clear();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
@@ -69,7 +71,7 @@ describe('Global Ctrl+K', () => {
     const user = userEvent.setup();
     renderShell();
 
-    await user.click(screen.getByRole('button', { name: /Tìm việc, nhân sự, tài liệu/ }));
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
     expect(palette()).toBeInTheDocument();
 
     await user.keyboard('{Escape}');
@@ -89,12 +91,12 @@ describe('Global Ctrl+K', () => {
   it('renders the three unnumbered groups in the reference order', async () => {
     const user = userEvent.setup();
     renderShell();
-    await user.click(screen.getByRole('button', { name: /Tìm việc, nhân sự, tài liệu/ }));
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
 
-    const labelTexts = Array.from(palette().querySelectorAll('.qs-cmdk__group-label')).map(
+    const labelTexts = Array.from(palette().querySelectorAll('.qp-group__label')).map(
       (node) => node.textContent,
     );
-    expect(labelTexts.slice(0, 3)).toEqual(['Đi tới', 'Chuyển ứng dụng', 'Thao tác nhanh']);
+    expect(labelTexts.slice(0, 3)).toEqual(['GẦN ĐÂY', 'CHUYỂN ỨNG DỤNG', 'THAO TÁC NHANH']);
 
     const options = within(palette()).getAllByRole('option');
     for (const option of options) {
@@ -103,10 +105,10 @@ describe('Global Ctrl+K', () => {
     expect(palette().textContent ?? '').not.toMatch(/4W|WHO|PENDING|Presign|Audit trail|DIRECTOR/);
   });
 
-  it('navigates with an entry from Đi tới', async () => {
+  it('navigates with an entry from GẦN ĐÂY', async () => {
     const user = userEvent.setup();
     renderShell();
-    await user.click(screen.getByRole('button', { name: /Tìm việc, nhân sự, tài liệu/ }));
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
 
     await user.click(within(palette()).getByRole('option', { name: /Danh bạ nhân sự/ }));
     expect(push).toHaveBeenCalledWith('/org');
@@ -115,7 +117,7 @@ describe('Global Ctrl+K', () => {
   it('debounces GET /api/search and shows the hits', async () => {
     const user = userEvent.setup();
     renderShell();
-    await user.click(screen.getByRole('button', { name: /Tìm việc, nhân sự, tài liệu/ }));
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
 
     await user.type(within(palette()).getByRole('combobox'), 'báo cáo');
 
@@ -123,5 +125,37 @@ describe('Global Ctrl+K', () => {
     // One request for the whole burst of keystrokes, not one per character.
     expect(calls.filter((url) => url.startsWith('/api/search'))).toHaveLength(1);
     expect(calls.find((url) => url.startsWith('/api/search'))).toContain('q=b%C3%A1o%20c%C3%A1o');
+  });
+
+  it('shows role=alert when /api/search fails and retries via Thử lại', async () => {
+    let searchCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith('/api/search')) {
+          searchCalls += 1;
+          if (searchCalls === 1) return json(503, { code: 'INTERNAL' });
+          return json(200, {
+            hits: [{ id: 'f-1', title: 'Báo cáo quý IV', owner_id: 'u-1', department_id: 'd-1' }],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          });
+        }
+        if (url === '/api/notifications') return json(200, []);
+        return json(200, { ok: true });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderShell();
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
+    await user.type(within(palette()).getByRole('combobox'), 'báo cáo');
+
+    expect(await within(palette()).findByRole('alert')).toHaveTextContent(/Chưa tìm được tài liệu/);
+    await user.click(within(palette()).getByRole('button', { name: 'Thử lại' }));
+    expect(await within(palette()).findByRole('option', { name: /Báo cáo quý IV/ })).toBeInTheDocument();
+    expect(searchCalls).toBe(2);
   });
 });

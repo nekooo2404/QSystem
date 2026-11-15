@@ -48,7 +48,7 @@ const RAW_REFUSED =
 
 export const SCOPED_ACCESS_DENIED = 'qsystem: scoped access denied (RLS)';
 
-type ModelName =
+type BaseModelName =
   | 'user'
   | 'department'
   | 'approvalDelegation'
@@ -56,6 +56,23 @@ type ModelName =
   | 'notification'
   | 'file'
   | 'task';
+
+type ModelName =
+  | BaseModelName
+  | 'socialPost'
+  | 'socialComment'
+  | 'socialPostLike'
+  | 'refreshToken';
+
+const BASE_MODELS = new Set<string>([
+  'user',
+  'department',
+  'approvalDelegation',
+  'auditLog',
+  'notification',
+  'file',
+  'task',
+]);
 
 const MODELS: ModelName[] = [
   'user',
@@ -65,6 +82,10 @@ const MODELS: ModelName[] = [
   'notification',
   'file',
   'task',
+  'socialPost',
+  'socialComment',
+  'socialPostLike',
+  'refreshToken',
 ];
 
 const LIST_OPS = new Set([
@@ -103,6 +124,100 @@ async function resolveViewer(tx: PrismaClient, userId: string): Promise<ScopeVie
   };
 }
 
+function resolvedScopeFor(model: ModelName, viewer: ScopeViewer): Where | undefined {
+  if (BASE_MODELS.has(model)) {
+    return scopeFor(model as BaseModelName, viewer) as Where | undefined;
+  }
+  if (model === 'refreshToken') {
+    return { userId: viewer.id };
+  }
+  if (viewer.role === 'DIRECTOR') return undefined;
+  if (model === 'socialPost') {
+    return viewer.role === 'MANAGER'
+      ? {
+          OR: [
+            { authorId: viewer.id },
+            { departmentId: null },
+            { departmentId: { in: viewer.managedDepartmentIds } },
+          ],
+        }
+      : {
+          OR: [
+            { authorId: viewer.id },
+            { departmentId: null },
+            ...(viewer.departmentId ? [{ departmentId: viewer.departmentId }] : []),
+          ],
+        };
+  }
+  const postScope = resolvedScopeFor('socialPost', viewer);
+  if (model === 'socialComment') {
+    return { OR: [{ authorId: viewer.id }, { post: postScope }] };
+  }
+  if (model === 'socialPostLike') {
+    return { OR: [{ userId: viewer.id }, { post: postScope }] };
+  }
+  return undefined;
+}
+
+function resolvedIsAllowed(
+  model: ModelName,
+  viewer: ScopeViewer,
+  row: Record<string, unknown>,
+  op: 'read' | 'write',
+): boolean {
+  if (BASE_MODELS.has(model)) {
+    return isAllowed(model as BaseModelName, viewer, row);
+  }
+  if (model === 'refreshToken') {
+    return row.userId === viewer.id;
+  }
+  if (viewer.role === 'DIRECTOR') return true;
+  if (model === 'socialPost') {
+    if (op === 'write') {
+      if (row.authorId === viewer.id) return true;
+      return (
+        viewer.role === 'MANAGER' &&
+        typeof row.departmentId === 'string' &&
+        viewer.managedDepartmentIds.includes(row.departmentId)
+      );
+    }
+    if (row.authorId === viewer.id || row.departmentId === null) return true;
+    if (viewer.role === 'MANAGER') {
+      return (
+        typeof row.departmentId === 'string' &&
+        viewer.managedDepartmentIds.includes(row.departmentId)
+      );
+    }
+    return Boolean(viewer.departmentId) && row.departmentId === viewer.departmentId;
+  }
+  if (model === 'socialComment') {
+    if (op === 'write') return row.authorId === viewer.id;
+    if (row.authorId === viewer.id) return true;
+    const post = row.post as Record<string, unknown> | undefined;
+    return !post || resolvedIsAllowed('socialPost', viewer, post, 'read');
+  }
+  if (model === 'socialPostLike') {
+    if (op === 'write') return row.userId === viewer.id;
+    if (row.userId === viewer.id) return true;
+    const post = row.post as Record<string, unknown> | undefined;
+    return !post || resolvedIsAllowed('socialPost', viewer, post, 'read');
+  }
+  return false;
+}
+
+function pinScopedCreateData(model: ModelName, viewer: ScopeViewer, data: Where): Where {
+  if ((model === 'file' || model === 'task') && viewer.role === 'EMPLOYEE') {
+    return { ...data, ownerId: viewer.id };
+  }
+  if ((model === 'socialPost' || model === 'socialComment') && viewer.role === 'EMPLOYEE') {
+    return { ...data, authorId: viewer.id };
+  }
+  if (model === 'refreshToken' || (model === 'socialPostLike' && viewer.role !== 'DIRECTOR')) {
+    return { ...data, userId: viewer.id };
+  }
+  return data;
+}
+
 /**
  * Generic scope wrapper around any Prisma model delegate (base or
  * interactive-transaction client — Prisma 5 tx clients lack `$extends`,
@@ -119,12 +234,12 @@ function scopedDelegate<T extends object>(delegate: T, model: ModelName, viewer:
 
       if (LIST_OPS.has(dProp)) {
         return (args?: Record<string, unknown>) =>
-          bound({ ...(args ?? {}), where: andWhere(args?.where as Where | undefined, scopeFor(model, viewer) as Where | undefined) });
+          bound({ ...(args ?? {}), where: andWhere(args?.where as Where | undefined, resolvedScopeFor(model, viewer)) });
       }
       if (SINGLE_READS.has(dProp)) {
         return async (args?: Record<string, unknown>) => {
           const row = (await bound(args)) as Record<string, unknown> | null;
-          if (row && !isAllowed(model, viewer, row)) {
+          if (row && !resolvedIsAllowed(model, viewer, row, 'read')) {
             if (dProp.endsWith('OrThrow')) throw new Error(SCOPED_ACCESS_DENIED);
             return null;
           }
@@ -144,7 +259,7 @@ function scopedDelegate<T extends object>(delegate: T, model: ModelName, viewer:
               dTarget as unknown as { findUnique: (a: unknown) => Promise<unknown> }
             ).findUnique;
             const pre = await finder.call(dTarget, { where: args?.where });
-            if (!pre || !isAllowed(model, viewer, pre as Record<string, unknown>)) {
+            if (!pre || !resolvedIsAllowed(model, viewer, pre as Record<string, unknown>, 'write')) {
               throw new Error(SCOPED_ACCESS_DENIED);
             }
             return bound(args);
@@ -158,37 +273,25 @@ function scopedDelegate<T extends object>(delegate: T, model: ModelName, viewer:
           ).findUnique;
           const pre = await finder.call(dTarget, { where: args?.where });
           if (pre) {
-            if (!isAllowed(model, viewer, pre as Record<string, unknown>)) {
+            if (!resolvedIsAllowed(model, viewer, pre as Record<string, unknown>, 'write')) {
               throw new Error(SCOPED_ACCESS_DENIED);
             }
-          } else if (
-            (model === 'file' || model === 'task') &&
-            viewer.role === 'EMPLOYEE' &&
-            args?.create &&
-            typeof args.create === 'object' &&
-            !Array.isArray(args.create)
-          ) {
+          } else if (args?.create && typeof args.create === 'object' && !Array.isArray(args.create)) {
             return bound({
               ...args,
-              create: { ...(args.create as Where), ownerId: viewer.id },
+              create: pinScopedCreateData(model, viewer, args.create as Where),
             });
           }
           const row = (await bound(args)) as Record<string, unknown> | null;
-          if (row && !isAllowed(model, viewer, row)) throw new Error(SCOPED_ACCESS_DENIED);
+          if (row && !resolvedIsAllowed(model, viewer, row, 'write')) throw new Error(SCOPED_ACCESS_DENIED);
           return row;
         };
       }
       if (dProp === 'create' || dProp === 'createMany') {
         return (args?: Record<string, unknown>) => {
-          // EMPLOYEE uploads and tasks always belong to the owner — never spoofable.
-          if (
-            (model === 'file' || model === 'task') &&
-            viewer.role === 'EMPLOYEE' &&
-            args?.data &&
-            typeof args.data === 'object' &&
-            !Array.isArray(args.data)
-          ) {
-            return bound({ ...args, data: { ...(args.data as Where), ownerId: viewer.id } });
+          // Non-privileged actors cannot spoof owner/author/user fields.
+          if (args?.data && typeof args.data === 'object' && !Array.isArray(args.data)) {
+            return bound({ ...args, data: pinScopedCreateData(model, viewer, args.data as Where) });
           }
           return bound(args);
         };
@@ -294,6 +397,10 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       notification: ops('notification'),
       file: ops('file'),
       task: ops('task'),
+      socialPost: ops('socialPost'),
+      socialComment: ops('socialComment'),
+      socialPostLike: ops('socialPostLike'),
+      refreshToken: ops('refreshToken'),
       // Raw SQL entry points exist only to refuse: scoped work must go
       // through the ORM delegates above, never raw queries.
       $queryRaw: refuse,

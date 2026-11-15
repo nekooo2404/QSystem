@@ -120,6 +120,7 @@ export function presignUrl(
   bucket: string,
   key: string,
   expiresSeconds: number = PRESIGN_EXPIRES_SECONDS,
+  extraQuery: Record<string, string> = {},
 ): string {
   const endpoint = new URL(config.endpoint);
   const path = `/${bucket}${key ? `/${key}` : ''}`;
@@ -134,6 +135,9 @@ export function presignUrl(
   const { amzDate, dateStamp } = amzDateParts(new Date());
   const scope = scopeOf(dateStamp, config.region);
 
+  for (const [k, v] of Object.entries(extraQuery)) {
+    url.searchParams.set(k, v);
+  }
   url.searchParams.set('X-Amz-Algorithm', ALGORITHM);
   url.searchParams.set('X-Amz-Credential', `${config.accessKeyId}/${scope}`);
   url.searchParams.set('X-Amz-Date', amzDate);

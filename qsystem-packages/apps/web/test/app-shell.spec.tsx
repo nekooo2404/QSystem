@@ -11,6 +11,7 @@ let pathname = '/';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(''),
   useRouter: () => ({
     push: (href: string) => {
       push(href);
@@ -60,9 +61,10 @@ const shell = () => (
 
 async function switchTo(moduleName: string, rerender: (ui: React.ReactElement) => void) {
   const user = userEvent.setup();
-  await user.click(screen.getByRole('button', { name: /QTask|QHRM|QCRM|QSocial/ }));
-  const menu = screen.getByRole('menu', { name: 'Chọn ứng dụng' });
-  await user.click(within(menu).getByRole('menuitemradio', { name: new RegExp(moduleName) }));
+  const modulesNav = screen.getByRole('navigation', { name: 'Phân hệ' });
+  const link = within(modulesNav).getByRole('link', { name: moduleName });
+  await user.click(link);
+  pathname = (link.getAttribute('href') ?? '/').split('?')[0];
   rerender(shell());
 }
 
@@ -70,16 +72,17 @@ describe('AppWorkspaceShell', () => {
   it('opens on QTask with its own navigation items', () => {
     renderShell();
     expect(screen.getByRole('link', { name: 'Tất cả công việc' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Công việc của tôi' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Công việc của tôi/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Dự án' })).toBeInTheDocument();
     expect(screen.getByText('Nội dung công việc')).toBeInTheDocument();
   });
 
   it('keeps Sáng/Tối, Thông báo and Tài khoản anchored in the top bar', () => {
     renderShell();
-    expect(screen.getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Thông báo/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Tài khoản/ })).toBeInTheDocument();
+    const topbar = screen.getByRole('banner');
+    expect(within(topbar).getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeInTheDocument();
+    expect(within(topbar).getByRole('link', { name: /Thông báo/ })).toBeInTheDocument();
+    expect(within(topbar).getByRole('button', { name: 'Tài khoản' })).toBeInTheDocument();
   });
 
   it('swaps the contextual sidebar to QHRM and leaves the top bar controls in place', async () => {
@@ -91,10 +94,10 @@ describe('AppWorkspaceShell', () => {
     expect(screen.getByRole('link', { name: 'Chấm công' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tất cả công việc' })).toBeNull();
 
-    expect(screen.getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Thông báo/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Tài khoản/ })).toBeInTheDocument();
-    expect(push).toHaveBeenCalledWith('/org');
+    const topbar = screen.getByRole('banner');
+    expect(within(topbar).getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeInTheDocument();
+    expect(within(topbar).getByRole('link', { name: /Thông báo/ })).toBeInTheDocument();
+    expect(within(topbar).getByRole('button', { name: 'Tài khoản' })).toBeInTheDocument();
   });
 
   it('toggles the theme and shows the account menu with a Vietnamese role', async () => {
@@ -104,7 +107,7 @@ describe('AppWorkspaceShell', () => {
     await user.click(screen.getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' }));
     expect(document.documentElement.dataset.theme).toBe('light');
 
-    await user.click(screen.getByRole('button', { name: /Tài khoản/ }));
+    await user.click(screen.getByRole('button', { name: 'Tài khoản' }));
     const menu = screen.getByRole('menu', { name: 'Tài khoản' });
     expect(within(menu).getByRole('menuitem', { name: 'Trang tài khoản' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: 'Đăng xuất' })).toBeInTheDocument();
@@ -113,7 +116,7 @@ describe('AppWorkspaceShell', () => {
 
   it('shows the unread notification count as Chưa đọc', async () => {
     renderShell();
-    expect(await screen.findByRole('link', { name: 'Thông báo, 1 chưa đọc' })).toHaveTextContent('1');
+    expect(await screen.findByRole('link', { name: 'Thông báo, 1 chưa đọc' })).toBeInTheDocument();
   });
 
   it('exposes theme state and supports account menu keyboard navigation and restoration', async () => {

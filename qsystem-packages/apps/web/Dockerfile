@@ -19,12 +19,14 @@ ARG QSYSTEM_API_URL=http://api:3001
 ENV QSYSTEM_API_URL=${QSYSTEM_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN pnpm --filter web build
+RUN pnpm --filter @qsystem/contracts build && pnpm --filter web build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 RUN corepack enable
 
 COPY --from=builder /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/package.json ./

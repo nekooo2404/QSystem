@@ -83,14 +83,21 @@ describe('/notifications', () => {
 
     const text = document.body.textContent ?? '';
     expect(text).not.toMatch(FORBIDDEN);
-    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(screen.getByRole('list', { name: 'Danh sách thông báo' })).getAllByRole('listitem')).toHaveLength(3);
   });
 
-  it('clears the unread state on the server via POST /api/notifications/read-all on open', async () => {
+  it('clears the unread state on the server via POST /api/notifications/read-all', async () => {
+    const user = userEvent.setup();
     render(<NotificationsPage />);
     await screen.findByText('Bạn có việc mới');
 
+    await user.click(screen.getAllByRole('button', { name: 'Đánh dấu đã đọc' })[0]);
+
     expect(readAllCalls).toBe(1);
+    const list = screen.getByRole('list', { name: 'Danh sách thông báo' });
+    for (const item of within(list).getAllByRole('listitem')) {
+      expect(item).toHaveAttribute('data-unread', 'false');
+    }
     expect(window.localStorage.getItem('qsystem-notifications-seen-at')).toBeNull();
   });
 

@@ -15,11 +15,11 @@ const renderPage = () =>
   );
 
 describe('/login', () => {
-  it('shows only the Q mark, the QSystem wordmark and the intro sentence — no extra tables', () => {
+  it('shows the Q mark, the QSystem wordmark and sign-in heading — no extra tables', () => {
     const { container } = renderPage();
-    expect(screen.getByText('QSystem')).toBeInTheDocument();
-    expect(screen.getByText('Không gian làm việc của QSystem.')).toBeInTheDocument();
-    expect(screen.getByText('Q', { selector: '.qs-login__mark' })).toBeInTheDocument();
+    expect(screen.getByText('QSystem', { selector: '.lg-logo__word' })).toBeInTheDocument();
+    expect(screen.getByText('Q', { selector: '.lg-logo__mark' })).toBeInTheDocument();
+    expect(screen.getByText('Chào mừng trở lại')).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
     expect(container.querySelectorAll('table')).toHaveLength(0);
   });

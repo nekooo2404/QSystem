@@ -5,6 +5,10 @@ import type { MeResponse } from '@qsystem/contracts';
 import { QSocialWorkspace } from '../src/components/qsocial/QSocialWorkspace';
 import type { SocialPostItem } from '../src/lib/adapters/social.adapter';
 
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 const FORBIDDEN =
   /\b(4W|WHO|PENDING|SENT|FAILED|DEAD|Presign|Audit trail|DIRECTOR|MANAGER|EMPLOYEE|ANNOUNCEMENT|SHARING|KUDOS|QUESTION)\b/;
 
@@ -16,17 +20,6 @@ const me = (role: MeResponse['role']): MeResponse => ({
   departmentId: 'd-1',
   managedDepartmentIds: role === 'MANAGER' ? ['d-1'] : [],
 });
-
-const DEPARTMENTS = [
-  { id: 'd-1', name: 'Phòng Kỹ thuật' },
-  { id: 'd-2', name: 'Phòng Sản phẩm' },
-];
-
-const USERS = [
-  { id: 'u-0', name: 'Phạm Bảo Châu', role: 'DIRECTOR' as const },
-  { id: 'u-1', name: 'Nguyễn Minh Tuấn', role: 'EMPLOYEE' as const },
-  { id: 'u-2', name: 'Trần Thị Lan', role: 'MANAGER' as const },
-];
 
 const INITIAL_POSTS: SocialPostItem[] = [
   {
@@ -73,8 +66,8 @@ function json(status: number, body: unknown): Response {
 }
 
 function getFeedContainer(): HTMLElement {
-  const el = document.querySelector('.qsc-feed');
-  if (!el) throw new Error('Expected .qsc-feed container in DOM');
+  const el = document.querySelector('.qso__feed');
+  if (!el) throw new Error('Expected .qso__feed container in DOM');
   return el as HTMLElement;
 }
 
@@ -89,8 +82,6 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/org/departments') return json(200, DEPARTMENTS);
-      if (url === '/api/org/users') return json(200, USERS);
       if (fail) return json(500, { code: 'INTERNAL', message: 'boom' });
 
       if (url === '/api/social/posts' && (!init?.method || init.method === 'GET')) {
@@ -98,15 +89,13 @@ beforeEach(() => {
       }
       if (url === '/api/social/posts' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
-        const deptName =
-          DEPARTMENTS.find((d) => d.id === body.departmentId)?.name ?? null;
         const created: SocialPostItem = {
           id: `post-${store.length + 1}`,
           authorId: 'u-1',
           authorName: 'Nguyễn Minh Tuấn',
           authorRole: 'DIRECTOR',
           departmentId: body.departmentId ?? null,
-          departmentName: deptName,
+          departmentName: null,
           category: body.category ?? 'SHARING',
           content: body.content,
           pinned: Boolean(body.pinned),
@@ -192,14 +181,14 @@ describe('QSocialWorkspace', () => {
     expect(FORBIDDEN.test(document.body.textContent ?? '')).toBe(false);
   });
 
-  it('lọc bài viết theo kênh chủ đề, phòng ban, tab và ô tìm kiếm', async () => {
+  it('lọc bài viết theo kênh chủ đề, tab Đã lưu và chế độ xem', async () => {
     const user = userEvent.setup();
     render(<QSocialWorkspace me={me('DIRECTOR')} />);
     await screen.findAllByRole('article');
     const feed = getFeedContainer();
 
-    const nav = screen.getByRole('navigation', { name: 'Kênh bảng tin' });
-    await user.click(within(nav).getByRole('button', { name: /Phòng Sản phẩm/ }));
+    const nav = screen.getByRole('navigation', { name: 'Kênh nội bộ' });
+    await user.click(within(nav).getByRole('button', { name: /Chia sẻ kinh nghiệm/ }));
     expect(
       within(feed).queryByText('Thông báo lịch họp giao ban đầu tuần vào 9 giờ sáng thứ Hai.'),
     ).toBeNull();
@@ -207,13 +196,7 @@ describe('QSocialWorkspace', () => {
       within(feed).getByText('Đã cập nhật bộ tài liệu hướng dẫn quy trình phát hành mới.'),
     ).toBeTruthy();
 
-    await user.click(within(nav).getByRole('button', { name: /Chia sẻ kinh nghiệm/ }));
-    expect(
-      within(feed).getByText('Đã cập nhật bộ tài liệu hướng dẫn quy trình phát hành mới.'),
-    ).toBeTruthy();
-
-    await user.click(within(nav).getByRole('button', { name: /Toàn công ty/ }));
-    await user.click(screen.getByRole('tab', { name: 'Đã ghim' }));
+    await user.click(within(nav).getByRole('button', { name: /Thông báo chung/ }));
     expect(
       within(feed).queryByText('Đã cập nhật bộ tài liệu hướng dẫn quy trình phát hành mới.'),
     ).toBeNull();
@@ -221,14 +204,21 @@ describe('QSocialWorkspace', () => {
       within(feed).getByText('Thông báo lịch họp giao ban đầu tuần vào 9 giờ sáng thứ Hai.'),
     ).toBeTruthy();
 
-    await user.click(screen.getByRole('tab', { name: 'Tất cả bài viết' }));
-    await user.type(screen.getByRole('searchbox', { name: 'Tìm kiếm bài viết' }), 'phát hành');
+    await user.click(within(nav).getByRole('button', { name: /Toàn công ty/ }));
+    const articles = screen.getAllByRole('article');
+    await user.click(within(articles[1]!).getByRole('button', { name: 'Tùy chọn bài viết' }));
+    await user.click(within(articles[1]!).getByRole('menuitem', { name: 'Lưu bài viết' }));
+
+    await user.click(screen.getByRole('tab', { name: 'Đã lưu' }));
     expect(
-      within(feed).queryByText('Thông báo lịch họp giao ban đầu tuần vào 9 giờ sáng thứ Hai.'),
-    ).toBeNull();
-    expect(
-      within(feed).getByText('Đã cập nhật bộ tài liệu hướng dẫn quy trình phát hành mới.'),
+      within(feed).getByText('Thông báo lịch họp giao ban đầu tuần vào 9 giờ sáng thứ Hai.'),
     ).toBeTruthy();
+    expect(
+      within(feed).queryByText('Đã cập nhật bộ tài liệu hướng dẫn quy trình phát hành mới.'),
+    ).toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: 'Bảng tin' }));
+    expect(screen.getAllByRole('article')).toHaveLength(2);
   });
 
   it('cho phép đăng bài, thả cảm xúc và bình luận trực tiếp', async () => {
@@ -241,9 +231,7 @@ describe('QSocialWorkspace', () => {
       screen.getByLabelText('Nội dung bài viết'),
       'Cảm ơn nhóm hạ tầng đã hỗ trợ nâng cấp hệ thống cuối tuần.',
     );
-    await user.selectOptions(screen.getByLabelText('Chủ đề bài viết'), 'KUDOS');
-    await user.selectOptions(screen.getByLabelText('Kênh phòng ban'), 'd-1');
-    await user.click(screen.getByRole('button', { name: 'Đăng bài' }));
+    await user.click(screen.getByRole('button', { name: /Đăng bài/ }));
 
     expect(
       await within(feed).findByText(
@@ -251,28 +239,34 @@ describe('QSocialWorkspace', () => {
       ),
     ).toBeTruthy();
 
-    const firstPost = screen.getAllByRole('article')[0];
-    await user.click(within(firstPost).getByRole('button', { name: /Thích \(2\)/ }));
+    const targetPost = screen.getAllByRole('article').find((el) => el.id === 'post-1')!;
+    await user.click(within(targetPost).getByRole('button', { name: /2 lượt thích/ }));
     expect(
-      await within(firstPost).findByRole('button', { name: /Đã thích \(3\)/ }),
+      await within(targetPost).findByRole('button', { name: /3 lượt thích/ }),
     ).toBeTruthy();
 
-    const commentInput = within(firstPost).getByPlaceholderText('Viết bình luận trao đổi');
+    await user.click(within(targetPost).getByRole('button', { name: /0 bình luận/ }));
+    const commentInput = within(targetPost).getByPlaceholderText('Viết bình luận phản hồi...');
     await user.type(commentInput, 'Phòng kỹ thuật đã nắm lịch họp ạ.');
-    await user.click(within(firstPost).getByRole('button', { name: 'Gửi' }));
+    await user.click(within(targetPost).getByRole('button', { name: 'Gửi' }));
 
-    expect(await within(firstPost).findByText('Phòng kỹ thuật đã nắm lịch họp ạ.')).toBeTruthy();
+    expect(await within(targetPost).findByText('Phòng kỹ thuật đã nắm lịch họp ạ.')).toBeTruthy();
   });
 
   it('ẩn nút ghim và xóa bài của người khác khi tài khoản là nhân viên', async () => {
+    const user = userEvent.setup();
     render(<QSocialWorkspace me={me('EMPLOYEE')} />);
     const articles = await screen.findAllByRole('article');
+    const ownPost = articles.find((el) => el.id === 'post-2')!;
+    const otherPost = articles.find((el) => el.id === 'post-1')!;
 
-    expect(screen.queryByText('Ghim đầu bảng tin')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Ghim|Bỏ ghim/ })).toBeNull();
+    await user.click(within(otherPost).getByRole('button', { name: 'Tùy chọn bài viết' }));
+    expect(within(otherPost).queryByRole('menuitem', { name: /Ghim|Bỏ ghim/ })).toBeNull();
+    expect(within(otherPost).queryByRole('menuitem', { name: 'Xóa bài viết' })).toBeNull();
 
-    expect(within(articles[0]).queryByRole('button', { name: 'Xóa bài viết' })).toBeNull();
-    expect(within(articles[1]).getByRole('button', { name: 'Xóa bài viết' })).toBeTruthy();
+    await user.click(within(ownPost).getByRole('button', { name: 'Tùy chọn bài viết' }));
+    expect(within(ownPost).queryByRole('menuitem', { name: /Ghim|Bỏ ghim/ })).toBeNull();
+    expect(within(ownPost).getByRole('menuitem', { name: 'Xóa bài viết' })).toBeTruthy();
   });
 
   it('hiển thị trạng thái lỗi và thử lại thành công', async () => {

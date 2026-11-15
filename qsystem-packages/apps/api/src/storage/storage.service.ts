@@ -33,11 +33,44 @@ export class InvalidKeyError extends HttpException {
   }
 }
 
-/** Coded 400 for a `size` Prisma cannot store in the INT4 column. */
+/** Coded 400 for a `size` exceeding the 50MB upload cap or non-negative integer rule. */
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+
+export const BLOCKED_MIME_TYPES = [
+  'text/html',
+  'image/svg+xml',
+  'application/javascript',
+  'text/javascript',
+  'application/x-msdownload',
+  'application/x-sh',
+] as const;
+
+export const BLOCKED_EXTENSIONS = [
+  '.html',
+  '.htm',
+  '.svg',
+  '.exe',
+  '.bat',
+  '.cmd',
+  '.sh',
+] as const;
+
 export class InvalidSizeError extends HttpException {
   constructor() {
     super(
-      { code: 'INVALID_SIZE', message: 'size must be a non-negative integer <= 2147483647' },
+      { code: 'INVALID_SIZE', message: `size must be a non-negative integer <= ${MAX_FILE_SIZE_BYTES}` },
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+}
+
+export class InvalidFileTypeError extends HttpException {
+  constructor() {
+    super(
+      {
+        code: 'INVALID_FILE_TYPE',
+        message: 'file type or extension is not permitted for upload',
+      },
       HttpStatus.BAD_REQUEST,
     );
   }
@@ -123,15 +156,24 @@ export class StorageService {
     if (key.startsWith('/') || key.split('/').some((s) => s === '.' || s === '..')) {
       throw new InvalidKeyError();
     }
-    // Prisma maps `size` to an INT4 column: non-integer, negative, or >2^31-1
-    // values surface as a raw Prisma 500 — reject them as coded 400 instead.
+    const lowerKey = key.trim().toLowerCase();
+    if (BLOCKED_EXTENSIONS.some((ext) => lowerKey.endsWith(ext))) {
+      throw new InvalidFileTypeError();
+    }
+    if (input.mimeType !== undefined) {
+      const normalizedMime = input.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
+      if ((BLOCKED_MIME_TYPES as readonly string[]).includes(normalizedMime)) {
+        throw new InvalidFileTypeError();
+      }
+    }
+    // Cap upload size at 50MB and reject non-integer or negative values as coded 400.
     if (input.size !== undefined) {
       const { size } = input;
       if (
         typeof size !== 'number' ||
         !Number.isInteger(size) ||
         size < 0 ||
-        size > 2_147_483_647
+        size > MAX_FILE_SIZE_BYTES
       ) {
         throw new InvalidSizeError();
       }
@@ -221,8 +263,52 @@ export class StorageService {
       size: row.size,
       ownerId: row.ownerId,
       departmentId: row.departmentId,
-      url: presignUrl(s3ConfigFromEnv(), 'GET', row.bucket, row.key),
+      url: presignUrl(s3ConfigFromEnv(), 'GET', row.bucket, row.key, PRESIGN_EXPIRES_SECONDS, {
+        'response-content-disposition': 'attachment',
+      }),
       expiresInSeconds: PRESIGN_EXPIRES_SECONDS,
     };
+  }
+
+  async updateFile(
+    viewer: ScopeViewer,
+    fileId: string,
+    input: { key?: string; mimeType?: string },
+  ) {
+    const row = await this.prisma.forUser(viewer).file.findUnique({ where: { id: fileId } });
+    if (!row) return null;
+    if (input.key !== undefined) {
+      const key = input.key;
+      if (typeof key !== 'string' || key.trim().length === 0 || key.length > 1024) {
+        throw new InvalidKeyError();
+      }
+      if (key.startsWith('/') || key.split('/').some((s) => s === '.' || s === '..')) {
+        throw new InvalidKeyError();
+      }
+      const lowerKey = key.trim().toLowerCase();
+      if (BLOCKED_EXTENSIONS.some((ext) => lowerKey.endsWith(ext))) {
+        throw new InvalidFileTypeError();
+      }
+    }
+    if (input.mimeType !== undefined) {
+      const normalizedMime = input.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
+      if ((BLOCKED_MIME_TYPES as readonly string[]).includes(normalizedMime)) {
+        throw new InvalidFileTypeError();
+      }
+    }
+    return this.prisma.forUser(viewer).file.update({
+      where: { id: fileId },
+      data: {
+        ...(input.key !== undefined ? { key: input.key } : {}),
+        ...(input.mimeType !== undefined ? { mimeType: input.mimeType } : {}),
+      },
+    });
+  }
+
+  async deleteFile(viewer: ScopeViewer, fileId: string): Promise<{ ok: true; id: string } | null> {
+    const row = await this.prisma.forUser(viewer).file.findUnique({ where: { id: fileId } });
+    if (!row) return null;
+    await this.prisma.forUser(viewer).file.delete({ where: { id: fileId } });
+    return { ok: true as const, id: fileId };
   }
 }

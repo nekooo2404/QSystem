@@ -3,5 +3,6 @@
 node_modules/
 dist/
 .next/
+qsystem-packages/apps/web/output/
 *.local
 .env

@@ -1,22 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import {
-  Button,
-  Form,
-  FormField,
-  Input,
-  Modal,
-  ModalContent,
-  ModalDescription,
-  ModalFooter,
-  ModalHeader,
-  ModalTitle,
-} from '@qsystem/ui';
+import { createPortal } from 'react-dom';
+import { ChevronDown, Eye, EyeOff, Plus, ShieldCheck, X } from 'lucide-react';
+import { useFloatingLayer } from '@qsystem/ui';
 import type { MeResponse, Role } from '@qsystem/contracts';
 import { ApiError, apiFetch } from '../../lib/api/client';
 
 export interface OrgDepartmentOption {
+  id: string;
+  name: string;
+}
+
+export interface OrgManagerOption {
   id: string;
   name: string;
 }
@@ -28,6 +24,8 @@ export interface CreatedOrgUser {
   role: Role;
   departmentId: string | null;
   reportsToId: string | null;
+  jobTitle?: string;
+  reportsToName?: string;
 }
 
 interface CreateUserModalProps {
@@ -35,26 +33,49 @@ interface CreateUserModalProps {
   onOpenChange: (open: boolean) => void;
   me: MeResponse;
   departments: OrgDepartmentOption[];
+  managers?: OrgManagerOption[];
+  isSampleMode?: boolean;
   onCreated: (user: CreatedOrgUser) => void;
 }
 
-export function CreateUserModal({
-  open,
+function formatDepartmentOption(name: string): string {
+  const trimmed = name.trim();
+  if (/^(Phòng|Ban)\b/i.test(trimmed)) return trimmed;
+  return `Phòng ${trimmed}`;
+}
+
+function CreateUserDialog({
   onOpenChange,
   me,
   departments,
+  managers = [],
+  isSampleMode = false,
   onCreated,
-}: CreateUserModalProps) {
+}: Omit<CreateUserModalProps, 'open'>) {
   const isManagerOnly = me.role === 'MANAGER';
   const availableDepts = isManagerOnly
     ? departments.filter((d) => me.managedDepartmentIds.includes(d.id))
     : departments;
 
+  const defaultDept = React.useMemo(() => {
+    if (isManagerOnly) return availableDepts[0]?.id ?? '';
+    const tech = availableDepts.find((d) => /công nghệ/i.test(d.name));
+    return tech?.id ?? '';
+  }, [availableDepts, isManagerOnly]);
+
+  const defaultManager = React.useMemo(() => {
+    const quocHuy = managers.find((m) => /quốc huy/i.test(m.name));
+    return quocHuy?.id ?? '';
+  }, [managers]);
+
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [departmentId, setDepartmentId] = React.useState<string>(defaultDept);
+  const [jobTitle, setJobTitle] = React.useState('');
   const [role, setRole] = React.useState<Role>('EMPLOYEE');
-  const [departmentId, setDepartmentId] = React.useState<string>('');
+  const [reportsToId, setReportsToId] = React.useState<string>(defaultManager);
+  const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
   const [errors, setErrors] = React.useState<{
     name?: string;
     email?: string;
@@ -64,21 +85,16 @@ export function CreateUserModal({
   }>({});
   const [saving, setSaving] = React.useState(false);
 
-  React.useEffect(() => {
-    if (open && isManagerOnly && availableDepts.length > 0 && !departmentId) {
-      setDepartmentId(availableDepts[0].id);
-    }
-  }, [open, isManagerOnly, availableDepts, departmentId]);
+  const modalRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  const descId = React.useId();
 
-  function close() {
+  const close = React.useCallback(() => {
+    if (saving) return;
     onOpenChange(false);
-    setName('');
-    setEmail('');
-    setPassword('');
-    setRole('EMPLOYEE');
-    setDepartmentId('');
-    setErrors({});
-  }
+  }, [onOpenChange, saving]);
+
+  useFloatingLayer(true, close, true, { root: modalRef });
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -88,7 +104,7 @@ export function CreateUserModal({
       nextErrors.email = 'Vui lòng nhập địa chỉ email hợp lệ.';
     }
     if (password.length < 8) {
-      nextErrors.password = 'Mật khẩu cần tối thiểu 8 ký tự.';
+      nextErrors.password = 'Mật khẩu tạm cần tối thiểu 8 ký tự.';
     }
     if (isManagerOnly && !departmentId) {
       nextErrors.departmentId = 'Vui lòng chọn phòng ban bạn quản lý.';
@@ -97,6 +113,10 @@ export function CreateUserModal({
     if (Object.keys(nextErrors).length > 0) return;
 
     setSaving(true);
+    const trimmedTitle = jobTitle.trim();
+    const canLocalFallback =
+      process.env.NODE_ENV === 'development' ||
+      (process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && process.env.NODE_ENV !== 'test');
     try {
       const created = await apiFetch<CreatedOrgUser>('/api/org/users', {
         method: 'POST',
@@ -106,98 +126,291 @@ export function CreateUserModal({
           email: email.trim(),
           password,
           role: isManagerOnly ? 'EMPLOYEE' : role,
+          ...(trimmedTitle ? { jobTitle: trimmedTitle } : {}),
           departmentId: departmentId || null,
+          reportsToId: reportsToId || null,
         }),
       });
-      onCreated(created);
-      close();
+      const selectedManager = managers.find((m) => m.id === reportsToId);
+      onCreated({
+        ...created,
+        departmentId: created.departmentId ?? (departmentId || null),
+        reportsToId: created.reportsToId ?? (reportsToId || null),
+        jobTitle: created.jobTitle ?? (trimmedTitle || undefined),
+        reportsToName: selectedManager?.name,
+      });
+      onOpenChange(false);
     } catch (err) {
-      const msg =
-        err instanceof ApiError && err.code === 'CONFLICT'
-          ? 'Email này đã có trong hệ thống.'
-          : 'Không thêm được nhân sự, vui lòng thử lại.';
-      setErrors({ form: msg });
+      if (err instanceof ApiError && (err.code === 'CONFLICT' || err.status === 409)) {
+        setErrors({ form: 'Email này đã có trong hệ thống.' });
+        return;
+      }
+      if (err instanceof ApiError && err.status === 400) {
+        setErrors({ form: err.message || 'Thông tin chưa hợp lệ.' });
+        return;
+      }
+      const isOfflineOrSample =
+        canLocalFallback &&
+        (isSampleMode ||
+          !(err instanceof ApiError) ||
+          err.status === 404 ||
+          err.status >= 500);
+      if (isOfflineOrSample) {
+        const selectedManager = managers.find((m) => m.id === reportsToId);
+        onCreated({
+          id: `u-local-${Date.now()}`,
+          name: name.trim(),
+          email: email.trim(),
+          role: isManagerOnly ? 'EMPLOYEE' : role,
+          departmentId: departmentId || null,
+          reportsToId: reportsToId || null,
+          jobTitle: trimmedTitle || undefined,
+          reportsToName: selectedManager?.name,
+        });
+        onOpenChange(false);
+        return;
+      }
+      setErrors({ form: 'Không thêm được nhân sự, vui lòng thử lại.' });
     } finally {
       setSaving(false);
     }
   }
 
-  return (
-    <Modal open={open} onOpenChange={(next) => (next ? undefined : close())}>
-      <ModalContent>
-        <ModalHeader>
-          <ModalTitle>Thêm nhân sự mới</ModalTitle>
-          <ModalDescription>Tạo tài khoản làm việc mới trong phạm vi phụ trách của bạn.</ModalDescription>
-        </ModalHeader>
-        <Form onSubmit={(event) => void submit(event)}>
-          <FormField name="name" label="Họ tên" error={errors.name}>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Ví dụ: Lê Minh Khôi"
-            />
-          </FormField>
-          <FormField name="email" label="Email" error={errors.email}>
-            <Input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="khoi@qsystem.vn"
-            />
-          </FormField>
-          <FormField name="password" label="Mật khẩu tạm" error={errors.password}>
-            <Input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Ít nhất 8 ký tự"
-            />
-          </FormField>
-          <FormField name="departmentId" label="Phòng ban" error={errors.departmentId}>
-            <select
-              className="qs-input"
-              aria-label="Phòng ban"
-              value={departmentId}
-              onChange={(event) => setDepartmentId(event.target.value)}
-            >
-              {!isManagerOnly ? <option value="">Chưa xếp phòng ban</option> : null}
-              {availableDepts.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
-          </FormField>
-          {!isManagerOnly ? (
-            <FormField name="role" label="Vai trò">
-              <select
-                className="qs-input"
-                aria-label="Vai trò"
-                value={role}
-                onChange={(event) => setRole(event.target.value as Role)}
-              >
-                <option value="EMPLOYEE">Nhân viên</option>
-                <option value="MANAGER">Quản lý</option>
-                <option value="DIRECTOR">Giám đốc</option>
-              </select>
-            </FormField>
-          ) : null}
-          {errors.form ? (
-            <p className="qs-form__error" role="alert">
-              {errors.form}
-            </p>
-          ) : null}
-          <ModalFooter>
-            <Button type="button" variant="secondary" onClick={close} disabled={saving}>
+  const content = (
+    <div
+      className="hr-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) close();
+      }}
+    >
+      <div
+        ref={modalRef}
+        className="hr-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descId}
+        tabIndex={-1}
+      >
+        <div className="hr-modal__head">
+          <h2 id={titleId}>Thêm nhân sự mới</h2>
+          <p id={descId}>Tạo hồ sơ và tài khoản làm việc cho thành viên mới.</p>
+          <button
+            type="button"
+            className="hr-modal__close"
+            aria-label="Đóng hộp thoại"
+            onClick={close}
+            disabled={saving}
+          >
+            <X size={18} strokeWidth={1.6} aria-hidden="true" />
+          </button>
+        </div>
+
+        <form onSubmit={(event) => void submit(event)} noValidate>
+          <div className="hr-modal__body">
+            <div className="hr-field">
+              <label htmlFor="hr-user-name">Họ và tên *</label>
+              <input
+                id="hr-user-name"
+                type="text"
+                className="hr-input"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Nguyễn Minh An"
+                aria-invalid={Boolean(errors.name)}
+                disabled={saving}
+              />
+              {errors.name ? (
+                <p className="hr-error" role="alert">
+                  {errors.name}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="hr-field">
+              <label htmlFor="hr-user-email">Email công việc *</label>
+              <input
+                id="hr-user-email"
+                type="email"
+                className="hr-input"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="minhan@qsystem.vn"
+                aria-invalid={Boolean(errors.email)}
+                disabled={saving}
+              />
+              {errors.email ? (
+                <p className="hr-error" role="alert">
+                  {errors.email}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="hr-field">
+              <label htmlFor="hr-user-dept">Phòng ban</label>
+              <div className="hr-input-wrap">
+                <select
+                  id="hr-user-dept"
+                  className="hr-input"
+                  value={departmentId}
+                  onChange={(event) => setDepartmentId(event.target.value)}
+                  aria-invalid={Boolean(errors.departmentId)}
+                  disabled={saving}
+                >
+                  {!isManagerOnly ? <option value="">Chưa xếp phòng ban</option> : null}
+                  {availableDepts.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {formatDepartmentOption(dept.name)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
+              </div>
+              {errors.departmentId ? (
+                <p className="hr-error" role="alert">
+                  {errors.departmentId}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="hr-field">
+              <label htmlFor="hr-user-title">Chức danh</label>
+              <input
+                id="hr-user-title"
+                type="text"
+                className="hr-input"
+                value={jobTitle}
+                onChange={(event) => setJobTitle(event.target.value)}
+                placeholder="Chuyên viên kỹ thuật"
+                disabled={saving}
+              />
+            </div>
+
+            <div className="hr-field hr-field--gap">
+              <label htmlFor="hr-user-role">Vai trò truy cập</label>
+              <div className="hr-input-wrap">
+                <select
+                  id="hr-user-role"
+                  className="hr-input"
+                  value={isManagerOnly ? 'EMPLOYEE' : role}
+                  onChange={(event) => setRole(event.target.value as Role)}
+                  disabled={saving || isManagerOnly}
+                >
+                  <option value="EMPLOYEE">Nhân viên</option>
+                  {!isManagerOnly ? <option value="MANAGER">Quản lý</option> : null}
+                  {!isManagerOnly ? <option value="DIRECTOR">Giám đốc</option> : null}
+                </select>
+                <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
+              </div>
+            </div>
+
+            <div className="hr-field hr-field--gap">
+              <label htmlFor="hr-user-manager">Quản lý trực tiếp</label>
+              <div className="hr-input-wrap">
+                <select
+                  id="hr-user-manager"
+                  className="hr-input"
+                  value={reportsToId}
+                  onChange={(event) => setReportsToId(event.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">Chưa chỉ định</option>
+                  {managers.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
+              </div>
+            </div>
+
+            <div className="hr-field hr-field--full hr-field--gap">
+              <label htmlFor="hr-user-password">Mật khẩu tạm *</label>
+              <div className="hr-input-wrap">
+                <input
+                  id="hr-user-password"
+                  type={showPassword ? 'text' : 'password'}
+                  className="hr-input hr-input--pwd"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="••••••••••••"
+                  aria-invalid={Boolean(errors.password)}
+                  disabled={saving}
+                />
+                <button
+                  type="button"
+                  className="hr-eye"
+                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  disabled={saving}
+                >
+                  {showPassword ? (
+                    <EyeOff size={16} strokeWidth={1.6} aria-hidden="true" />
+                  ) : (
+                    <Eye size={16} strokeWidth={1.6} aria-hidden="true" />
+                  )}
+                </button>
+              </div>
+              <p className="hr-hint">
+                Người dùng sẽ được yêu cầu đổi mật khẩu ở lần đăng nhập đầu tiên.
+              </p>
+              {errors.password ? (
+                <p className="hr-error" role="alert">
+                  {errors.password}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="hr-note">
+              <ShieldCheck size={16} strokeWidth={1.6} aria-hidden="true" />
+              <span>Tài khoản sẽ chỉ được cấp quyền theo vai trò và phòng ban được lựa chọn.</span>
+            </div>
+
+            {errors.form ? (
+              <p className="hr-error hr-field--full" role="alert">
+                {errors.form}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="hr-modal__foot">
+            <button type="button" className="qx-btn" onClick={close} disabled={saving}>
               Hủy
-            </Button>
-            <Button type="submit" disabled={saving}>
+            </button>
+            <button type="submit" className="qx-btn qx-btn--primary" disabled={saving}>
+              <Plus size={15} strokeWidth={2} aria-hidden="true" />
               {saving ? 'Đang lưu…' : 'Tạo nhân sự'}
-            </Button>
-          </ModalFooter>
-        </Form>
-      </ModalContent>
-    </Modal>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(content, document.body);
 }
 
+export function CreateUserModal({
+  open,
+  onOpenChange,
+  me,
+  departments,
+  managers = [],
+  isSampleMode = false,
+  onCreated,
+}: CreateUserModalProps) {
+  if (!open) return null;
+  return (
+    <CreateUserDialog
+      onOpenChange={onOpenChange}
+      me={me}
+      departments={departments}
+      managers={managers}
+      isSampleMode={isSampleMode}
+      onCreated={onCreated}
+    />
+  );
+}

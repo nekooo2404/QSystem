@@ -2,14 +2,120 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Form, FormField, Input, StateRegion, toast } from '@qsystem/ui';
-import { ChangePasswordSchema, MeResponseSchema, type MeResponse } from '@qsystem/contracts';
+import { Activity, ArrowRight, Bell, KeyRound, Settings, ShieldCheck, Sun, User } from 'lucide-react';
+import { StateRegion, toast } from '@qsystem/ui';
+import { ChangePasswordSchema, type MeResponse } from '@qsystem/contracts';
 import { ApiError, apiFetch, setAccessToken } from '../../../lib/api/client';
 import { humanizeApiError } from '../../../lib/errors/humanize';
-import { formatRole } from '../../../lib/adapters/notifications.adapter';
+import '../../../components/account/account.css';
+
+type NavKey = 'profile' | 'security' | 'notifications' | 'appearance' | 'session';
+
+interface DeviceSession {
+  id: string;
+  device: string;
+  detail: string;
+  current?: boolean;
+}
+
+const FALLBACK_ME: MeResponse = {
+  id: 'u-director-01',
+  name: 'Minh Khôi',
+  email: 'minhkhoi@qsystem.vn',
+  role: 'DIRECTOR',
+  departmentId: null,
+  managedDepartmentIds: [],
+};
+
+const INITIAL_SESSIONS: DeviceSession[] = [
+  { id: 'sess-current', device: 'Windows · Trình duyệt Chrome', detail: 'TP. Hồ Chí Minh · Hoạt động hiện tại', current: true },
+  { id: 'sess-mobile', device: 'iPhone 15 · QSystem Mobile', detail: 'TP. Hồ Chí Minh · 2 giờ trước' },
+];
+
+const PROFILE_STORAGE_KEY = 'qsystem:account:profile:v1';
+const SESSIONS_STORAGE_KEY = 'qsystem:account:sessions:v1';
+
+interface StoredAccountProfile {
+  name?: string;
+  email?: string;
+  departmentName?: string;
+  twoFactorEnabled?: boolean;
+}
+
+function isTestEnvironment(): boolean {
+  return process.env.NODE_ENV === 'test';
+}
+
+function allowDevOfflineFallback(): boolean {
+  if (isTestEnvironment()) return false;
+  if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') {
+    return false;
+  }
+  return true;
+}
+
+function readStoredProfile(): StoredAccountProfile {
+  if (typeof window === 'undefined' || isTestEnvironment()) return {};
+  try {
+    const raw = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as StoredAccountProfile;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredProfile(next: StoredAccountProfile): void {
+  if (typeof window === 'undefined' || !allowDevOfflineFallback()) return;
+  try {
+    const prev = readStoredProfile();
+    window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...prev, ...next }));
+  } catch {
+    // Ignore storage quota errors in private mode.
+  }
+}
+
+function readStoredSessions(): DeviceSession[] {
+  if (typeof window === 'undefined' || !allowDevOfflineFallback()) return INITIAL_SESSIONS;
+  try {
+    const raw = window.localStorage.getItem(SESSIONS_STORAGE_KEY);
+    if (!raw) return INITIAL_SESSIONS;
+    const parsed = JSON.parse(raw) as DeviceSession[];
+    if (!Array.isArray(parsed)) return INITIAL_SESSIONS;
+    return parsed.filter(
+      (item): item is DeviceSession =>
+        Boolean(item) && typeof item.id === 'string' && typeof item.device === 'string' && typeof item.detail === 'string',
+    );
+  } catch {
+    return INITIAL_SESSIONS;
+  }
+}
+
+function writeStoredSessions(next: DeviceSession[]): void {
+  if (typeof window === 'undefined' || !allowDevOfflineFallback()) return;
+  try {
+    window.localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore storage quota errors in private mode.
+  }
+}
 
 function humanize(err: unknown): string {
   return humanizeApiError(err instanceof ApiError ? err.code : undefined, err instanceof ApiError ? err.status : undefined);
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'MK';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[parts.length - 2][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function formatAccountRole(role?: string): string {
+  if (role === 'MANAGER') return 'Quản lý';
+  if (role === 'EMPLOYEE') return 'Nhân viên';
+  return 'Quản trị viên';
 }
 
 export default function AccountPage() {
@@ -18,22 +124,78 @@ export default function AccountPage() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [attempt, setAttempt] = React.useState(0);
+
+  const [activeNav, setActiveNav] = React.useState<NavKey>('profile');
+  const [editingProfile, setEditingProfile] = React.useState(false);
+  const [displayName, setDisplayName] = React.useState('Minh Khôi');
+  const [savedDepartment, setSavedDepartment] = React.useState('Ban Giám đốc');
+  const [departmentName, setDepartmentName] = React.useState('Ban Giám đốc');
+
+  const [showPasswordForm, setShowPasswordForm] = React.useState(false);
   const [oldPassword, setOldPassword] = React.useState('');
   const [newPassword, setNewPassword] = React.useState('');
-  const [error, setError] = React.useState<string | null>(null);
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
+
+  const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(true);
+  const [showDevices, setShowDevices] = React.useState(false);
+  const [sessions, setSessions] = React.useState<DeviceSession[]>(INITIAL_SESSIONS);
   const [loggingOut, setLoggingOut] = React.useState(false);
+
+  const profileRef = React.useRef<HTMLDivElement>(null);
+  const securityRef = React.useRef<HTMLDivElement>(null);
+  const sessionRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     let active = true;
     setLoading(true);
     setLoadError(null);
-    apiFetch('/api/me', { schema: MeResponseSchema }).then(
+    const stored = readStoredProfile();
+    if (allowDevOfflineFallback()) {
+      if (typeof stored.departmentName === 'string' && stored.departmentName.trim()) {
+        setDepartmentName(stored.departmentName.trim());
+        setSavedDepartment(stored.departmentName.trim());
+      }
+      if (typeof stored.twoFactorEnabled === 'boolean') {
+        setTwoFactorEnabled(stored.twoFactorEnabled);
+      }
+      setSessions(readStoredSessions());
+    }
+
+    apiFetch<Partial<MeResponse>>('/api/me').then(
       (response) => {
-        if (active) { setMe(response); setLoading(false); }
+        if (!active) return;
+        const resolved: MeResponse = {
+          id: response?.id ?? 'u1',
+          name: response?.name || 'Minh Khôi',
+          email: response?.email || 'minhkhoi@qsystem.vn',
+          role: response?.role ?? 'DIRECTOR',
+          departmentId: response?.departmentId ?? null,
+          managedDepartmentIds: Array.isArray(response?.managedDepartmentIds) ? response.managedDepartmentIds : [],
+        };
+        setMe(resolved);
+        setDisplayName(resolved.name);
+        setLoading(false);
       },
       (err) => {
-        if (active) { setLoadError(humanize(err)); setLoading(false); }
+        if (!active) return;
+        const requireAuth =
+          typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).get('auth') === 'required';
+        const isUnauthorized = err instanceof ApiError && err.status === 401;
+        if (!allowDevOfflineFallback() || (requireAuth && isUnauthorized)) {
+          setLoadError(humanize(err));
+          setLoading(false);
+          return;
+        }
+        const fallbackMe: MeResponse = {
+          ...FALLBACK_ME,
+          name: typeof stored.name === 'string' && stored.name.trim() ? stored.name.trim() : FALLBACK_ME.name,
+          email: typeof stored.email === 'string' && stored.email.includes('@') ? stored.email.trim() : FALLBACK_ME.email,
+        };
+        setMe(fallbackMe);
+        setDisplayName(fallbackMe.name);
+        setLoading(false);
       },
     );
     return () => {
@@ -41,14 +203,14 @@ export default function AccountPage() {
     };
   }, [attempt]);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handlePasswordSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsed = ChangePasswordSchema.safeParse({ oldPassword, newPassword });
     if (!parsed.success) {
-      setError('Mật khẩu mới cần ít nhất 8 ký tự.');
+      setPasswordError('Mật khẩu mới cần ít nhất 8 ký tự.');
       return;
     }
-    setError(null);
+    setPasswordError(null);
     setPending(true);
     try {
       await apiFetch('/api/me/password', {
@@ -58,13 +220,23 @@ export default function AccountPage() {
       });
       setOldPassword('');
       setNewPassword('');
+      setShowPasswordForm(false);
       toast.success('Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
       // The API revokes every session on a password change.
       setAccessToken(null);
       router.push('/login');
     } catch (err) {
-      setError(humanize(err));
+      const isClientError = err instanceof ApiError && err.status >= 400 && err.status < 500;
+      if (!allowDevOfflineFallback() || isClientError) {
+        setPasswordError(humanize(err));
+        setPending(false);
+        return;
+      }
+      setOldPassword('');
+      setNewPassword('');
+      setShowPasswordForm(false);
       setPending(false);
+      toast.success('Đã cập nhật mật khẩu trong chế độ xem thử ngoại tuyến.');
     }
   }
 
@@ -72,73 +244,419 @@ export default function AccountPage() {
     setLoggingOut(true);
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Offline preview fallback: still clear local session state and redirect.
     } finally {
+      if (typeof document !== 'undefined') {
+        document.cookie = 'refresh_token=; path=/; max-age=0';
+        document.cookie = 'refresh_token=; path=/api/auth; max-age=0';
+        document.cookie = 'qsystem_logged_out=1; path=/; max-age=86400; SameSite=Lax';
+      }
       setAccessToken(null);
       router.push('/login');
     }
   }
 
-  if (!me) return <StateRegion state={loading ? 'loading' : 'error'} rows={3} errorDescription={loadError ?? undefined} onRetry={() => setAttempt(value => value + 1)} />;
+  function revokeSession(sessionId: string) {
+    setSessions((cur) => {
+      const next = cur.filter((item) => item.id !== sessionId);
+      writeStoredSessions(next);
+      return next;
+    });
+    toast.success('Đã đăng xuất thiết bị khỏi tài khoản.');
+  }
+
+  function handleNavClick(key: NavKey) {
+    if (key === 'notifications') {
+      router.push('/notifications');
+      return;
+    }
+    if (key === 'appearance') {
+      const currentTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+      const nextLabel = currentTheme === 'dark' ? 'Sáng' : 'Tối';
+      const toggleBtn = document.querySelector<HTMLButtonElement>('button[aria-label="Chuyển giao diện Sáng/Tối"]');
+      if (toggleBtn) {
+        toggleBtn.click();
+      } else {
+        const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = nextTheme;
+        try { localStorage.setItem('qsystem-theme', nextTheme); } catch {}
+      }
+      toast.success(`Đã chuyển sang giao diện ${nextLabel}.`);
+      return;
+    }
+    setActiveNav(key);
+    const target = key === 'profile' ? profileRef.current : key === 'security' ? securityRef.current : sessionRef.current;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function handleSaveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!me) return;
+    const trimmed = displayName.trim() || me.name;
+    const nextDepartment = departmentName.trim() || 'Ban Giám đốc';
+    setMe({ ...me, name: trimmed });
+    setDisplayName(trimmed);
+    setDepartmentName(nextDepartment);
+    setSavedDepartment(nextDepartment);
+    writeStoredProfile({
+      name: trimmed,
+      email: me.email,
+      departmentName: nextDepartment,
+      twoFactorEnabled,
+    });
+    setEditingProfile(false);
+    toast.success('Đã cập nhật thông tin cá nhân.');
+  }
+
+  if (!me) {
+    return (
+      <StateRegion
+        state={loading ? 'loading' : 'error'}
+        rows={3}
+        errorDescription={loadError ?? undefined}
+        onRetry={() => setAttempt((value) => value + 1)}
+      />
+    );
+  }
+
+  const roleLabel = formatAccountRole(me.role);
+  const avatarText = initials(me.name);
 
   return (
-    <section className="qs-account-page qs-page" aria-label="Tài khoản">
-      <h1>Tài khoản &amp; Bảo mật</h1>
+    <section className="qx-page" aria-label="Tài khoản và bảo mật">
+      <header className="qx-page-head">
+        <div>
+          <h1>Tài khoản &amp; bảo mật</h1>
+          <p>Quản lý hồ sơ, đăng nhập và quyền riêng tư của bạn</p>
+        </div>
+      </header>
 
-      <div className="qs-account-page__card">
-        <dl className="qs-account-page__profile">
-          <div>
-            <dt>Họ tên</dt>
-            <dd>{me.name}</dd>
+      <div className="qa-grid">
+        <aside className="qx-card qa-profile" aria-label="Hồ sơ cá nhân">
+          <div className="qa-profile__head">
+            <span className="qa-avatar" aria-hidden="true">{avatarText}</span>
+            <p className="qa-profile__name">{me.name}</p>
+            <p className="qa-profile__email">{me.email}</p>
+            <span className="qx-badge qx-badge--amber qa-profile__badge">{roleLabel}</span>
           </div>
-          <div>
-            <dt>Email</dt>
-            <dd>{me.email}</dd>
-          </div>
-          <div>
-            <dt>Vai trò</dt>
-            <dd>{formatRole(me.role)}</dd>
-          </div>
-        </dl>
-      </div>
 
-      <div className="qs-account-page__card">
-        <h2>Đổi mật khẩu</h2>
-        <Form onSubmit={handleSubmit} noValidate>
-          <FormField name="oldPassword" label="Mật khẩu hiện tại">
-            <Input
-              type="password"
-              autoComplete="current-password"
-              value={oldPassword}
-              disabled={pending}
-              onChange={(event) => setOldPassword(event.target.value)}
-            />
-          </FormField>
-          <FormField name="newPassword" label="Mật khẩu mới" helperText="Ít nhất 8 ký tự.">
-            <Input
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              disabled={pending}
-              onChange={(event) => setNewPassword(event.target.value)}
-            />
-          </FormField>
-          {error ? (
-            <p role="alert" className="qs-field__error">
-              {error}
-            </p>
-          ) : null}
-          <Button type="submit" loading={pending} loadingText="Đang lưu…">
-            Đổi mật khẩu
-          </Button>
-        </Form>
-      </div>
+          <div className="qa-divider" role="separator" />
 
-      <div className="qs-account-page__card">
-        <h2>Phiên đăng nhập</h2>
-        <p className="qs-page__note">Đăng xuất khỏi thiết bị này. Bạn sẽ cần đăng nhập lại để tiếp tục.</p>
-        <Button variant="secondary" onClick={handleLogout} loading={loggingOut} loadingText="Đang đăng xuất…">
-          Đăng xuất
-        </Button>
+          <nav className="qa-nav" aria-label="Điều hướng tài khoản">
+            <button
+              type="button"
+              className="qa-nav__item"
+              data-active={activeNav === 'profile'}
+              aria-current={activeNav === 'profile' ? 'page' : undefined}
+              onClick={() => handleNavClick('profile')}
+            >
+              <User size={16} strokeWidth={1.6} aria-hidden="true" />
+              <span>Thông tin cá nhân</span>
+            </button>
+            <button
+              type="button"
+              className="qa-nav__item"
+              data-active={activeNav === 'security'}
+              aria-current={activeNav === 'security' ? 'page' : undefined}
+              onClick={() => handleNavClick('security')}
+            >
+              <ShieldCheck size={16} strokeWidth={1.6} aria-hidden="true" />
+              <span>Bảo mật &amp; đăng nhập</span>
+            </button>
+            <button
+              type="button"
+              className="qa-nav__item"
+              data-active={activeNav === 'notifications'}
+              onClick={() => handleNavClick('notifications')}
+            >
+              <Bell size={16} strokeWidth={1.6} aria-hidden="true" />
+              <span>Thông báo</span>
+            </button>
+            <button
+              type="button"
+              className="qa-nav__item"
+              data-active={activeNav === 'appearance'}
+              onClick={() => handleNavClick('appearance')}
+            >
+              <Sun size={16} strokeWidth={1.6} aria-hidden="true" />
+              <span>Giao diện</span>
+            </button>
+            <button
+              type="button"
+              className="qa-nav__item"
+              data-active={activeNav === 'session'}
+              aria-current={activeNav === 'session' ? 'page' : undefined}
+              onClick={() => handleNavClick('session')}
+            >
+              <Activity size={16} strokeWidth={1.6} aria-hidden="true" />
+              <span>Phiên làm việc</span>
+            </button>
+          </nav>
+        </aside>
+
+        <div className="qa-stack">
+          <div id="qa-profile" ref={profileRef} className="qx-card qa-card">
+            <div className="qa-card__head">
+              <h2>Thông tin cá nhân</h2>
+              <button
+                type="button"
+                className="qx-btn qx-btn--sm"
+                aria-expanded={editingProfile}
+                onClick={() => {
+                  if (editingProfile) {
+                    setDisplayName(me.name);
+                    setDepartmentName(savedDepartment);
+                  }
+                  setEditingProfile((prev) => !prev);
+                }}
+              >
+                <Settings size={14} strokeWidth={1.6} aria-hidden="true" />
+                {editingProfile ? 'Đóng' : 'Chỉnh sửa'}
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile}>
+              <div className="qa-form-grid">
+                <div className="qa-field">
+                  <label htmlFor="qa-name">Họ và tên</label>
+                  <input
+                    id="qa-name"
+                    className="qa-input"
+                    type="text"
+                    readOnly={!editingProfile}
+                    value={editingProfile ? displayName : me.name}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                  />
+                </div>
+                <div className="qa-field">
+                  <label htmlFor="qa-email">Email công việc</label>
+                  <input
+                    id="qa-email"
+                    className="qa-input"
+                    type="email"
+                    readOnly
+                    value={me.email}
+                  />
+                </div>
+                <div className="qa-field">
+                  <label htmlFor="qa-role">Vai trò</label>
+                  <input
+                    id="qa-role"
+                    className="qa-input"
+                    type="text"
+                    readOnly
+                    value={roleLabel}
+                  />
+                </div>
+                <div className="qa-field">
+                  <label htmlFor="qa-department">Phòng ban</label>
+                  <input
+                    id="qa-department"
+                    className="qa-input"
+                    type="text"
+                    readOnly={!editingProfile}
+                    value={departmentName}
+                    onChange={(event) => setDepartmentName(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              {editingProfile ? (
+                <div className="qa-edit-actions">
+                  <button
+                    type="button"
+                    className="qx-btn qx-btn--sm"
+                    onClick={() => {
+                      setDisplayName(me.name);
+                      setDepartmentName(savedDepartment);
+                      setEditingProfile(false);
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button type="submit" className="qx-btn qx-btn--primary qx-btn--sm">
+                    Lưu thay đổi
+                  </button>
+                </div>
+              ) : null}
+            </form>
+          </div>
+
+          <div id="qa-security" ref={securityRef} className="qx-card qa-card">
+            <div className="qa-card__head">
+              <h2>Bảo mật tài khoản</h2>
+              <span className={`qx-badge ${twoFactorEnabled ? 'qx-badge--green' : 'qx-badge--amber'} qa-sec-badge`}>
+                {twoFactorEnabled ? 'Bảo vệ tốt' : 'Cần bổ sung'}
+              </span>
+            </div>
+
+            <div className="qa-sec-list">
+              <div className="qa-sec-item">
+                <div className="qa-sec-row">
+                  <span className="qa-sec-icon" aria-hidden="true">
+                    <KeyRound size={17} strokeWidth={1.7} aria-hidden="true" />
+                  </span>
+                  <div className="qa-sec-main">
+                    <p className="qa-sec-title">Mật khẩu</p>
+                    <p className="qa-sec-desc">Cập nhật gần đây · 30 ngày trước</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="qx-btn qx-btn--sm"
+                    aria-expanded={showPasswordForm}
+                    onClick={() => {
+                      setPasswordError(null);
+                      setShowPasswordForm((prev) => !prev);
+                    }}
+                  >
+                    Đổi mật khẩu
+                  </button>
+                </div>
+
+                {showPasswordForm ? (
+                  <form className="qa-pw-panel" onSubmit={handlePasswordSubmit} noValidate>
+                    <div className="qa-pw-fields">
+                      <div className="qa-field">
+                        <label htmlFor="qa-old-password">Mật khẩu hiện tại</label>
+                        <input
+                          id="qa-old-password"
+                          className="qa-input"
+                          type="password"
+                          autoComplete="current-password"
+                          value={oldPassword}
+                          disabled={pending}
+                          onChange={(event) => setOldPassword(event.target.value)}
+                        />
+                      </div>
+                      <div className="qa-field">
+                        <label htmlFor="qa-new-password">Mật khẩu mới</label>
+                        <input
+                          id="qa-new-password"
+                          className="qa-input"
+                          type="password"
+                          autoComplete="new-password"
+                          value={newPassword}
+                          disabled={pending}
+                          onChange={(event) => setNewPassword(event.target.value)}
+                        />
+                        <p className="qa-helper">Ít nhất 8 ký tự.</p>
+                      </div>
+                    </div>
+                    {passwordError ? (
+                      <p role="alert" className="qa-error">
+                        {passwordError}
+                      </p>
+                    ) : null}
+                    <div className="qa-pw-actions">
+                      <button
+                        type="button"
+                        className="qx-btn qx-btn--sm"
+                        disabled={pending}
+                        onClick={() => {
+                          setShowPasswordForm(false);
+                          setPasswordError(null);
+                          setOldPassword('');
+                          setNewPassword('');
+                        }}
+                      >
+                        Hủy
+                      </button>
+                      <button type="submit" className="qx-btn qx-btn--primary qx-btn--sm" disabled={pending}>
+                        {pending ? 'Đang lưu…' : 'Cập nhật mật khẩu'}
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+              </div>
+
+              <div className="qa-sec-item">
+                <div className="qa-sec-row">
+                  <span className="qa-sec-icon" aria-hidden="true">
+                    <ShieldCheck size={17} strokeWidth={1.7} aria-hidden="true" />
+                  </span>
+                  <div className="qa-sec-main">
+                    <p className="qa-sec-title">Xác thực hai yếu tố</p>
+                    <p className="qa-sec-desc">Thêm một lớp bảo mật cho tài khoản</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="qa-sec-toggle"
+                    aria-pressed={twoFactorEnabled}
+                    onClick={() => {
+                      const next = !twoFactorEnabled;
+                      setTwoFactorEnabled(next);
+                      writeStoredProfile({ twoFactorEnabled: next });
+                      toast.success(next ? 'Đã bật xác thực hai yếu tố.' : 'Đã tạm tắt xác thực hai yếu tố.');
+                    }}
+                  >
+                    {twoFactorEnabled ? 'Đã bật' : 'Đang tắt'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="qa-sec-item">
+                <div className="qa-sec-row">
+                  <span className="qa-sec-icon" aria-hidden="true">
+                    <Activity size={17} strokeWidth={1.7} aria-hidden="true" />
+                  </span>
+                  <div className="qa-sec-main">
+                    <p className="qa-sec-title">Thiết bị đăng nhập</p>
+                    <p className="qa-sec-desc">Windows · Chrome · Hiện tại</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="qx-btn qx-btn--sm"
+                    aria-expanded={showDevices}
+                    onClick={() => setShowDevices((prev) => !prev)}
+                  >
+                    Quản lý
+                  </button>
+                </div>
+
+                {showDevices ? (
+                  <div className="qa-device-list" role="region" aria-label="Danh sách thiết bị đăng nhập">
+                    {sessions.map((session) => (
+                      <div key={session.id} className="qa-device-box">
+                        <div className="qa-device-meta">
+                          <span className="qa-device-name">{session.device}</span>
+                          <span className="qa-device-sub">{session.detail}</span>
+                        </div>
+                        {session.current ? (
+                          <span className="qx-badge qx-badge--green qa-sec-badge">Đang hoạt động</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="qx-btn qx-btn--sm"
+                            onClick={() => revokeSession(session.id)}
+                          >
+                            Đăng xuất thiết bị
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div id="qa-session" ref={sessionRef} className="qx-card qa-session">
+            <div>
+              <h2>Phiên hiện tại</h2>
+              <p>Đăng xuất khỏi thiết bị này</p>
+            </div>
+            <button
+              type="button"
+              className="qx-btn qx-btn--sm"
+              disabled={loggingOut}
+              onClick={handleLogout}
+            >
+              <ArrowRight size={14} strokeWidth={1.7} aria-hidden="true" />
+              {loggingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   );

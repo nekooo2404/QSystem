@@ -34,6 +34,7 @@ export const CreateUserSchema = z.object({
   name: z.string().min(1),
   password: z.string().min(8),
   role: RoleSchema.default('EMPLOYEE'),
+  jobTitle: z.string().trim().max(120).optional(),
   departmentId: z.string().min(1).nullable().optional(),
   reportsToId: z.string().min(1).nullable().optional(),
 });

@@ -54,7 +54,7 @@ export function ResponsiveDetailDrawer({
     onClose();
     if (!overlay) previouslyFocused.current?.focus();
   }, [onClose, overlay]);
-  useFloatingLayer(overlay, onClose, true, { root: panelRef, returnFocus: previouslyFocused,
+  useFloatingLayer(overlay, handleClose, true, { root: panelRef, returnFocus: previouslyFocused,
     fallbackFocus: () => document.querySelector<HTMLElement>('[aria-selected="true"], main') });
 
   if (!open) return null;

@@ -10,14 +10,15 @@ export type Role = z.infer<typeof RoleSchema>;
  */
 export const LoginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1),
+  password: z.string().min(1).max(128),
+  remember: z.boolean().optional(),
 });
 export type LoginInput = z.infer<typeof LoginSchema>;
 
-/** PATCH /me/password body. Mirrors ChangePasswordDto (old min 1, new min 8). */
+/** PATCH /me/password body. Mirrors ChangePasswordDto (old min 1, new 8..128). */
 export const ChangePasswordSchema = z.object({
-  oldPassword: z.string().min(1),
-  newPassword: z.string().min(8),
+  oldPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(8).max(128),
 });
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 

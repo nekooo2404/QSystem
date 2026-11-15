@@ -36,12 +36,36 @@ export class ExceptionFilter implements NestExceptionFilter {
   constructor() {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
-    const res = host.switchToHttp().getResponse<{
+    const http = host.switchToHttp();
+    const res = http.getResponse<{
       status: (code: number) => { json: (body: unknown) => unknown };
       json: (body: unknown) => unknown;
     }>();
+    const req = http.getRequest<
+      { requestId?: string; method?: string; originalUrl?: string; url?: string } | undefined
+    >();
 
     const mapped = this.map(exception);
+    if (mapped.status >= 500) {
+      const rawUrl = req?.originalUrl || req?.url || '';
+      const pathOnly = rawUrl ? rawUrl.split('?')[0] : undefined;
+      const errObj = exception instanceof Error ? exception : null;
+      // eslint-disable-next-line no-console
+      console.error(
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          type: 'unhandled_exception',
+          requestId: req?.requestId ?? null,
+          method: req?.method ?? null,
+          path: pathOnly ?? null,
+          status: mapped.status,
+          errorName: errObj?.name ?? typeof exception,
+          errorMessage: errObj?.message ?? String(exception),
+          stack: errObj?.stack ?? null,
+        }),
+      );
+    }
     res.status(mapped.status).json(mapped.body);
   }
 
@@ -74,11 +98,32 @@ export class ExceptionFilter implements NestExceptionFilter {
           body: { code: 'PAYLOAD_TOO_LARGE', message: 'Request payload too large' },
         };
       }
+      const validationMessages =
+        payload &&
+        typeof payload === 'object' &&
+        Array.isArray((payload as { message?: unknown }).message)
+          ? (payload as { message: unknown[] }).message
+          : undefined;
+      const defaultCode =
+        status === HttpStatus.UNAUTHORIZED
+          ? 'UNAUTHORIZED'
+          : status === HttpStatus.FORBIDDEN
+            ? 'FORBIDDEN'
+            : status === HttpStatus.NOT_FOUND
+              ? 'NOT_FOUND'
+              : status === HttpStatus.TOO_MANY_REQUESTS
+                ? 'RATE_LIMITED'
+                : 'BAD_REQUEST';
       return {
         status,
         body: {
-          code: 'BAD_REQUEST',
-          message: typeof payload === 'string' ? payload : exception.message,
+          code: defaultCode,
+          message: validationMessages
+            ? 'Validation failed'
+            : typeof payload === 'string'
+              ? payload
+              : exception.message,
+          ...(validationMessages ? { details: validationMessages } : {}),
         },
       };
     }

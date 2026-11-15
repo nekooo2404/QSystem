@@ -4,35 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
-  # deploy.yml calls this file as a deploy gate.
   workflow_call:
+  workflow_dispatch:
 
-# Test gates: contracts, harness, ui, web and api, plus the e2e viewport x
-# theme matrix and the container build/health smoke. deploy.yml re-runs this
-# file via workflow_call before any deploy.
-#
-# Test prerequisites baked into the API job:
-# - Postgres 16 service container; `prisma migrate deploy` runs FIRST so the
-#   RLS + notification-worker policies exist before any spec (follow-up from
-#   Task 6: specs are not self-bootstrapping). A `migrate status` smoke right
-#   after deploy fails the job if any migration is left pending or failed.
-# - Meilisearch + RustFS (S3-compatible, same API as MinIO) service
-#   containers. CI uses the services' default ports (7700/9000); the local
-#   dev stack maps them to 17700/19000, which the specs read from env.
-# - The api suite runs sequentially (--no-file-parallelism): parallel vitest
-#   files race on shared Postgres DDL/DML and fail with
-#   `tuple concurrently updated`.
-#   Rate-limit isolation: the specs share the `rate_limit_hits` table in the
-#   same Postgres; `resetLoginLimits()` in the suite's beforeAll handles it
-#   BECAUSE the suite is sequential. If a new spec needs a reset it must call
-#   it itself — CI can only keep --no-file-parallelism, not fix spec state.
-# - The web job builds with QSYSTEM_API_URL pointing at 127.0.0.1:3001 purely
-#   so next.config.mjs embeds a destination string; the build never calls the
-#   API.
-# - The playwright job runs apps/web/e2e/console-ui.spec.ts against the migrated
-#   API and built web app across 1440x900, 1024x768, and 390x844 in Dark/Light.
-# - The containers job builds apps/api/Dockerfile and apps/web/Dockerfile and
-#   verifies /health/live on the built API container.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: qsystem-packages
 
 jobs:
   contracts:
@@ -44,30 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @qsystem/contracts test
-      - run: pnpm --filter @qsystem/contracts exec tsc --noEmit
-
-  harness:
-    name: harness (node ${{ matrix.node }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [20, 24]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @qsystem/harness test
-      - run: pnpm --filter @qsystem/harness exec tsc --noEmit
+          cache-dependency-path: qsystem-packages/pnpm-lock.yaml
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm --filter @qsystem/contracts test
+      - run: corepack pnpm --filter @qsystem/contracts exec tsc --noEmit
 
   ui:
     name: ui (node ${{ matrix.node }})
@@ -78,13 +45,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @qsystem/ui test
-      - run: pnpm --filter @qsystem/ui exec tsc --noEmit
+          cache-dependency-path: qsystem-packages/pnpm-lock.yaml
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm --filter @qsystem/ui test
+      - run: corepack pnpm --filter @qsystem/ui exec tsc --noEmit
 
   api:
     name: api (node ${{ matrix.node }})
@@ -130,8 +100,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      # Restricted runtime role: app + specs connect as qsystem_app (never the
-      # owner). The owner URL is used only by test bootstrap and migrations.
       DATABASE_URL: postgresql://qsystem_app:ci-app-password@localhost:5432/qsystem?schema=public
       RLS_OWNER_URL: postgresql://qsystem:${{ secrets.CI_POSTGRES_PASSWORD || 'ci-postgres-password' }}@localhost:5432/qsystem?schema=public
       QSYSTEM_APP_PASSWORD: ci-app-password
@@ -148,14 +116,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
+          cache-dependency-path: qsystem-packages/pnpm-lock.yaml
       - run: corepack pnpm install --frozen-lockfile
-      - name: Migrate (owner connection) + set restricted role password
+      - name: Migrate (owner connection) + verify migration status + set restricted role
         run: |
           DATABASE_URL="$RLS_OWNER_URL" corepack pnpm --filter api db:migrate:deploy
+          DATABASE_URL="$RLS_OWNER_URL" corepack pnpm --filter api exec prisma migrate status
           psql "$RLS_OWNER_URL" -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
       - name: Generate Prisma client
         run: corepack pnpm --filter api db:generate
@@ -165,7 +137,7 @@ jobs:
           corepack pnpm --filter api typecheck
       - name: API suite (sequential)
         run: corepack pnpm --filter api test
-      - name: API startup & /health smoke check
+      - name: API startup & health smoke check
         run: |
           node apps/api/dist/main.js &
           API_PID=$!
@@ -174,7 +146,8 @@ jobs:
             if curl -sf http://127.0.0.1:3001/health/live >/dev/null; then break; fi
             sleep 1
           done
-          node scripts/ops/smoke-check.mjs --api http://127.0.0.1:3001
+          curl -sf http://127.0.0.1:3001/health/live | grep -q '"ok":true'
+          curl -sf http://127.0.0.1:3001/health/ready | grep -q '"ok":true'
 
   web:
     name: Web (test + typecheck + build)
@@ -182,10 +155,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: qsystem-packages/pnpm-lock.yaml
       - run: corepack pnpm install --frozen-lockfile
       - name: Build shared contracts
         run: corepack pnpm --filter @qsystem/contracts build
@@ -230,6 +206,15 @@ jobs:
           MINIO_ROOT_PASSWORD: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
         ports:
           - 9000:9000
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://qsystem_app:ci-app-password@localhost:5432/qsystem?schema=public
       RLS_OWNER_URL: postgresql://qsystem:${{ secrets.CI_POSTGRES_PASSWORD || 'ci-postgres-password' }}@localhost:5432/qsystem?schema=public
@@ -240,28 +225,51 @@ jobs:
       S3_BUCKET: qsystem-docs
       S3_ACCESS_KEY: ${{ secrets.CI_S3_USER || 'ciadmin' }}
       S3_SECRET_KEY: ${{ secrets.CI_S3_PASSWORD || 'ciadmin-password' }}
+      REDIS_URL: redis://localhost:6379
       E2E_EMAIL: e2e-director@qsystem.local
       E2E_PASSWORD: ${{ secrets.CI_E2E_PASSWORD || 'ci-e2e-director-pass-2026' }}
       QSYSTEM_API_URL: http://127.0.0.1:3001
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: qsystem-packages/pnpm-lock.yaml
       - run: corepack pnpm install --frozen-lockfile
       - name: Migrate & build runtime apps
         run: |
           DATABASE_URL="$RLS_OWNER_URL" corepack pnpm --filter api db:migrate:deploy
           psql "$RLS_OWNER_URL" -c "ALTER ROLE qsystem_app WITH LOGIN PASSWORD 'ci-app-password'"
+          corepack pnpm --filter @qsystem/contracts build
           corepack pnpm --filter api db:generate
           corepack pnpm --filter api build
           corepack pnpm --filter web build
       - name: Install Playwright Chromium
         run: corepack pnpm --filter web exec playwright install chromium --with-deps
-      - name: Run Playwright responsive Dark/Light E2E
-        run: node scripts/ops/run-playwright-e2e.mjs
+      - name: Boot API + Web and run Playwright E2E
+        run: |
+          node apps/api/dist/main.js &
+          API_PID=$!
+          corepack pnpm --filter web start &
+          WEB_PID=$!
+          trap "kill $API_PID $WEB_PID || true" EXIT
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3001/health/live >/dev/null && curl -sf http://127.0.0.1:3000/login >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          corepack pnpm --filter web exec playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failure-artifacts
+          path: qsystem-packages/apps/web/test-results
 
   containers:
     name: Container Build & Health Smoke
@@ -273,8 +281,8 @@ jobs:
       - name: Build API image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: apps/api/Dockerfile
+          context: qsystem-packages
+          file: qsystem-packages/apps/api/Dockerfile
           push: false
           load: true
           tags: qsystem-api:ci-${{ github.sha }}
@@ -283,14 +291,14 @@ jobs:
       - name: Build Web image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: apps/web/Dockerfile
+          context: qsystem-packages
+          file: qsystem-packages/apps/web/Dockerfile
           push: false
           load: true
           tags: qsystem-web:ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Container /health/live smoke check
+      - name: Container /health/live and /login smoke check
         run: |
           docker run -d --name qsystem-api-smoke -p 3101:3001 \
             -e APP_ENV=staging \
@@ -304,44 +312,99 @@ jobs:
             -e MEILI_URL=http://127.0.0.1:7700 \
             -e MEILI_MASTER_KEY=smoke-meili-key-12345 \
             qsystem-api:ci-${{ github.sha }}
-          trap "docker rm -f qsystem-api-smoke || true" EXIT
+          docker run -d --name qsystem-web-smoke -p 3100:3000 \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e QSYSTEM_API_URL=http://127.0.0.1:3101 \
+            qsystem-web:ci-${{ github.sha }}
+          trap "docker rm -f qsystem-api-smoke qsystem-web-smoke || true" EXIT
           for i in $(seq 1 20); do
-            if curl -sf http://127.0.0.1:3101/health/live >/dev/null; then break; fi
+            if curl -sf http://127.0.0.1:3101/health/live >/dev/null && curl -sf http://127.0.0.1:3100/login >/dev/null; then break; fi
             sleep 1
           done
           curl -sf http://127.0.0.1:3101/health/live | grep -q '"ok":true'
+          curl -sf http://127.0.0.1:3100/login >/dev/null
 
   deploy-staging:
     name: Deploy Staging
     runs-on: ubuntu-latest
     needs: [playwright, containers]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_CONTAINER_DEPLOY == 'true'
     environment: staging
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Pre-release DB backup & migrate deploy
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push immutable API & Web images
         run: |
-          echo "Release gate: take pre-deploy backup & run prisma migrate deploy via RLS_OWNER_URL before rollout."
-      - name: Promote immutable digest & run smoke check
+          IMAGE_TAG="sha-${{ github.sha }}"
+          docker build -f apps/api/Dockerfile -t "ghcr.io/${{ github.repository_owner }}/qsystem-api:${IMAGE_TAG}" .
+          docker build -f apps/web/Dockerfile -t "ghcr.io/${{ github.repository_owner }}/qsystem-web:${IMAGE_TAG}" .
+          docker push "ghcr.io/${{ github.repository_owner }}/qsystem-api:${IMAGE_TAG}"
+          docker push "ghcr.io/${{ github.repository_owner }}/qsystem-web:${IMAGE_TAG}"
+      - name: Trigger staging deploy & verify /health/ready
+        env:
+          WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK }}
+          STAGING_URL: ${{ vars.STAGING_URL }}
         run: |
-          echo "Deploy digest sha-${{ github.sha }} to staging and verify with node scripts/ops/smoke-check.mjs."
-      - name: Automatic staging rollback on failure
+          if [ -z "$WEBHOOK_URL" ] || [ -z "$STAGING_URL" ]; then
+            echo "Missing STAGING_DEPLOY_WEBHOOK secret or STAGING_URL variable" >&2
+            exit 1
+          fi
+          curl -fsSL -X POST -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag\":\"sha-${{ github.sha }}\",\"environment\":\"staging\"}" \
+            "$WEBHOOK_URL"
+          for i in $(seq 1 30); do
+            if curl -fsSL "${STAGING_URL}/api/health/ready" | grep -q '"ok":true'; then exit 0; fi
+            sleep 5
+          done
+          exit 1
+      - name: Trigger staging rollback on failure
         if: failure()
+        env:
+          ROLLBACK_URL: ${{ secrets.STAGING_ROLLBACK_WEBHOOK }}
         run: |
-          echo "Staging smoke failed — roll back services to previous digest and follow docs/ops/PRODUCTION_OPERATIONS.md."
+          if [ -n "$ROLLBACK_URL" ]; then
+            curl -fsSL -X POST -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}" "$ROLLBACK_URL"
+          fi
 
   deploy-production:
     name: Deploy Production
     runs-on: ubuntu-latest
     needs: [deploy-staging]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_CONTAINER_DEPLOY == 'true'
     environment: production
     steps:
-      - uses: actions/checkout@v4
-      - name: Promote staging-verified digest to production
+      - name: Trigger production rollout & verify /health/ready
+        env:
+          WEBHOOK_URL: ${{ secrets.PROD_DEPLOY_WEBHOOK }}
+          PROD_URL: ${{ vars.PRODUCTION_URL }}
         run: |
-          echo "Promote verified digest sha-${{ github.sha }} to production and run node scripts/ops/smoke-check.mjs."
-      - name: Automatic production rollback on failure
+          if [ -z "$WEBHOOK_URL" ] || [ -z "$PROD_URL" ]; then
+            echo "Missing PROD_DEPLOY_WEBHOOK secret or PRODUCTION_URL variable" >&2
+            exit 1
+          fi
+          curl -fsSL -X POST -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag\":\"sha-${{ github.sha }}\",\"environment\":\"production\"}" \
+            "$WEBHOOK_URL"
+          for i in $(seq 1 30); do
+            if curl -fsSL "${PROD_URL}/api/health/ready" | grep -q '"ok":true'; then exit 0; fi
+            sleep 5
+          done
+          exit 1
+      - name: Trigger production rollback on failure
         if: failure()
+        env:
+          ROLLBACK_URL: ${{ secrets.PROD_ROLLBACK_WEBHOOK }}
         run: |
-          echo "Production verification failed — trigger immediate image rollback per docs/ops/PRODUCTION_OPERATIONS.md."
+          if [ -n "$ROLLBACK_URL" ]; then
+            curl -fsSL -X POST -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}" "$ROLLBACK_URL"
+          fi

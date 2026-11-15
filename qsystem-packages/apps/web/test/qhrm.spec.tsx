@@ -63,8 +63,11 @@ describe('QhrmDirectory', () => {
     render(<QhrmDirectory me={me('DIRECTOR')} />);
 
     expect(await screen.findByRole('heading', { name: 'Nhân sự · Toàn công ty' })).toBeInTheDocument();
-    const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent);
-    expect(headers).toEqual(['Họ tên', 'Chức danh', 'Vai trò', 'Quản lý trực tiếp', 'Tình trạng']);
+    const headers = screen
+      .getAllByRole('columnheader')
+      .map((cell) => cell.textContent)
+      .filter(Boolean);
+    expect(headers).toEqual(['Nhân sự', 'Chức danh', 'Phòng ban', 'Quản lý', 'Trạng thái']);
 
     const table = screen.getByRole('table');
     expect(within(table).getByText('Nguyễn Minh Tuấn')).toBeInTheDocument();
@@ -100,16 +103,27 @@ describe('QhrmDirectory', () => {
   });
 
   it('labels roles and managers in Vietnamese and never leaks internal codes', async () => {
+    const user = userEvent.setup();
     render(<QhrmDirectory me={me('DIRECTOR')} />);
     const table = await screen.findByRole('table');
 
-    expect(within(table).getByText('Giám đốc')).toBeInTheDocument();
-    expect(within(table).getByText('Quản lý')).toBeInTheDocument();
-    const roleCells = within(table).getAllByRole('row').slice(1).map((row) => row.children[2].textContent);
-    expect(roleCells).toEqual(['Nhân viên', 'Giám đốc', 'Quản lý', 'Nhân viên']);
     // reportsToId resolves to a real name instead of an id.
     expect(within(table).getAllByText('Trần Thị Lan').length).toBeGreaterThanOrEqual(2);
     expect(within(table).getAllByText('Phạm Bảo Châu').length).toBeGreaterThanOrEqual(2);
+
+    // Open detail dialog for Phạm Bảo Châu (DIRECTOR -> Giám đốc) and verify Vietnamese role label.
+    await user.click(screen.getByRole('button', { name: 'Thao tác với Phạm Bảo Châu' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Xem hồ sơ chi tiết' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Giám đốc')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Đóng hồ sơ nhân sự' }));
+
+    // Open CreateUserModal to verify Vietnamese role choices (Nhân viên, Quản lý, Giám đốc).
+    await user.click(screen.getByRole('button', { name: /Thêm nhân sự/ }));
+    const modal = await screen.findByRole('dialog');
+    expect(within(modal).getByRole('option', { name: 'Nhân viên' })).toBeInTheDocument();
+    expect(within(modal).getByRole('option', { name: 'Quản lý' })).toBeInTheDocument();
+    expect(within(modal).getByRole('option', { name: 'Giám đốc' })).toBeInTheDocument();
 
     expect(document.body.textContent ?? '').not.toMatch(FORBIDDEN);
     expect(document.body.textContent ?? '').not.toContain('u-2');
@@ -123,7 +137,7 @@ describe('QhrmDirectory', () => {
       status: row.children[4].textContent,
     }));
 
-    // Chức danh / Tình trạng have no backing columns in schema.prisma yet.
+    // Chức danh / Trạng thái have no backing columns in schema.prisma yet.
     for (const cell of cells) {
       expect(cell.title).toBe('Chưa có dữ liệu');
       expect(cell.status).toBe('Chưa có dữ liệu');
@@ -137,7 +151,7 @@ describe('QhrmDirectory', () => {
     const addBtn = await screen.findByRole('button', { name: /Thêm nhân sự/ });
     await user.click(addBtn);
 
-    await user.type(screen.getByLabelText(/Họ tên/), 'Lê Minh Khôi');
+    await user.type(screen.getByLabelText(/Họ và tên/), 'Lê Minh Khôi');
     await user.type(screen.getByLabelText(/Email/), 'khoi@qsystem.vn');
     await user.type(screen.getByLabelText(/Mật khẩu tạm/), 'Secret-1234!');
     await user.click(screen.getByRole('button', { name: 'Tạo nhân sự' }));

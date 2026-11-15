@@ -4,6 +4,8 @@ import { apiFetch } from '../api/client';
 export const TASK_STATUSES = ['Đang làm', 'Chờ duyệt', 'Hoàn thành', 'Quá hạn'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+export type TaskPriorityLabel = 'Ưu tiên cao' | 'Trung bình' | 'Thấp';
+
 export interface Task {
   id: string;
   code: string;
@@ -13,6 +15,9 @@ export interface Task {
   dueDate: string;
   departmentId?: string;
   status: TaskStatus;
+  priority?: TaskPriorityLabel;
+  project?: string;
+  description?: string;
 }
 
 export interface TaskInput {
@@ -21,6 +26,9 @@ export interface TaskInput {
   assigneeName: string;
   dueDate: string;
   departmentId?: string;
+  priority?: TaskPriorityLabel;
+  project?: string;
+  description?: string;
 }
 
 export interface TaskFilter {
@@ -42,6 +50,9 @@ interface ApiTaskRow {
   dueDate: string;
   departmentId?: string | null;
   status: TaskStatus;
+  priority?: string | null;
+  project?: string | null;
+  description?: string | null;
 }
 
 interface TaskListResponse {
@@ -51,7 +62,38 @@ interface TaskListResponse {
   pageSize: number;
 }
 
+function fromApiPriority(raw?: string | null): TaskPriorityLabel | undefined {
+  switch (raw) {
+    case 'URGENT':
+    case 'HIGH':
+    case 'Ưu tiên cao':
+      return 'Ưu tiên cao';
+    case 'NORMAL':
+    case 'Trung bình':
+      return 'Trung bình';
+    case 'LOW':
+    case 'Thấp':
+      return 'Thấp';
+    default:
+      return undefined;
+  }
+}
+
+function toApiPriority(label?: TaskPriorityLabel): 'HIGH' | 'NORMAL' | 'LOW' | undefined {
+  switch (label) {
+    case 'Ưu tiên cao':
+      return 'HIGH';
+    case 'Trung bình':
+      return 'NORMAL';
+    case 'Thấp':
+      return 'LOW';
+    default:
+      return undefined;
+  }
+}
+
 function normalizeTask(row: ApiTaskRow): Task {
+  const priority = fromApiPriority(row.priority);
   return {
     id: row.id,
     code: row.code,
@@ -61,6 +103,9 @@ function normalizeTask(row: ApiTaskRow): Task {
     dueDate: row.dueDate,
     ...(row.departmentId ? { departmentId: row.departmentId } : {}),
     status: TASK_STATUSES.includes(row.status) ? row.status : 'Đang làm',
+    ...(priority ? { priority } : {}),
+    ...(row.project ? { project: row.project } : {}),
+    ...(row.description ? { description: row.description } : {}),
   };
 }
 
@@ -91,6 +136,7 @@ export async function listTasks(filter?: TaskFilter): Promise<Task[]> {
 
 export async function createTask(input: TaskInput): Promise<Task> {
   const payload = TaskPayload4WSchema.parse(toPayload(input));
+  const apiPriority = toApiPriority(input.priority);
   const res = await apiFetch<{ ok: true; task: ApiTaskRow }>('/api/org/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -101,6 +147,9 @@ export async function createTask(input: TaskInput): Promise<Task> {
       assigneeName: input.assigneeName,
       dueDate: input.dueDate,
       departmentId: input.departmentId ?? null,
+      ...(apiPriority ? { priority: apiPriority } : {}),
+      ...(input.project ? { project: input.project } : {}),
+      ...(input.description ? { description: input.description } : {}),
     }),
   });
   return normalizeTask(res.task);

@@ -1,5 +1,10 @@
-import { PageHeading } from '../PageHeading';
+import { Suspense } from 'react';
+import { ProjectsView } from '../../../components/qtask/ProjectsView';
 
 export default function Page() {
-  return <PageHeading title="Dự án" note="Danh sách dự án sẽ hiển thị tại đây." />;
+  return (
+    <Suspense fallback={null}>
+      <ProjectsView />
+    </Suspense>
+  );
 }

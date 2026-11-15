@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   CreateDepartmentSchema,
   UpdateDepartmentSchema,
@@ -120,5 +120,40 @@ export class OrgController {
     @Body() body: Record<string, unknown>,
   ) {
     return this.org.updateTask(await this.viewer(user), id, body);
+  }
+
+  // ---- QCRM customer endpoints ----
+
+  @Get('crm/customers')
+  async listCrmCustomers(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Query() query: { q?: string; segment?: string; stage?: string },
+  ) {
+    return this.org.listCrmCustomers(await this.viewer(user), query);
+  }
+
+  @Post('crm/customers')
+  async createCrmCustomer(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Body() body: unknown,
+  ) {
+    return this.org.createCrmCustomer(await this.viewer(user), body);
+  }
+
+  @Patch('crm/customers/:id')
+  async updateCrmCustomer(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.updateCrmCustomer(await this.viewer(user), id, body);
+  }
+
+  @Delete('crm/customers/:id')
+  async deleteCrmCustomer(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+  ) {
+    return this.org.deleteCrmCustomer(await this.viewer(user), id);
   }
 }

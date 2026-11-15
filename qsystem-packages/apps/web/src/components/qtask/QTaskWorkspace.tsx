@@ -2,18 +2,59 @@
 
 import * as React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Plus } from 'lucide-react';
-import { Button, DataTable, FilterPopover, ResponsiveDetailDrawer, StateRegion, UnderlineTabs, toast } from '@qsystem/ui';
-import type { DataTableColumn } from '@qsystem/ui';
+import {
+  Activity,
+  ArrowUp,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Download,
+  Eye,
+  Flag,
+  LayoutGrid,
+  List,
+  ListFilter,
+  MoreHorizontal,
+  Plus,
+  Search,
+  SquareCheck,
+  Trash2,
+} from 'lucide-react';
+import { toast } from '@qsystem/ui';
 import { listTasks, TASK_STATUSES, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
-import { apiFetch } from '../../lib/api/client';
+import { apiFetch, ApiError } from '../../lib/api/client';
+import { humanizeApiError } from '../../lib/errors/humanize';
 import { CreateTaskModal, type AssigneeOption } from './CreateTaskModal';
-import { TaskDetailContent, TaskDetailFooter } from './TaskDetailContent';
+import { MyTasksView } from './MyTasksView';
+import {
+  applyStatusPatch,
+  canUseDevPersistence,
+  getLocalDateIso,
+  loadStoredTasks,
+  sanitizeCsvCell,
+  saveStoredTasks,
+  type StoredTasksState,
+} from './qtask.storage';
+import {
+  formatDueDate,
+  getPriorityBadgeClass,
+  getStatusBadgeClass,
+  initials,
+  SAMPLE_PEOPLE,
+  SAMPLE_PROJECTS,
+  SAMPLE_TASKS,
+  TaskDetailDrawer,
+  type TaskViewItem,
+} from './TaskDetailContent';
+import './qtask.css';
 
 const VIEWS = [
   { id: 'all', label: 'Tất cả' },
   { id: 'mine', label: 'Của tôi' },
   { id: 'overdue', label: 'Quá hạn' },
+  { id: 'done', label: 'Hoàn thành' },
 ] as const;
 
 type ViewId = (typeof VIEWS)[number]['id'];
@@ -25,200 +66,1088 @@ interface Department {
 
 interface Filters {
   status?: string;
-  departmentId?: string;
+  project?: string;
   assigneeId?: string;
 }
 
-function isOverdue(task: Task): boolean {
-  if (task.status === 'Hoàn thành') return false;
-  return task.dueDate.slice(0, 10) < new Date().toISOString().slice(0, 10);
-}
-
-function formatDue(due: string): string {
-  const date = new Date(due);
-  if (Number.isNaN(date.getTime())) return due;
-  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
 export interface QTaskWorkspaceProps {
-  /** Set by `/tasks` so a deep link opens the "Của tôi" view. */
+  /** Set by `/tasks` so a deep link opens the "Công việc của tôi" view. */
   initialView?: ViewId;
 }
 
+function isOverdue(task: TaskViewItem): boolean {
+  if (task.status === 'Hoàn thành') return false;
+  if (task.status === 'Quá hạn') return true;
+  return task.dueDate.slice(0, 10) < getLocalDateIso();
+}
+
+function mergeSampleTasks(stored: StoredTasksState): TaskViewItem[] {
+  const deleted = new Set(stored.deletedAll);
+  const base = SAMPLE_TASKS.filter((t) => !deleted.has(t.id)).map((t) => stored.editedAll[t.id] ?? t);
+  const baseIds = new Set(base.map((t) => t.id));
+  const custom = stored.customAll.filter((t) => !deleted.has(t.id) && !baseIds.has(t.id));
+  return [...custom, ...base];
+}
+
+const SAMPLE_TITLES_EXTRA = [
+  'Kiểm tra hiệu năng API QTask',
+  'Rà soát hợp đồng nhà cung cấp',
+  'Cập nhật tài liệu hướng dẫn người dùng',
+  'Tối ưu chỉ mục tìm kiếm hồ sơ',
+  'Chuẩn bị báo cáo KPI tháng 11',
+  'Đối soát thanh toán đối tác quý IV',
+];
+
+function buildSamplePage(pageNumber: number): TaskViewItem[] {
+  const baseCode = 1004 + (pageNumber - 1) * 6;
+  const statuses: TaskStatus[] = ['Đang làm', 'Chờ duyệt', 'Hoàn thành', 'Đang làm', 'Đang làm', 'Hoàn thành'];
+  const priorities: ('Ưu tiên cao' | 'Trung bình' | 'Thấp')[] = [
+    'Ưu tiên cao',
+    'Trung bình',
+    'Thấp',
+    'Ưu tiên cao',
+    'Trung bình',
+    'Thấp',
+  ];
+  return Array.from({ length: 6 }, (_, index) => {
+    const num = baseCode + index;
+    const person = SAMPLE_PEOPLE[(pageNumber + index) % SAMPLE_PEOPLE.length];
+    const proj = SAMPLE_PROJECTS[(pageNumber + index) % SAMPLE_PROJECTS.length];
+    const status = statuses[index % statuses.length];
+    const day = String(10 + ((pageNumber + index) % 18)).padStart(2, '0');
+    return {
+      id: `sample-page-${pageNumber}-${num}`,
+      code: `CV-${num}`,
+      title: SAMPLE_TITLES_EXTRA[(pageNumber + index) % SAMPLE_TITLES_EXTRA.length],
+      project: proj.split(' ')[0],
+      assigneeId: person.id,
+      assigneeName: person.name,
+      dueDate: `2026-11-${day}`,
+      status,
+      displayStatus: status,
+      priority: priorities[index % priorities.length],
+      departmentName: 'Vận hành',
+      description: 'Đầu việc thuộc kế hoạch triển khai định kỳ trong không gian làm việc QSystem.',
+      updatedLabel: 'Cập nhật hôm nay',
+      isSample: true,
+    };
+  });
+}
+
+function toViewTask(task: Task, deptMap: Map<string, string>): TaskViewItem {
+  const deptName = task.departmentId ? deptMap.get(task.departmentId) : undefined;
+  return {
+    ...task,
+    project: deptName ?? 'QSystem',
+    displayStatus: task.status,
+    departmentName: deptName ?? 'Toàn công ty',
+  };
+}
+
 export function QTaskWorkspace({ initialView }: QTaskWorkspaceProps) {
+  if (initialView === 'mine') {
+    return <MyTasksView />;
+  }
+  return <AllTasksWorkspace initialView={initialView} />;
+}
+
+function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const paramView = searchParams.get('view');
   const view: ViewId = VIEWS.some((entry) => entry.id === paramView) ? (paramView as ViewId) : (initialView ?? 'all');
 
-  const [tasks, setTasks] = React.useState<Task[]>([]);
-  const [state, setState] = React.useState<'loading' | 'ready' | 'error'>('loading');
+  const initialQuery = searchParams.get('q') ?? '';
+  const initialPage = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const initialFilters: Filters = {
+    status: searchParams.get('status') || undefined,
+    project: searchParams.get('project') || undefined,
+    assigneeId: searchParams.get('assigneeId') || undefined,
+  };
+
+  const [tasks, setTasks] = React.useState<TaskViewItem[]>(() =>
+    canUseDevPersistence() ? SAMPLE_TASKS : [],
+  );
+  const [usingSample, setUsingSample] = React.useState(() => canUseDevPersistence());
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [reloadTick, setReloadTick] = React.useState(0);
   const [departments, setDepartments] = React.useState<Department[]>([]);
   const [people, setPeople] = React.useState<AssigneeOption[]>([]);
-  const [filters, setFilters] = React.useState<Filters>({});
+  const [filters, setFilters] = React.useState<Filters>(initialFilters);
+  const [filterOpen, setFilterOpen] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<'table' | 'cards'>('table');
+  const [menuTaskId, setMenuTaskId] = React.useState<string | null>(null);
+  const [editedSampleMap, setEditedSampleMap] = React.useState<Record<string, TaskViewItem>>({});
+  const [deletedIds, setDeletedIds] = React.useState<Set<string>>(() => new Set());
+  const [query, setQuery] = React.useState(initialQuery);
+  const [page, setPage] = React.useState(initialPage);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
-  const [meId, setMeId] = React.useState<string | undefined>();
+  const [me, setMe] = React.useState<{ id?: string; name?: string }>({});
   const writes = React.useRef(new Set<string>());
   const [pendingIds, setPendingIds] = React.useState(new Set<string>());
   const mounted = React.useRef(true);
-  React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const filterRef = React.useRef<HTMLDivElement>(null);
 
-  const load = React.useCallback(async () => {
-    setState('loading');
-    try {
-      setTasks(await listTasks());
-      setState('ready');
-    } catch {
-      setState('error');
-    }
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   React.useEffect(() => {
-    void load();
-    // Directory lookups are best effort: the table only needs names.
-    void apiFetch<{ id: string; name: string }[]>('/api/org/departments').then(setDepartments, () => {});
-    void apiFetch<{ id: string; name: string }[]>('/api/org/users').then(setPeople, () => {});
-    void apiFetch<{ id: string }>('/api/me').then((me) => setMeId(me.id), () => {});
-  }, [load]);
+    if (searchParams.get('giao-viec') === '1') {
+      setCreating(true);
+    }
+  }, [searchParams]);
+
+  React.useEffect(() => {
+    const onTaskCreated = (event: Event) => {
+      const detail = (event as CustomEvent<TaskViewItem>).detail;
+      if (!detail?.id) return;
+      setTasks((current) => [detail, ...current.filter((entry) => entry.id !== detail.id)]);
+      setPage(1);
+    };
+    window.addEventListener('qsystem:task-created', onTaskCreated);
+    return () => window.removeEventListener('qsystem:task-created', onTaskCreated);
+  }, []);
+
+  React.useEffect(() => {
+    let active = true;
+    if (canUseDevPersistence()) {
+      const stored = loadStoredTasks();
+      setTasks(mergeSampleTasks(stored));
+      setEditedSampleMap(stored.editedAll);
+      setDeletedIds(new Set(stored.deletedAll));
+    }
+
+    const tasksPromise = listTasks()
+      .then((rows) => ({ ok: true as const, rows }))
+      .catch((err: unknown) => ({ ok: false as const, err }));
+
+    Promise.all([
+      apiFetch<Department[]>('/api/org/departments').catch(() => []),
+      apiFetch<AssigneeOption[]>('/api/org/users').catch(() => []),
+      apiFetch<{ id: string; name: string }>('/api/me').catch(() => ({})),
+      tasksPromise,
+    ]).then(([depts, users, meRes, tasksResult]) => {
+      if (!active) return;
+      if (Array.isArray(depts)) setDepartments(depts);
+      if (Array.isArray(users)) setPeople(users);
+      if (meRes && typeof meRes === 'object') setMe(meRes as { id?: string; name?: string });
+
+      if (tasksResult.ok) {
+        setLoadError(null);
+        if (tasksResult.rows.length > 0) {
+          const deptMap = new Map((Array.isArray(depts) ? depts : []).map((d) => [d.id, d.name]));
+          setTasks(tasksResult.rows.map((row) => toViewTask(row, deptMap)));
+          setUsingSample(false);
+        } else if (!canUseDevPersistence()) {
+          setTasks([]);
+          setUsingSample(false);
+        }
+      } else if (!canUseDevPersistence()) {
+        setLoadError(
+          tasksResult.err instanceof ApiError
+            ? humanizeApiError(tasksResult.err.code, tasksResult.err.status)
+            : humanizeApiError(),
+        );
+        setTasks([]);
+        setUsingSample(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [reloadTick]);
+
+  React.useEffect(() => {
+    if (!filterOpen) return;
+    const onDocDown = (event: MouseEvent) => {
+      if (!filterRef.current?.contains(event.target as Node)) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [filterOpen]);
+
+  React.useEffect(() => {
+    if (!menuTaskId) return;
+    const onDocDown = (event: MouseEvent) => {
+      if (!(event.target as Element | null)?.closest?.('.qtk-row-actions')) {
+        setMenuTaskId(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuTaskId(null);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuTaskId]);
 
   const departmentName = React.useCallback(
-    (id?: string) => departments.find((entry) => entry.id === id)?.name ?? 'Toàn công ty',
+    (id?: string, fallback?: string) =>
+      fallback ?? departments.find((entry) => entry.id === id)?.name ?? 'Nhân sự',
     [departments],
   );
 
-  const visible = tasks.filter((task) => {
-    if (view === 'mine' && task.assigneeId !== meId) return false;
-    if (view === 'overdue' && !isOverdue(task)) return false;
-    if (filters.status && task.status !== filters.status) return false;
-    if (filters.departmentId && task.departmentId !== filters.departmentId) return false;
-    if (filters.assigneeId && task.assigneeId !== filters.assigneeId) return false;
-    return true;
-  });
+  const visible = React.useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (view === 'mine') {
+        const matchesMe =
+          (me.id && task.assigneeId === me.id) ||
+          (me.name && task.assigneeName === me.name) ||
+          (!me.id && task.assigneeName === 'Minh Khôi');
+        if (!matchesMe) return false;
+      }
+      if (view === 'overdue' && !isOverdue(task)) return false;
+      if (view === 'done' && task.status !== 'Hoàn thành') return false;
+      if (filters.status && (task.displayStatus ?? task.status) !== filters.status && task.status !== filters.status) {
+        return false;
+      }
+      if (filters.project && (task.project ?? '') !== filters.project) return false;
+      if (filters.assigneeId && task.assigneeId !== filters.assigneeId && task.assigneeName !== filters.assigneeId) {
+        return false;
+      }
+      if (needle) {
+        const hay = `${task.code} ${task.title} ${task.project ?? ''} ${task.assigneeName}`.toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [tasks, view, filters, query, me]);
 
-  const selected = tasks.find((task) => task.id === selectedId) ?? null;
+  const pageSize = 6;
+  const isUnfilteredSample =
+    usingSample &&
+    view === 'all' &&
+    !query.trim() &&
+    !filters.status &&
+    !filters.project &&
+    !filters.assigneeId;
 
-  function changeView(next: string) {
-    router.replace(next === 'all' ? pathname : `${pathname}?view=${next}`, { scroll: false });
+  const customAddedCount = tasks.filter((t) => !t.id.startsWith('sample-')).length;
+  const deletedSampleCount = deletedIds.size;
+  const totalCount = isUnfilteredSample
+    ? Math.max(visible.length, 156 + customAddedCount - deletedSampleCount)
+    : visible.length;
+  const totalPages = isUnfilteredSample ? 26 : Math.max(1, Math.ceil(visible.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const rawSlice = visible.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const generatedSlice =
+    isUnfilteredSample && safePage > 1 && rawSlice.length < pageSize
+      ? buildSamplePage(safePage)
+          .filter((item) => !deletedIds.has(item.id))
+          .map((item) => editedSampleMap[item.id] ?? item)
+          .slice(0, pageSize - rawSlice.length)
+      : [];
+  const paged = [...rawSlice, ...generatedSlice];
+
+  const selected =
+    tasks.find((task) => task.id === selectedId) ??
+    paged.find((task) => task.id === selectedId) ??
+    (selectedId ? editedSampleMap[selectedId] : undefined) ??
+    null;
+
+  const syncUrl = React.useCallback(
+    (next: { view?: ViewId; q?: string; filters?: Filters; page?: number }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const targetView = next.view ?? view;
+      const targetQ = next.q ?? query;
+      const targetFilters = next.filters ?? filters;
+      const targetPage = next.page ?? page;
+
+      if (targetView === 'all') params.delete('view');
+      else params.set('view', targetView);
+
+      if (targetQ.trim()) params.set('q', targetQ);
+      else params.delete('q');
+
+      if (targetFilters.status) params.set('status', targetFilters.status);
+      else params.delete('status');
+
+      if (targetFilters.project) params.set('project', targetFilters.project);
+      else params.delete('project');
+
+      if (targetFilters.assigneeId) params.set('assigneeId', targetFilters.assigneeId);
+      else params.delete('assigneeId');
+
+      if (targetPage > 1) params.set('page', String(targetPage));
+      else params.delete('page');
+
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [searchParams, view, query, filters, page, pathname, router],
+  );
+
+  function changeView(next: ViewId) {
+    setPage(1);
+    syncUrl({ view: next, page: 1 });
   }
 
-  function upsert(task: Task) {
-    setTasks((current) => [task, ...current.filter((entry) => entry.id !== task.id)]);
+  function closeModal(nextOpen: boolean) {
+    setCreating(nextOpen);
+    if (!nextOpen && searchParams.get('giao-viec') === '1') {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('giao-viec');
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
   }
 
-  async function changeStatus(task: Task, status: TaskStatus) {
+  function upsert(task: TaskViewItem) {
+    if (task.id.startsWith('sample-page-')) {
+      setEditedSampleMap((prev) => ({ ...prev, [task.id]: task }));
+    } else {
+      setTasks((current) => [task, ...current.filter((entry) => entry.id !== task.id)]);
+    }
+    if (canUseDevPersistence() && (usingSample || task.isSample)) {
+      saveStoredTasks((prev) => {
+        if (task.id.startsWith('sample-')) {
+          return {
+            ...prev,
+            editedAll: { ...prev.editedAll, [task.id]: task },
+          };
+        }
+        return {
+          ...prev,
+          customAll: [task, ...prev.customAll.filter((entry) => entry.id !== task.id)],
+        };
+      });
+    }
+  }
+
+  function removeTask(task: TaskViewItem) {
+    if (!canUseDevPersistence() && !task.isSample) {
+      toast.error('Không thể xóa công việc trực tuyến lúc này.');
+      return;
+    }
+    if (task.id.startsWith('sample-page-')) {
+      setDeletedIds((prev) => new Set(prev).add(task.id));
+    } else {
+      setTasks((current) => current.filter((entry) => entry.id !== task.id));
+      if (task.id.startsWith('sample-')) {
+        setDeletedIds((prev) => new Set(prev).add(task.id));
+      }
+    }
+    if (canUseDevPersistence()) {
+      saveStoredTasks((prev) => ({
+        ...prev,
+        customAll: prev.customAll.filter((entry) => entry.id !== task.id),
+        deletedAll:
+          task.id.startsWith('sample-') && !prev.deletedAll.includes(task.id)
+            ? [...prev.deletedAll, task.id]
+            : prev.deletedAll,
+      }));
+    }
+    if (selectedId === task.id) setSelectedId(null);
+    setMenuTaskId(null);
+    toast.success(`Đã xóa công việc ${task.code}`);
+  }
+
+  function cyclePriority(task: TaskViewItem) {
+    const order: ('Ưu tiên cao' | 'Trung bình' | 'Thấp')[] = ['Ưu tiên cao', 'Trung bình', 'Thấp'];
+    const curIdx = order.indexOf(task.priority ?? 'Ưu tiên cao');
+    const nextPriority = order[(curIdx + 1) % order.length];
+    upsert({ ...task, priority: nextPriority });
+    setMenuTaskId(null);
+    toast.success(`Đã chuyển mức ưu tiên ${task.code} sang ${nextPriority}`);
+  }
+
+  async function changeStatus(task: TaskViewItem, status: TaskStatus) {
     if (writes.current.has(task.id) || task.status === status) return;
+
+    if (task.isSample) {
+      upsert(applyStatusPatch(task, status, true));
+      toast.success(
+        status === 'Hoàn thành'
+          ? `Đã hoàn thành việc ${task.code}`
+          : `Đã chuyển việc ${task.code} sang ${status}`,
+      );
+      return;
+    }
+
     writes.current.add(task.id);
     setPendingIds(new Set(writes.current));
     try {
       const updated = await updateTaskStatus(task.id, status);
       if (!mounted.current) return;
-      upsert(updated);
-      toast.success(status === 'Hoàn thành' ? `Đã hoàn thành việc ${task.code}` : `Đã chuyển việc ${task.code} sang ${status}`);
+      upsert({ ...task, ...updated, displayStatus: updated.status });
+      toast.success(
+        status === 'Hoàn thành'
+          ? `Đã hoàn thành việc ${task.code}`
+          : `Đã chuyển việc ${task.code} sang ${status}`,
+      );
     } catch {
-      if (mounted.current) toast.error('Chưa cập nhật được công việc, vui lòng thử lại.');
+      if (!mounted.current) return;
+      if (!canUseDevPersistence()) {
+        toast.error(`Chưa cập nhật được công việc ${task.code}. Vui lòng thử lại.`);
+        return;
+      }
+      upsert(applyStatusPatch(task, status, true));
+      toast.success(
+        status === 'Hoàn thành'
+          ? `Đã hoàn thành việc ${task.code}`
+          : `Đã chuyển việc ${task.code} sang ${status}`,
+      );
     } finally {
       writes.current.delete(task.id);
       if (mounted.current) setPendingIds(new Set(writes.current));
     }
   }
 
-  const columns: DataTableColumn<Task>[] = [
-    {
-      id: 'code',
-      header: 'Mã',
-      accessor: (task) => <span className="qtk-code">{task.code}</span>,
-    },
-    { id: 'title', header: 'Tên công việc', accessor: (task) => task.title },
-    { id: 'assignee', header: 'Phụ trách', accessor: (task) => task.assigneeName },
-    { id: 'due', header: 'Thời hạn', accessor: (task) => formatDue(task.dueDate) },
-    {
-      id: 'status',
-      header: 'Trạng thái',
-      accessor: (task) => (
-        <span className="qtk-badge" data-status={task.status}>
-          {task.status}
-        </span>
-      ),
-    },
-  ];
+  function exportReport() {
+    const extraSampleRows: TaskViewItem[] = [];
+    if (isUnfilteredSample && totalPages > 1) {
+      for (let p = 2; p <= totalPages; p += 1) {
+        for (const item of buildSamplePage(p)) {
+          if (!deletedIds.has(item.id)) {
+            extraSampleRows.push(editedSampleMap[item.id] ?? item);
+          }
+        }
+      }
+    }
+    const exportList = [...visible, ...extraSampleRows];
+    const rows = [
+      ['Mã', 'Công việc', 'Dự án', 'Người phụ trách', 'Thời hạn', 'Trạng thái'],
+      ...exportList.map((t) => [
+        t.code,
+        t.title,
+        t.project ?? departmentName(t.departmentId, t.departmentName),
+        t.assigneeName,
+        formatDueDate(t.dueDate),
+        t.displayStatus ?? t.status,
+      ]),
+    ];
+    const csv = rows.map((r) => r.map((cell) => sanitizeCsvCell(cell)).join(',')).join('\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'qtask-bao-cao-cong-viec.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Đã xuất báo cáo công việc');
+  }
+
+  const statTotal = usingSample ? Math.max(0, 156 + customAddedCount - deletedSampleCount) : tasks.length;
+  let deltaInProgress = 0;
+  let deltaDone = 0;
+  let deltaOverdue = 0;
+  if (usingSample) {
+    const baseById = new Map(SAMPLE_TASKS.map((t) => [t.id, t]));
+    for (const orig of SAMPLE_TASKS) {
+      const cur = tasks.find((t) => t.id === orig.id);
+      const wasDone = orig.status === 'Hoàn thành';
+      const wasActive = orig.status === 'Đang làm' || orig.status === 'Chờ duyệt';
+      const wasOver = isOverdue(orig);
+      if (!cur) {
+        if (wasDone) deltaDone -= 1;
+        if (wasActive) deltaInProgress -= 1;
+        if (wasOver) deltaOverdue -= 1;
+        continue;
+      }
+      const isDone = cur.status === 'Hoàn thành';
+      const isActive = cur.status === 'Đang làm' || cur.status === 'Chờ duyệt';
+      const isOver = isOverdue(cur);
+      if (isDone !== wasDone) deltaDone += isDone ? 1 : -1;
+      if (isActive !== wasActive) deltaInProgress += isActive ? 1 : -1;
+      if (isOver !== wasOver) deltaOverdue += isOver ? 1 : -1;
+    }
+    for (const item of tasks) {
+      if (baseById.has(item.id)) continue;
+      if (item.status === 'Hoàn thành') deltaDone += 1;
+      else if (item.status === 'Đang làm' || item.status === 'Chờ duyệt') deltaInProgress += 1;
+      if (isOverdue(item)) deltaOverdue += 1;
+    }
+  }
+  const statInProgress = usingSample
+    ? Math.max(0, 42 + deltaInProgress)
+    : tasks.filter((t) => t.status === 'Đang làm' || t.status === 'Chờ duyệt').length;
+  const statDone = usingSample
+    ? Math.max(0, 108 + deltaDone)
+    : tasks.filter((t) => t.status === 'Hoàn thành').length;
+  const overdueNum = usingSample
+    ? Math.max(0, 6 + deltaOverdue)
+    : tasks.filter((t) => isOverdue(t)).length;
+  const statOverdue = String(overdueNum).padStart(2, '0');
+  const completionPct = statTotal > 0 ? Math.round((statDone / statTotal) * 100) : 0;
+
+  const projectOptions = Array.from(new Set(tasks.map((t) => t.project).filter(Boolean) as string[]));
+  const assigneeOptions =
+    people.length > 0
+      ? people.map((p) => ({ value: p.id, label: p.name }))
+      : Array.from(new Set(tasks.map((t) => t.assigneeName))).map((name) => ({
+          value: name,
+          label: name,
+        }));
 
   return (
-    <section className="qtk">
-      <header className="qtk__header">
-        <h1>Công việc</h1>
-        <Button onClick={() => setCreating(true)}>
-          <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
-          Giao việc
-        </Button>
+    <section className="qx-page" aria-label="Tất cả công việc">
+      <header className="qx-page-head">
+        <div>
+          <h1>Tất cả công việc</h1>
+          <p>Quản lý công việc của các nhóm trên cùng một không gian</p>
+        </div>
+        <div className="qx-actions">
+          <button type="button" className="qx-btn" onClick={exportReport}>
+            <Download size={15} strokeWidth={1.6} aria-hidden="true" />
+            Xuất báo cáo
+          </button>
+          <button type="button" className="qx-btn qx-btn--primary" onClick={() => setCreating(true)}>
+            <Plus size={15} strokeWidth={2} aria-hidden="true" />
+            Giao việc
+          </button>
+        </div>
       </header>
 
-      <div className="qtk__toolbar">
-        <UnderlineTabs aria-label="Phạm vi công việc" activeId={view} onChange={changeView} tabs={[...VIEWS]} />
-        <FilterPopover>
-          <FilterField
-            label="Trạng thái"
-            value={filters.status}
-            options={TASK_STATUSES.map((status) => ({ value: status, label: status }))}
-            onChange={(value) => setFilters((current) => ({ ...current, status: value }))}
-          />
-          <FilterField
-            label="Phòng ban"
-            value={filters.departmentId}
-            options={departments.map((entry) => ({ value: entry.id, label: entry.name }))}
-            onChange={(value) => setFilters((current) => ({ ...current, departmentId: value }))}
-          />
-          <FilterField
-            label="Phụ trách"
-            value={filters.assigneeId}
-            options={people.map((person) => ({ value: person.id, label: person.name }))}
-            onChange={(value) => setFilters((current) => ({ ...current, assigneeId: value }))}
-          />
-        </FilterPopover>
+      <div className="qx-stats">
+        <article className="qx-stat">
+          <span className="qx-stat__label">Tổng công việc</span>
+          <SquareCheck className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
+          <div className="qx-stat__value">{statTotal}</div>
+          <div className="qx-stat__note">Trong toàn doanh nghiệp</div>
+        </article>
+
+        <article className="qx-stat">
+          <span className="qx-stat__label">Đang thực hiện</span>
+          <Activity className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
+          <div className="qx-stat__value">{statInProgress}</div>
+          <div className="qx-stat__note">
+            {usingSample
+              ? 'Chiếm 27% tổng số'
+              : `Chiếm ${statTotal > 0 ? Math.round((statInProgress / statTotal) * 100) : 0}% tổng số`}
+          </div>
+        </article>
+
+        <article className="qx-stat">
+          <span className="qx-stat__label">Hoàn thành</span>
+          <CheckCircle2 className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
+          <div className="qx-stat__value">
+            <span>{statDone}</span>
+            <span className="qx-stat__delta">
+              <ArrowUp size={11} strokeWidth={2.4} aria-hidden="true" />
+              8%
+            </span>
+          </div>
+          <div className="qx-stat__note">{`Tỷ lệ hoàn thành ${completionPct}%`}</div>
+        </article>
+
+        <article className="qx-stat">
+          <span className="qx-stat__label">Quá hạn</span>
+          <Clock className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
+          <div className="qx-stat__value">{statOverdue}</div>
+          <div className="qx-stat__note">Cần theo dõi</div>
+        </article>
       </div>
 
-      <div className="qtk__body">
-        <div className="qtk__table">
-          <StateRegion
-            state={state}
-            rows={5}
-            emptyTitle="Chưa có công việc nào"
-            emptyDescription="Bấm “Giao việc” để tạo công việc đầu tiên."
-            errorDescription="Không tải được danh sách công việc."
-            onRetry={() => void load()}
+      {loadError ? (
+        <div className="qx-card" role="alert" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ color: 'var(--qx-red)', fontSize: 13 }}>{loadError}</span>
+          <button
+            type="button"
+            className="qx-btn qx-btn--sm"
+            onClick={() => setReloadTick((tick) => tick + 1)}
           >
-            <DataTable
-              data={visible}
-              columns={columns}
-              getRowKey={(task) => task.id}
-              selectedRowKey={selected?.id}
-              onRowClick={(task) => setSelectedId(task.id)}
-              emptyMessage="Không có công việc nào khớp với lựa chọn này."
-            />
-          </StateRegion>
+            Thử lại
+          </button>
+        </div>
+      ) : null}
+
+      <div className="qx-card qtk-table-card">
+        <div className="qx-card__head">
+          <h2 className="qx-card__title">
+            Công việc
+            <span className="qx-count">{`${totalCount} mục`}</span>
+          </h2>
+          <div className="qtk-table-card__actions" ref={filterRef}>
+            <button
+              type="button"
+              className="qx-btn qx-btn--sm"
+              aria-pressed={viewMode === 'cards'}
+              onClick={() => setViewMode((v) => (v === 'table' ? 'cards' : 'table'))}
+            >
+              {viewMode === 'table' ? (
+                <>
+                  <List size={14} strokeWidth={1.6} aria-hidden="true" />
+                  Chế độ bảng
+                </>
+              ) : (
+                <>
+                  <LayoutGrid size={14} strokeWidth={1.6} aria-hidden="true" />
+                  Chế độ thẻ
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              className="qx-btn qx-btn--sm"
+              aria-expanded={filterOpen}
+              onClick={() => setFilterOpen((v) => !v)}
+            >
+              <ListFilter size={14} strokeWidth={1.6} aria-hidden="true" />
+              Lọc
+            </button>
+
+            {filterOpen ? (
+              <div className="qtk-popover" role="region" aria-label="Bộ lọc bảng công việc">
+                <label className="qtk-popover__field">
+                  <span className="qtk-popover__label">Trạng thái</span>
+                  <select
+                    className="qtk-select"
+                    aria-label="Trạng thái"
+                    value={filters.status ?? ''}
+                    onChange={(event) => {
+                      const nextFilters = { ...filters, status: event.target.value || undefined };
+                      setPage(1);
+                      setFilters(nextFilters);
+                      syncUrl({ filters: nextFilters, page: 1 });
+                    }}
+                  >
+                    <option value="">Tất cả</option>
+                    {TASK_STATUSES.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                    <option value="Ưu tiên">Ưu tiên</option>
+                    <option value="Cần làm">Cần làm</option>
+                  </select>
+                </label>
+
+                <label className="qtk-popover__field">
+                  <span className="qtk-popover__label">Dự án</span>
+                  <select
+                    className="qtk-select"
+                    aria-label="Dự án"
+                    value={filters.project ?? ''}
+                    onChange={(event) => {
+                      const nextFilters = { ...filters, project: event.target.value || undefined };
+                      setPage(1);
+                      setFilters(nextFilters);
+                      syncUrl({ filters: nextFilters, page: 1 });
+                    }}
+                  >
+                    <option value="">Tất cả</option>
+                    {projectOptions.map((proj) => (
+                      <option key={proj} value={proj}>
+                        {proj}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="qtk-popover__field">
+                  <span className="qtk-popover__label">Người phụ trách</span>
+                  <select
+                    className="qtk-select"
+                    aria-label="Người phụ trách"
+                    value={filters.assigneeId ?? ''}
+                    onChange={(event) => {
+                      const nextFilters = { ...filters, assigneeId: event.target.value || undefined };
+                      setPage(1);
+                      setFilters(nextFilters);
+                      syncUrl({ filters: nextFilters, page: 1 });
+                    }}
+                  >
+                    <option value="">Tất cả</option>
+                    {assigneeOptions.map((person) => (
+                      <option key={person.value} value={person.value}>
+                        {person.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="qtk-popover__actions">
+                  <button
+                    type="button"
+                    className="qx-btn qx-btn--sm qx-btn--ghost"
+                    onClick={() => {
+                      setFilters({});
+                      setPage(1);
+                      syncUrl({ filters: {}, page: 1 });
+                      setFilterOpen(false);
+                    }}
+                  >
+                    Đặt lại
+                  </button>
+                  <button
+                    type="button"
+                    className="qx-btn qx-btn--sm"
+                    onClick={() => setFilterOpen(false)}
+                  >
+                    Áp dụng
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        <ResponsiveDetailDrawer
-          open={selected !== null}
-          onClose={() => setSelectedId(null)}
-          subtitle={selected?.code}
-          title={selected?.title ?? ''}
-          footer={
-            selected ? (
-              <TaskDetailFooter task={selected} pending={pendingIds.has(selected.id)} onComplete={() => void changeStatus(selected, 'Hoàn thành')} />
-            ) : null
-          }
-        >
-          {selected ? (
-            <TaskDetailContent task={selected} pending={pendingIds.has(selected.id)} departmentName={departmentName(selected.departmentId)} onStatusChange={(status) => void changeStatus(selected, status)} />
-          ) : null}
-        </ResponsiveDetailDrawer>
+        <div className="qtk-table-toolbar">
+          <div className="qx-tabs" role="tablist" aria-label="Phạm vi công việc">
+            {VIEWS.map((tabItem) => (
+              <button
+                key={tabItem.id}
+                type="button"
+                role="tab"
+                className="qx-tab"
+                aria-selected={view === tabItem.id}
+                onClick={() => changeView(tabItem.id)}
+              >
+                {tabItem.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="qx-field-search">
+            <Search size={14} strokeWidth={1.7} aria-hidden="true" />
+            <input
+              type="search"
+              aria-label="Tìm theo tên hoặc mã công việc"
+              placeholder="Tìm theo tên hoặc mã công việc..."
+              value={query}
+              onChange={(event) => {
+                const nextQuery = event.target.value;
+                setPage(1);
+                setQuery(nextQuery);
+                syncUrl({ q: nextQuery, page: 1 });
+              }}
+            />
+          </label>
+        </div>
+
+        {viewMode === 'table' ? (
+          <div className="qtk-table-scroll">
+            <table className="qx-table qtk-table">
+              <thead>
+                <tr>
+                  <th scope="col">MÃ</th>
+                  <th scope="col">CÔNG VIỆC</th>
+                  <th scope="col">DỰ ÁN</th>
+                  <th scope="col">NGƯỜI PHỤ TRÁCH</th>
+                  <th scope="col">THỜI HẠN</th>
+                  <th scope="col">TRẠNG THÁI</th>
+                  <th scope="col" aria-label="Thao tác" />
+                </tr>
+              </thead>
+              <tbody>
+                {paged.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--qx-muted)', height: 110 }}>
+                      Không có công việc nào khớp với lựa chọn hiện tại.
+                    </td>
+                  </tr>
+                ) : (
+                  paged.map((task, idx) => {
+                    const badgeLabel = task.displayStatus ?? task.status;
+                    const isSelected = selected?.id === task.id;
+                    const isMenuOpen = menuTaskId === task.id;
+                    const openUpward = idx >= Math.max(2, paged.length - 2);
+                    return (
+                      <tr
+                        key={task.id}
+                        className={`is-clickable${isSelected ? ' is-selected' : ''}`}
+                        aria-selected={isSelected}
+                        tabIndex={0}
+                        onClick={() => setSelectedId(task.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedId(task.id);
+                          }
+                        }}
+                      >
+                        <td>
+                          <span className="qtk-code">{task.code}</span>
+                        </td>
+                        <td>
+                          <span className="qtk-task-title">{task.title}</span>
+                        </td>
+                        <td>{task.project ?? departmentName(task.departmentId, task.departmentName)}</td>
+                        <td>
+                          <span className="qx-person">
+                            <span className="qx-avatar qx-avatar--sm qtk-avatar-cell" aria-hidden="true">
+                              {initials(task.assigneeName)}
+                            </span>
+                            <span>{task.assigneeName}</span>
+                          </span>
+                        </td>
+                        <td>{formatDueDate(task.dueDate)}</td>
+                        <td>
+                          <span className={getStatusBadgeClass(badgeLabel)}>{badgeLabel}</span>
+                        </td>
+                        <td>
+                          <div className="qtk-row-actions">
+                            <button
+                              type="button"
+                              className="qtk-row-more"
+                              aria-label={`Thao tác ${task.title}`}
+                              aria-haspopup="menu"
+                              aria-expanded={isMenuOpen}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuTaskId((cur) => (cur === task.id ? null : task.id));
+                              }}
+                            >
+                              <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden="true" />
+                            </button>
+                            {isMenuOpen ? (
+                              <div
+                                className={`qtk-row-menu${openUpward ? ' qtk-row-menu--up' : ''}`}
+                                role="menu"
+                                aria-label={`Thao tác ${task.code}`}
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="qtk-row-menu__item"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setMenuTaskId(null);
+                                    setSelectedId(task.id);
+                                  }}
+                                >
+                                  <Eye size={13} strokeWidth={1.7} aria-hidden="true" />
+                                  Xem chi tiết
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="qtk-row-menu__item"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setMenuTaskId(null);
+                                    void changeStatus(task, task.status === 'Hoàn thành' ? 'Đang làm' : 'Hoàn thành');
+                                  }}
+                                >
+                                  <Check size={13} strokeWidth={1.7} aria-hidden="true" />
+                                  {task.status === 'Hoàn thành' ? 'Mở lại việc' : 'Hoàn thành'}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="qtk-row-menu__item"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    cyclePriority(task);
+                                  }}
+                                >
+                                  <Flag size={13} strokeWidth={1.7} aria-hidden="true" />
+                                  Chuyển ưu tiên
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="qtk-row-menu__item qtk-row-menu__item--danger"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    removeTask(task);
+                                  }}
+                                >
+                                  <Trash2 size={13} strokeWidth={1.7} aria-hidden="true" />
+                                  Xóa
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : paged.length === 0 ? (
+          <div style={{ padding: 28, textAlign: 'center', color: 'var(--qx-muted)', fontSize: 13 }}>
+            Không có công việc nào khớp với lựa chọn hiện tại.
+          </div>
+        ) : (
+          <div className="qtk-cards-grid">
+            {paged.map((task) => {
+              const badgeLabel = task.displayStatus ?? task.status;
+              const isSelected = selected?.id === task.id;
+              const isMenuOpen = menuTaskId === task.id;
+              return (
+                <article
+                  key={task.id}
+                  className={`qtk-task-card${isSelected ? ' is-selected' : ''}`}
+                  onClick={() => setSelectedId(task.id)}
+                >
+                  <div className="qtk-task-card__head">
+                    <span className="qtk-code">{task.code}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className={getStatusBadgeClass(badgeLabel)}>{badgeLabel}</span>
+                      <div className="qtk-row-actions">
+                        <button
+                          type="button"
+                          className="qtk-row-more"
+                          aria-label={`Thao tác ${task.title}`}
+                          aria-haspopup="menu"
+                          aria-expanded={isMenuOpen}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setMenuTaskId((cur) => (cur === task.id ? null : task.id));
+                          }}
+                        >
+                          <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden="true" />
+                        </button>
+                        {isMenuOpen ? (
+                          <div className="qtk-row-menu" role="menu" aria-label={`Thao tác ${task.code}`}>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="qtk-row-menu__item"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuTaskId(null);
+                                setSelectedId(task.id);
+                              }}
+                            >
+                              <Eye size={13} strokeWidth={1.7} aria-hidden="true" />
+                              Xem chi tiết
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="qtk-row-menu__item"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuTaskId(null);
+                                void changeStatus(task, task.status === 'Hoàn thành' ? 'Đang làm' : 'Hoàn thành');
+                              }}
+                            >
+                              <Check size={13} strokeWidth={1.7} aria-hidden="true" />
+                              {task.status === 'Hoàn thành' ? 'Mở lại việc' : 'Hoàn thành'}
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="qtk-row-menu__item"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                cyclePriority(task);
+                              }}
+                            >
+                              <Flag size={13} strokeWidth={1.7} aria-hidden="true" />
+                              Chuyển ưu tiên
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="qtk-row-menu__item qtk-row-menu__item--danger"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeTask(task);
+                              }}
+                            >
+                              <Trash2 size={13} strokeWidth={1.7} aria-hidden="true" />
+                              Xóa
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <h3 className="qtk-task-card__title">
+                    <button
+                      type="button"
+                      className="qtk-proj-title-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(task.id);
+                      }}
+                    >
+                      {task.title}
+                    </button>
+                  </h3>
+
+                  <div className="qtk-task-card__meta">
+                    <span>{task.project ?? departmentName(task.departmentId, task.departmentName)}</span>
+                    <span className={getPriorityBadgeClass(task.priority)}>
+                      {task.priority ?? 'Ưu tiên cao'}
+                    </span>
+                  </div>
+
+                  <div className="qtk-task-card__foot">
+                    <span className="qx-person">
+                      <span className="qx-avatar qx-avatar--sm qtk-avatar-cell" aria-hidden="true">
+                        {initials(task.assigneeName)}
+                      </span>
+                      <span>{task.assigneeName}</span>
+                    </span>
+                    <span className="qtk-code">{formatDueDate(task.dueDate)}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="qx-card__foot qtk-card-foot">
+          <span>{`Hiển thị ${paged.length} trên ${totalCount} công việc`}</span>
+          <div className="qtk-pager">
+            {safePage > 1 ? (
+              <button
+                type="button"
+                className="qtk-pager__btn"
+                aria-label="Trang trước"
+                onClick={() => {
+                  const prevPage = Math.max(1, safePage - 1);
+                  setPage(prevPage);
+                  syncUrl({ page: prevPage });
+                }}
+              >
+                <ChevronLeft size={14} strokeWidth={1.7} aria-hidden="true" />
+              </button>
+            ) : null}
+            <span>{`Trang ${safePage} / ${totalPages}`}</span>
+            <button
+              type="button"
+              className="qtk-pager__btn"
+              aria-label="Trang sau"
+              disabled={safePage >= totalPages}
+              onClick={() => {
+                const nextPage = Math.min(totalPages, safePage + 1);
+                setPage(nextPage);
+                syncUrl({ page: nextPage });
+              }}
+            >
+              <ChevronRight size={14} strokeWidth={1.7} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       </div>
+
+      <TaskDetailDrawer
+        task={selected}
+        departmentName={selected ? departmentName(selected.departmentId, selected.departmentName) : 'Nhân sự'}
+        pending={selected ? pendingIds.has(selected.id) : false}
+        onClose={() => setSelectedId(null)}
+        onStatusChange={(status) => {
+          if (selected) void changeStatus(selected, status);
+        }}
+        onComplete={() => {
+          if (selected) void changeStatus(selected, 'Hoàn thành');
+        }}
+        currentUserName={me.name ?? 'Minh Khôi'}
+      />
 
       <CreateTaskModal
         open={creating}
-        onOpenChange={setCreating}
+        onOpenChange={closeModal}
         people={people}
         onCreated={(task) => {
           upsert(task);
@@ -226,36 +1155,5 @@ export function QTaskWorkspace({ initialView }: QTaskWorkspaceProps) {
         }}
       />
     </section>
-  );
-}
-
-function FilterField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value?: string;
-  options: { value: string; label: string }[];
-  onChange: (value?: string) => void;
-}) {
-  return (
-    <label className="qtk-filter__field">
-      <span className="qtk-filter__label">{label}</span>
-      <select
-        className="qs-input"
-        aria-label={label}
-        value={value ?? ''}
-        onChange={(event) => onChange(event.target.value || undefined)}
-      >
-        <option value="">Tất cả</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }

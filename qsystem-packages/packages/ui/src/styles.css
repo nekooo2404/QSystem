@@ -26,6 +26,8 @@
   --qs-error: #f85149;
   --qs-warning: #f59e0b;
   --qs-info: #5b8db8;
+  --qs-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --qs-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   color-scheme: dark;
 }
 
@@ -69,7 +71,7 @@
   /* Console primary actions carry the amber CTA; 60-30-10 keeps it to one per screen. */
   background: var(--qs-brand);
   color: var(--qs-on-brand);
-  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+  transition: background-color 150ms var(--qs-ease-out), color 150ms var(--qs-ease-out), border-color 150ms var(--qs-ease-out);
 }
 
 .qs-btn--primary { background: var(--qs-brand); color: var(--qs-on-brand); }
@@ -133,7 +135,7 @@ textarea:focus-visible,
   background: var(--qs-bg-inverse);
   color: var(--qs-fg);
   font: inherit;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background-color 150ms var(--qs-ease-out), border-color 150ms var(--qs-ease-out), color 150ms var(--qs-ease-out);
 }
 .qs-input--lg { min-height: 44px; }
 .qs-input::placeholder { color: var(--qs-fg-muted); }
@@ -302,7 +304,7 @@ textarea:focus-visible,
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background-color 150ms var(--qs-ease-out), border-color 150ms var(--qs-ease-out), color 150ms var(--qs-ease-out);
 }
 .qs-shell__search:hover { background: var(--qs-state-hover); border-color: var(--qs-fg-muted); }
 .qs-shell__search:active { background: var(--qs-state-selected); }
@@ -386,7 +388,7 @@ textarea:focus-visible,
   font: inherit;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color 150ms var(--qs-ease-out), border-color 150ms var(--qs-ease-out);
 }
 .qs-module-switcher__trigger:hover { background: var(--qs-state-hover); }
 .qs-module-switcher__trigger-name { font-weight: 500; }
@@ -415,7 +417,7 @@ textarea:focus-visible,
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition: background-color 150ms var(--qs-ease-out);
 }
 .qs-switcher__item:hover { background: var(--qs-state-hover); }
 .qs-switcher__item:active { background: var(--qs-state-selected); }
@@ -547,7 +549,7 @@ textarea:focus-visible,
   background: transparent;
   color: var(--qs-fg-muted);
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background-color 150ms var(--qs-ease-out), color 150ms var(--qs-ease-out);
 }
 .qs-drawer__close:hover { background: var(--qs-state-hover); color: var(--qs-fg); }
 .qs-drawer__close:active { background: var(--qs-state-selected); }
@@ -588,7 +590,7 @@ textarea:focus-visible,
   color: var(--qs-fg-muted);
   white-space: nowrap;
   cursor: pointer;
-  transition: color 150ms ease;
+  transition: color 150ms var(--qs-ease-out);
 }
 .qs-tabs__tab:hover { color: var(--qs-fg); }
 .qs-tabs__tab:active { color: var(--qs-fg); }
@@ -631,7 +633,7 @@ textarea:focus-visible,
   height: 44px;
   border-radius: 6px;
   background: var(--qs-state-hover);
-  animation: qs-pulse 1200ms ease-in-out infinite;
+  animation: qs-pulse 1200ms var(--qs-ease-in-out) infinite;
 }
 @keyframes qs-pulse {
   0%, 100% { opacity: 1; }

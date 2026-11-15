@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { PrismaService, type ScopeViewer } from '../prisma/prisma.service';
 
 /**
@@ -101,20 +101,33 @@ export class AbilitiesFactory {
    * Throws 401-coded when the user no longer exists.
    */
   async resolveViewer(viewer: { id: string; role: ScopeViewer['role'] }): Promise<ScopeViewer> {
+    if (!viewer.id) {
+      throw new HttpException(
+        { code: 'UNAUTHORIZED', message: 'Authentication required' },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
     const row = await this.prisma.withIdentity(viewer.id, (tx) =>
       tx.user.findUnique({
         where: { id: viewer.id },
         select: {
+          role: true,
           departmentId: true,
           managedDepartments: { select: { id: true } },
         },
       }),
     );
+    if (!row) {
+      throw new HttpException(
+        { code: 'UNAUTHORIZED', message: 'User account no longer exists' },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
     return {
       id: viewer.id,
-      role: viewer.role,
-      managedDepartmentIds: row?.managedDepartments.map((d) => d.id) ?? [],
-      departmentId: row?.departmentId ?? null,
+      role: row.role,
+      managedDepartmentIds: row.managedDepartments.map((d) => d.id),
+      departmentId: row.departmentId ?? null,
     };
   }
 

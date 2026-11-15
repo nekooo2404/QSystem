@@ -15,14 +15,132 @@ function error(code: string, message: string, status: HttpStatus): HttpException
   return new HttpException({ code, message }, status);
 }
 
+export type CrmSegment = 'enterprise' | 'individual';
+export type CrmStage = 'Mới' | 'Tiềm năng' | 'Đàm phán' | 'Đang chăm sóc';
+
+export interface CrmCustomerRecord {
+  id: string;
+  code: string;
+  name: string;
+  email: string;
+  industry: string;
+  segment: CrmSegment;
+  ownerInitials: string;
+  ownerName: string;
+  ownerTone: 'plum' | 'indigo' | 'slate' | 'teal' | 'cyan';
+  stage: CrmStage;
+  lastContact: string;
+  createdById?: string;
+}
+
+const VALID_CRM_STAGES = new Set<CrmStage>(['Mới', 'Tiềm năng', 'Đàm phán', 'Đang chăm sóc']);
+
+const BASELINE_CRM_CUSTOMERS: CrmCustomerRecord[] = [
+  {
+    id: 'c-1',
+    code: 'QT',
+    name: 'QTS Group',
+    email: 'qtsgroup@example.com',
+    industry: 'Công nghệ',
+    segment: 'enterprise',
+    ownerInitials: 'LA',
+    ownerName: 'Lan Anh',
+    ownerTone: 'indigo',
+    stage: 'Đang chăm sóc',
+    lastContact: '12/11/2026',
+  },
+  {
+    id: 'c-2',
+    code: 'VI',
+    name: 'VietHealth',
+    email: 'viethealth@example.com',
+    industry: 'Y tế',
+    segment: 'enterprise',
+    ownerInitials: 'HM',
+    ownerName: 'Hà My',
+    ownerTone: 'slate',
+    stage: 'Tiềm năng',
+    lastContact: '13/11/2026',
+  },
+  {
+    id: 'c-3',
+    code: 'GR',
+    name: 'GreenFarm',
+    email: 'greenfarm@example.com',
+    industry: 'Nông nghiệp',
+    segment: 'enterprise',
+    ownerInitials: 'ĐA',
+    ownerName: 'Đức Anh',
+    ownerTone: 'plum',
+    stage: 'Đàm phán',
+    lastContact: '14/11/2026',
+  },
+  {
+    id: 'c-4',
+    code: 'NO',
+    name: 'Nova Studio',
+    email: 'novastudio@example.com',
+    industry: 'Thiết kế',
+    segment: 'individual',
+    ownerInitials: 'BT',
+    ownerName: 'Bảo Trâm',
+    ownerTone: 'teal',
+    stage: 'Mới',
+    lastContact: '15/11/2026',
+  },
+  {
+    id: 'c-5',
+    code: 'EA',
+    name: 'EastBridge',
+    email: 'eastbridge@example.com',
+    industry: 'Dịch vụ',
+    segment: 'enterprise',
+    ownerInitials: 'MK',
+    ownerName: 'Minh Khôi',
+    ownerTone: 'plum',
+    stage: 'Đang chăm sóc',
+    lastContact: '15/11/2026',
+  },
+];
+
+function crmInitials(name: string, fallback: string): string {
+  const letters = name.trim().replace(/[^a-zA-ZÀ-ỹ0-9]/g, '');
+  return (letters.slice(0, 2) || fallback).toUpperCase();
+}
+
+function ownerInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'MK';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[parts.length - 2][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function formatTodayVi(): string {
+  const now = new Date();
+  return `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+}
+
 @Injectable()
 export class OrgService {
+  private readonly crmCustomers = new Map<string, CrmCustomerRecord>(
+    BASELINE_CRM_CUSTOMERS.map((row) => [row.id, { ...row }]),
+  );
+
   // NOTE: explicit @Inject — vitest runs through esbuild, which does not emit
   // decorator metadata, so constructor-param DI needs explicit tokens.
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
+
+  private async recordAudit(entry: Parameters<AuditService['writeAudit']>[0]) {
+    try {
+      await this.audit.writeAudit(entry);
+    } catch (auditErr) {
+      // eslint-disable-next-line no-console
+      console.error('qsystem: audit write failed', entry.entity, entry.entityId, auditErr);
+    }
+  }
 
   private client(viewer: ScopeViewer) {
     return this.prisma.forUser({
@@ -45,7 +163,7 @@ export class OrgService {
       throw error('FORBIDDEN', 'Only DIRECTOR may create departments', HttpStatus.FORBIDDEN);
     }
     if (!body.name) throw error('INVALID_INPUT', 'name is required', HttpStatus.BAD_REQUEST);
-    return this.prisma.runAsUser(viewer.id, (tx) =>
+    const created = await this.prisma.runAsUser(viewer.id, (tx) =>
       tx.department.create({
         data: {
           name: body.name,
@@ -55,6 +173,18 @@ export class OrgService {
         },
       }),
     );
+    await this.recordAudit({
+      actorId: viewer.id,
+      action: 'CREATE',
+      entity: 'Department',
+      entityId: created.id,
+      newData: {
+        name: created.name,
+        managerId: created.managerId,
+        parentId: created.parentId,
+      },
+    });
+    return created;
   }
 
   async updateDepartment(
@@ -91,6 +221,25 @@ export class OrgService {
       }
       throw error('FORBIDDEN', 'Insufficient permission', HttpStatus.FORBIDDEN);
     }
+    if (body.parentId) {
+      let cursor: string | null = body.parentId;
+      const visited = new Set<string>([id]);
+      for (let hop = 0; hop < 50 && cursor; hop++) {
+        if (visited.has(cursor)) {
+          throw error('INVALID_INPUT', 'Department parent hierarchy cannot contain a cycle', HttpStatus.BAD_REQUEST);
+        }
+        visited.add(cursor);
+        const parentRow: { parentId: string | null } | null = await this.prisma.withIdentity(
+          viewer.id,
+          (tx) =>
+            tx.department.findUnique({
+              where: { id: cursor as string },
+              select: { parentId: true },
+            }),
+        );
+        cursor = parentRow?.parentId ?? null;
+      }
+    }
     const updated = await this.prisma.runAsUser(viewer.id, (tx) =>
       tx.department.update({
         where: { id },
@@ -105,29 +254,22 @@ export class OrgService {
     // pre-image is `visible` (the scoped pre-check read). All three mutable
     // fields are captured — a manager reassignment or re-parent is more
     // sensitive than a rename and must not record as a no-op.
-    try {
-      await this.audit.writeAudit({
-        actorId: viewer.id,
-        action: 'UPDATE',
-        entity: 'Department',
-        entityId: id,
-        oldData: {
-          name: visible.name,
-          managerId: visible.managerId,
-          parentId: visible.parentId,
-        },
-        newData: {
-          name: updated.name,
-          managerId: updated.managerId,
-          parentId: updated.parentId,
-        },
-      });
-    } catch (auditErr) {
-      // Best-effort: audit must never block the business write, but a silent
-      // discard would leave a compliance hole with no signal.
-      // eslint-disable-next-line no-console
-      console.error('qsystem: audit write failed for department update', id, auditErr);
-    }
+    await this.recordAudit({
+      actorId: viewer.id,
+      action: 'UPDATE',
+      entity: 'Department',
+      entityId: id,
+      oldData: {
+        name: visible.name,
+        managerId: visible.managerId,
+        parentId: visible.parentId,
+      },
+      newData: {
+        name: updated.name,
+        managerId: updated.managerId,
+        parentId: updated.parentId,
+      },
+    });
     return updated;
   }
 
@@ -162,9 +304,51 @@ export class OrgService {
     if (viewer.role !== 'DIRECTOR') {
       throw error('FORBIDDEN', 'Only DIRECTOR may update users', HttpStatus.FORBIDDEN);
     }
+    if (body.reportsToId === id) {
+      throw error('INVALID_INPUT', 'User cannot report to themselves', HttpStatus.BAD_REQUEST);
+    }
+    if (body.reportsToId) {
+      let cursor: string | null = body.reportsToId;
+      const visited = new Set<string>([id]);
+      for (let hop = 0; hop < 50 && cursor; hop++) {
+        if (visited.has(cursor)) {
+          throw error('INVALID_INPUT', 'Reporting hierarchy cannot contain a cycle', HttpStatus.BAD_REQUEST);
+        }
+        visited.add(cursor);
+        const mgrRow: { reportsToId: string | null } | null = await this.prisma.withIdentity(
+          viewer.id,
+          (tx) =>
+            tx.user.findUnique({
+              where: { id: cursor as string },
+              select: { reportsToId: true },
+            }),
+        );
+        cursor = mgrRow?.reportsToId ?? null;
+      }
+    }
     try {
-      return await this.prisma.runAsUser(viewer.id, (tx) =>
-        tx.user.update({
+      const { existing, updated } = await this.prisma.runAsUser(viewer.id, async (tx) => {
+        const current = await tx.user.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            departmentId: true,
+            reportsToId: true,
+          },
+        });
+        if (!current) {
+          throw error('NOT_FOUND', 'User not found', HttpStatus.NOT_FOUND);
+        }
+        if (current.role === 'DIRECTOR' && body.role !== undefined && body.role !== 'DIRECTOR') {
+          const directorCount = await tx.user.count({ where: { role: 'DIRECTOR' } });
+          if (directorCount <= 1) {
+            throw error('BAD_REQUEST', 'Cannot demote the last DIRECTOR', HttpStatus.BAD_REQUEST);
+          }
+        }
+        const nextRow = await tx.user.update({
           where: { id },
           data: {
             ...(body.role !== undefined ? { role: body.role } : {}),
@@ -179,8 +363,34 @@ export class OrgService {
             departmentId: true,
             reportsToId: true,
           },
-        }),
-      );
+        });
+        return { existing: current, updated: nextRow };
+      });
+      if (body.role !== undefined && body.role !== existing.role) {
+        await this.prisma.withIdentity(id, (tx) =>
+          tx.refreshToken.updateMany({
+            where: { userId: id, revokedAt: null },
+            data: { revokedAt: new Date() },
+          }),
+        );
+      }
+      await this.recordAudit({
+        actorId: viewer.id,
+        action: 'UPDATE',
+        entity: 'User',
+        entityId: id,
+        oldData: {
+          role: existing.role,
+          departmentId: existing.departmentId,
+          reportsToId: existing.reportsToId,
+        },
+        newData: {
+          role: updated.role,
+          departmentId: updated.departmentId,
+          reportsToId: updated.reportsToId,
+        },
+      });
+      return updated;
     } catch (err) {
       // Only "record not found" is 404; FK violations (unknown departmentId /
       // reportsToId) are bad input, not a missing user.
@@ -239,19 +449,22 @@ export class OrgService {
           },
         }),
       );
-      try {
-        await this.audit.writeAudit({
-          actorId: viewer.id,
-          action: 'CREATE',
-          entity: 'User',
-          entityId: created.id,
-          newData: { email: created.email, role: created.role, departmentId: created.departmentId },
-        });
-      } catch (auditErr) {
-        // eslint-disable-next-line no-console
-        console.error('qsystem: audit write failed for user create', created.id, auditErr);
-      }
-      return created;
+      await this.recordAudit({
+        actorId: viewer.id,
+        action: 'CREATE',
+        entity: 'User',
+        entityId: created.id,
+        newData: {
+          email: created.email,
+          role: created.role,
+          departmentId: created.departmentId,
+          ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
+        },
+      });
+      return {
+        ...created,
+        ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
+      };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw error('CONFLICT', 'Email is already registered', HttpStatus.CONFLICT);
@@ -368,6 +581,20 @@ export class OrgService {
           tenantId: null,
         },
       });
+      await this.recordAudit({
+        actorId: viewer.id,
+        action: 'CREATE',
+        entity: 'Task',
+        entityId: task.id,
+        newData: {
+          code: task.code,
+          title: task.title,
+          status: task.status,
+          priority: task.priority,
+          ownerId: task.ownerId,
+          departmentId: task.departmentId,
+        },
+      });
       return { ok: true as const, task };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
@@ -424,6 +651,24 @@ export class OrgService {
           ...(body.departmentId !== undefined ? { departmentId: body.departmentId } : {}),
         },
       });
+      await this.recordAudit({
+        actorId: viewer.id,
+        action: 'UPDATE',
+        entity: 'Task',
+        entityId: task.id,
+        oldData: {
+          status: existing.status,
+          priority: existing.priority,
+          departmentId: existing.departmentId,
+          assigneeId: existing.assigneeId,
+        },
+        newData: {
+          status: task.status,
+          priority: task.priority,
+          departmentId: task.departmentId,
+          assigneeId: task.assigneeId,
+        },
+      });
       return { ok: true as const, task };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
@@ -431,5 +676,165 @@ export class OrgService {
       }
       throw err;
     }
+  }
+
+  async listCrmCustomers(_viewer: ScopeViewer, query?: { q?: string; segment?: string; stage?: string }) {
+    const q = typeof query?.q === 'string' ? query.q.trim().toLowerCase() : '';
+    const segment = query?.segment === 'enterprise' || query?.segment === 'individual' ? query.segment : null;
+    const stage = typeof query?.stage === 'string' && VALID_CRM_STAGES.has(query.stage as CrmStage) ? query.stage : null;
+
+    const all = Array.from(this.crmCustomers.values());
+    const items = all.filter((row) => {
+      if (segment && row.segment !== segment) return false;
+      if (stage && row.stage !== stage) return false;
+      if (!q) return true;
+      return (
+        row.name.toLowerCase().includes(q) ||
+        row.email.toLowerCase().includes(q) ||
+        row.industry.toLowerCase().includes(q) ||
+        row.ownerName.toLowerCase().includes(q)
+      );
+    });
+    return { items, total: items.length };
+  }
+
+  async createCrmCustomer(viewer: ScopeViewer, raw: unknown) {
+    const payload = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw error('INVALID_INPUT', 'Valid customer name and email are required', HttpStatus.BAD_REQUEST);
+    }
+    const duplicate = Array.from(this.crmCustomers.values()).some(
+      (c) => c.email.toLowerCase() === email,
+    );
+    if (duplicate) {
+      throw error('CONFLICT', 'Customer email already exists', HttpStatus.CONFLICT);
+    }
+
+    const segment: CrmSegment = payload.segment === 'individual' ? 'individual' : 'enterprise';
+    const stage: CrmStage =
+      typeof payload.stage === 'string' && VALID_CRM_STAGES.has(payload.stage as CrmStage)
+        ? (payload.stage as CrmStage)
+        : 'Mới';
+    const industry = typeof payload.industry === 'string' && payload.industry.trim() ? payload.industry.trim() : 'Dịch vụ';
+    const ownerName = typeof payload.ownerName === 'string' && payload.ownerName.trim() ? payload.ownerName.trim() : 'Minh Khôi';
+    const lastContact =
+      typeof payload.lastContact === 'string' && payload.lastContact.trim()
+        ? payload.lastContact.trim()
+        : formatTodayVi();
+    const record: CrmCustomerRecord = {
+      id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      code: crmInitials(name, 'KH'),
+      name,
+      email,
+      industry,
+      segment,
+      ownerInitials: ownerInitials(ownerName),
+      ownerName,
+      ownerTone: 'indigo',
+      stage,
+      lastContact,
+      createdById: viewer.id,
+    };
+    const nextEntries: Array<[string, CrmCustomerRecord]> = [
+      [record.id, record],
+      ...Array.from(this.crmCustomers.entries()),
+    ];
+    this.crmCustomers.clear();
+    for (const [k, v] of nextEntries) {
+      this.crmCustomers.set(k, v);
+    }
+    await this.recordAudit({
+      actorId: viewer.id,
+      action: 'CREATE',
+      entity: 'CrmCustomer',
+      entityId: record.id,
+      newData: { name: record.name, email: record.email, stage: record.stage },
+    });
+    return { ok: true as const, customer: record };
+  }
+
+  async updateCrmCustomer(viewer: ScopeViewer, id: string, raw: unknown) {
+    const existing = this.crmCustomers.get(id);
+    if (!existing) {
+      throw error('NOT_FOUND', 'Customer not found', HttpStatus.NOT_FOUND);
+    }
+    const payload = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const nextEmail =
+      typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : existing.email;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+      throw error('INVALID_INPUT', 'Invalid email address', HttpStatus.BAD_REQUEST);
+    }
+    const emailConflict = Array.from(this.crmCustomers.values()).some(
+      (c) => c.id !== id && c.email.toLowerCase() === nextEmail,
+    );
+    if (emailConflict) {
+      throw error('CONFLICT', 'Customer email already exists', HttpStatus.CONFLICT);
+    }
+
+    const nextName =
+      typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : existing.name;
+    const nextOwner =
+      typeof payload.ownerName === 'string' && payload.ownerName.trim()
+        ? payload.ownerName.trim()
+        : existing.ownerName;
+    const nextStage: CrmStage =
+      typeof payload.stage === 'string' && VALID_CRM_STAGES.has(payload.stage as CrmStage)
+        ? (payload.stage as CrmStage)
+        : existing.stage;
+    if (typeof payload.stage === 'string' && !VALID_CRM_STAGES.has(payload.stage as CrmStage)) {
+      throw error('INVALID_INPUT', 'Invalid CRM stage', HttpStatus.BAD_REQUEST);
+    }
+    const updated: CrmCustomerRecord = {
+      ...existing,
+      code: crmInitials(nextName, existing.code),
+      name: nextName,
+      email: nextEmail,
+      industry:
+        typeof payload.industry === 'string' && payload.industry.trim()
+          ? payload.industry.trim()
+          : existing.industry,
+      segment:
+        payload.segment === 'individual' || payload.segment === 'enterprise'
+          ? payload.segment
+          : existing.segment,
+      ownerName: nextOwner,
+      ownerInitials: ownerInitials(nextOwner),
+      stage: nextStage,
+      lastContact:
+        typeof payload.lastContact === 'string' && payload.lastContact.trim()
+          ? payload.lastContact.trim()
+          : formatTodayVi(),
+    };
+    this.crmCustomers.set(id, updated);
+    await this.recordAudit({
+      actorId: viewer.id,
+      action: 'UPDATE',
+      entity: 'CrmCustomer',
+      entityId: id,
+      oldData: { stage: existing.stage, ownerName: existing.ownerName },
+      newData: { stage: updated.stage, ownerName: updated.ownerName },
+    });
+    return { ok: true as const, customer: updated };
+  }
+
+  async deleteCrmCustomer(viewer: ScopeViewer, id: string) {
+    const existing = this.crmCustomers.get(id);
+    if (!existing) {
+      throw error('NOT_FOUND', 'Customer not found', HttpStatus.NOT_FOUND);
+    }
+    if (viewer.role === 'EMPLOYEE' && existing.createdById !== viewer.id) {
+      throw error('FORBIDDEN', 'Only DIRECTOR, MANAGER, or record creator may delete customers', HttpStatus.FORBIDDEN);
+    }
+    this.crmCustomers.delete(id);
+    await this.recordAudit({
+      actorId: viewer.id,
+      action: 'DELETE',
+      entity: 'CrmCustomer',
+      entityId: id,
+      oldData: { name: existing.name, email: existing.email },
+    });
+    return { ok: true as const, id };
   }
 }

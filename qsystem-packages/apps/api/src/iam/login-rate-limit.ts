@@ -66,7 +66,7 @@ export class LoginRateLimiter {
       });
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('qsystem: rate limiter unavailable; allowing attempt', err);
+      console.error('qsystem: rate limiter unavailable; rejecting attempt', err);
       return false;
     }
   }
