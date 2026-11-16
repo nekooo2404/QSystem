@@ -30,23 +30,23 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             --qg-border: #30363d;
             --qg-fg: #f3f4f6;
             --qg-muted: #9ca3af;
-            --qg-brand: #e8ad45;
-            --qg-on-brand: #201708;
-            --qg-focus: #e8ad45;
+            --qg-brand: #618dc9;
+            --qg-on-brand: #091423;
+            --qg-focus: #7ba2d6;
             --qg-error: #f85149;
             --qg-hover: #222731;
           }
           [data-theme='light'] {
-            --qg-bg: #faf8f4;
+            --qg-bg: #f8fafc;
             --qg-card: #ffffff;
-            --qg-border: #dedad0;
+            --qg-border: #d5dce4;
             --qg-fg: #18181b;
             --qg-muted: #52525b;
-            --qg-brand: #e8ad45;
-            --qg-on-brand: #201708;
-            --qg-focus: #8a6000;
+            --qg-brand: #2c568f;
+            --qg-on-brand: #ffffff;
+            --qg-focus: #1f406e;
             --qg-error: #b91c1c;
-            --qg-hover: #efece4;
+            --qg-hover: #e9eff5;
           }
           * { box-sizing: border-box; }
           body {
@@ -57,7 +57,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             padding: 24px;
             background: var(--qg-bg);
             color: var(--qg-fg);
-            font-family: Inter, system-ui, -apple-system, sans-serif;
+            font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
           }
           .qg-card {
             width: 100%;

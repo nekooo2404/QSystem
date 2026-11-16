@@ -11,17 +11,16 @@
   --qs-fg: #f3f4f6;
   --qs-fg-muted: #9ca3af;
   --qs-border: #30363d;
-  --qs-brand: #e8ad45;
-  --qs-brand-hover: #f0bc63;
-  --qs-on-brand: #201708;
-  /* Focus ring is its own token: brand amber is used as a fill, and on the
-     warm-paper light palette it only reaches 1.9:1 (DESIGN.md §1.7 wants 3:1). */
-  --qs-focus: #e8ad45;
+  --qs-brand: #618dc9;
+  --qs-brand-hover: #759ed4;
+  --qs-on-brand: #091423;
+  /* Focus ring stays separate from the CTA fill and remains visible on dark surfaces. */
+  --qs-focus: #7ba2d6;
   --qs-danger: #b91c1c;
   --qs-danger-hover: #991b1b;
   --qs-on-danger: #ffffff;
   --qs-scrim: rgb(8 10 14 / 0.68);
-  --qs-float-shadow: 0 20px 44px rgb(0 0 0 / 0.45);
+  --qs-float-shadow: 0 8px 16px rgb(0 0 0 / 0.36);
   --qs-success: #3fb950;
   --qs-error: #f85149;
   --qs-warning: #f59e0b;
@@ -32,26 +31,25 @@
 }
 
 [data-theme='light'] {
-  --qs-bg: #faf8f4;
-  --qs-bg-sidebar: #f4f1ea;
+  --qs-bg: #f8fafc;
+  --qs-bg-sidebar: #f1f5f9;
   --qs-surface-1: #ffffff;
-  --qs-bg-inverse: #f3f0e8;
-  --qs-state-hover: #efece4;
-  --qs-state-selected: #e8e4da;
+  --qs-bg-inverse: #f1f5f9;
+  --qs-state-hover: #e9eff5;
+  --qs-state-selected: #e2e8f0;
   --qs-fg: #18181b;
   --qs-fg-muted: #52525b;
-  --qs-border: #dedad0;
-  --qs-brand: #e8ad45;
-  --qs-brand-hover: #d9a33e;
-  --qs-on-brand: #201708;
-  /* Amber can't ring paper (1.9:1); this shade clears 3:1 on every light
-     surface — page 5.3, card 5.6, sidebar 5.0, hover 4.7, selected 4.4. */
-  --qs-focus: #8a6000;
+  --qs-border: #d5dce4;
+  --qs-brand: #2c568f;
+  --qs-brand-hover: #234675;
+  --qs-on-brand: #ffffff;
+  /* This steel-blue focus token clears the contrast target across light surfaces. */
+  --qs-focus: #1f406e;
   --qs-danger: #b91c1c;
   --qs-danger-hover: #991b1b;
   --qs-on-danger: #ffffff;
   --qs-scrim: rgb(24 24 27 / 0.36);
-  --qs-float-shadow: 0 18px 40px rgb(24 24 27 / 0.14);
+  --qs-float-shadow: 0 8px 16px rgb(24 24 27 / 0.12);
   --qs-success: #15803d;
   --qs-error: #b91c1c;
   --qs-warning: #d97706;
@@ -68,7 +66,7 @@
   font: inherit;
   line-height: 1.25;
   cursor: pointer;
-  /* Console primary actions carry the amber CTA; 60-30-10 keeps it to one per screen. */
+  /* Console primary actions carry the QTS accent; 60-30-10 keeps it to one per screen. */
   background: var(--qs-brand);
   color: var(--qs-on-brand);
   transition: background-color 150ms var(--qs-ease-out), color 150ms var(--qs-ease-out), border-color 150ms var(--qs-ease-out);

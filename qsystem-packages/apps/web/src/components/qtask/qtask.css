@@ -3,18 +3,18 @@
 
 :root {
   --qtk-overlay-bg: rgb(6 8 12 / 0.72);
-  --qtk-modal-shadow: 0 30px 70px rgb(0 0 0 / 0.52);
+  --qtk-modal-shadow: 0 16px 32px rgb(0 0 0 / 0.44);
   --qtk-drawer-backdrop: rgb(6 8 12 / 0.56);
-  --qtk-drawer-shadow: -24px 0 60px rgb(0 0 0 / 0.45);
-  --qtk-highlight-shadow: 0 0 0 2px rgb(232 173 69 / 0.28);
+  --qtk-drawer-shadow: -12px 0 28px rgb(0 0 0 / 0.38);
+  --qtk-highlight-shadow: 0 0 0 2px rgb(97 141 201 / 0.28);
 }
 
 [data-theme='light'] {
   --qtk-overlay-bg: rgb(24 24 27 / 0.36);
-  --qtk-modal-shadow: 0 24px 56px rgb(24 24 27 / 0.16);
+  --qtk-modal-shadow: 0 14px 28px rgb(24 24 27 / 0.14);
   --qtk-drawer-backdrop: rgb(24 24 27 / 0.3);
-  --qtk-drawer-shadow: -18px 0 48px rgb(24 24 27 / 0.14);
-  --qtk-highlight-shadow: 0 0 0 2px rgb(138 92 0 / 0.22);
+  --qtk-drawer-shadow: -10px 0 24px rgb(24 24 27 / 0.12);
+  --qtk-highlight-shadow: 0 0 0 2px rgb(44 86 143 / 0.22);
 }
 
 @keyframes qtk-modal-in {
@@ -89,7 +89,7 @@
 }
 
 .qtk-popover__label {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--qx-muted);
 }
@@ -412,7 +412,7 @@
 }
 
 .qtk-mine-tabs {
-  padding: 14px 20px 0;
+  padding: 14px 20px 8px;
   border-bottom: 1px solid var(--qx-border);
 }
 
@@ -422,6 +422,7 @@
 }
 
 .qtk-mine-tabs .qx-tab {
+  padding-bottom: 8px;
   white-space: nowrap;
 }
 
@@ -514,7 +515,7 @@
 
 .qtk-mine-meta {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--qx-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -592,7 +593,7 @@
 }
 
 .qtk-side-card__range {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--qx-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -669,7 +670,7 @@
 
 .qtk-cal-event__sub {
   margin: 4px 0 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--qx-muted);
 }
 
@@ -697,7 +698,7 @@
 
 .qtk-progress-caption {
   margin: 10px 0 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--qx-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -709,7 +710,7 @@
   margin: 14px 0 0;
   padding-top: 12px;
   border-top: 1px solid var(--qx-border-soft);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--qx-fg-2);
 }
 
@@ -988,11 +989,14 @@
   max-width: 100%;
   max-height: calc(100vh - 32px);
   overflow: auto;
-  border: 1px solid var(--qx-border);
+  border: 0;
   border-radius: 10px;
   background: var(--qx-card);
   color: var(--qx-fg);
   box-shadow: var(--qtk-modal-shadow);
+}
+
+.qtk-modal:not(.animate__animated) {
   animation: qtk-modal-in 180ms var(--qx-ease-out);
 }
 
@@ -1212,7 +1216,7 @@
 
 .qtk-error {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--qx-red);
 }
 
@@ -1252,6 +1256,9 @@
   border-left: 1px solid var(--qx-border);
   color: var(--qx-fg);
   box-shadow: var(--qtk-drawer-shadow);
+}
+
+.qtk-drawer:not(.animate__animated) {
   animation: qtk-drawer-in 210ms var(--qx-ease-drawer);
 }
 
@@ -1406,7 +1413,7 @@
 }
 
 .qtk-comment__time {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--qx-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1542,8 +1549,13 @@
     color: var(--qx-fg);
   }
 
-  .qtk-cal-day:hover .qtk-cal-day__num {
+  .qtk-cal-day:not([aria-pressed='true']):hover .qtk-cal-day__num {
     background: var(--qx-hover);
+  }
+  .qtk-cal-day[aria-pressed='true']:hover .qtk-cal-day__num {
+    background: var(--qx-amber-hover);
+    border-color: var(--qx-amber-hover);
+    color: var(--qx-on-amber);
   }
 
   .qtk-proj-card:hover {
@@ -1587,7 +1599,9 @@
   .qtk-popover,
   .qtk-row-menu,
   .qtk-modal,
-  .qtk-drawer {
+  .qtk-modal:not(.animate__animated),
+  .qtk-drawer,
+  .qtk-drawer:not(.animate__animated) {
     animation: none;
   }
 
@@ -1625,5 +1639,190 @@
   .qtk-extra-btn:active,
   .qtk-comment-send:active {
     transform: none;
+  }
+}
+
+/* --- QTask Overview (/?muc=tong-quan) ----------------------------------- */
+.qtk-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 960px) {
+  .qtk-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.qtk-overview-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.qtk-overview-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.qtk-overview-card__head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--qx-fg);
+}
+
+.qtk-overview-card__head p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--qx-muted);
+}
+
+.qtk-overview-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--qx-amber-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.qtk-overview-link:hover {
+  text-decoration: underline;
+}
+
+.qtk-overview-bars {
+  display: grid;
+  gap: 12px;
+}
+
+.qtk-overview-bar-row {
+  display: grid;
+  gap: 6px;
+}
+
+.qtk-overview-bar-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--qx-fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.qtk-overview-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 200ms var(--qx-ease-out);
+}
+
+.qtk-overview-fill--blue { background: var(--qx-amber); }
+.qtk-overview-fill--amber { background: #d99b26; }
+.qtk-overview-fill--green { background: var(--qx-green); }
+.qtk-overview-fill--red { background: var(--qx-red); }
+
+.qtk-overview-list,
+.qtk-overview-load {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.qtk-overview-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--qx-border-soft);
+  border-radius: 6px;
+  background: var(--qx-card-2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms var(--qx-ease-out), border-color 150ms var(--qx-ease-out);
+}
+
+.qtk-overview-item:hover {
+  background: var(--qx-hover);
+  border-color: var(--qx-border);
+}
+
+.qtk-overview-item__main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.qtk-overview-item__title {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--qx-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qtk-overview-item__sub {
+  font-size: 12px;
+  color: var(--qx-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.qtk-overview-item__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.qtk-overview-load-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--qx-card-2);
+}
+
+.qtk-overview-load-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--qx-fg);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qtk-overview-load-count {
+  font-size: 12.5px;
+  color: var(--qx-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qtk-overview-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--qx-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qtk-overview-fill,
+  .qtk-overview-item {
+    transition: none;
   }
 }

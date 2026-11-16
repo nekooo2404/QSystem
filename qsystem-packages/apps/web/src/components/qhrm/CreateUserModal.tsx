@@ -83,6 +83,7 @@ function CreateUserDialog({
     departmentId?: string;
     form?: string;
   }>({});
+  const [errorAttempt, setErrorAttempt] = React.useState(0);
   const [saving, setSaving] = React.useState(false);
 
   const modalRef = React.useRef<HTMLDivElement>(null);
@@ -110,7 +111,10 @@ function CreateUserDialog({
       nextErrors.departmentId = 'Vui lòng chọn phòng ban bạn quản lý.';
     }
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    if (Object.keys(nextErrors).length > 0) {
+      setErrorAttempt((count) => count + 1);
+      return;
+    }
 
     setSaving(true);
     const trimmedTitle = jobTitle.trim();
@@ -143,10 +147,12 @@ function CreateUserDialog({
     } catch (err) {
       if (err instanceof ApiError && (err.code === 'CONFLICT' || err.status === 409)) {
         setErrors({ form: 'Email này đã có trong hệ thống.' });
+        setErrorAttempt((count) => count + 1);
         return;
       }
       if (err instanceof ApiError && err.status === 400) {
         setErrors({ form: err.message || 'Thông tin chưa hợp lệ.' });
+        setErrorAttempt((count) => count + 1);
         return;
       }
       const isOfflineOrSample =
@@ -171,6 +177,7 @@ function CreateUserDialog({
         return;
       }
       setErrors({ form: 'Không thêm được nhân sự, vui lòng thử lại.' });
+      setErrorAttempt((count) => count + 1);
     } finally {
       setSaving(false);
     }
@@ -178,14 +185,14 @@ function CreateUserDialog({
 
   const content = (
     <div
-      className="hr-overlay"
+      className="hr-overlay animate__animated animate__fadeIn animate__faster"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close();
       }}
     >
       <div
         ref={modalRef}
-        className="hr-modal"
+        className="hr-modal animate__animated animate__fadeIn animate__faster"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -221,7 +228,7 @@ function CreateUserDialog({
                 disabled={saving}
               />
               {errors.name ? (
-                <p className="hr-error" role="alert">
+                <p key={`name-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
                   {errors.name}
                 </p>
               ) : null}
@@ -240,7 +247,7 @@ function CreateUserDialog({
                 disabled={saving}
               />
               {errors.email ? (
-                <p className="hr-error" role="alert">
+                <p key={`email-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
                   {errors.email}
                 </p>
               ) : null}
@@ -267,7 +274,7 @@ function CreateUserDialog({
                 <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
               </div>
               {errors.departmentId ? (
-                <p className="hr-error" role="alert">
+                <p key={`dept-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
                   {errors.departmentId}
                 </p>
               ) : null}
@@ -357,7 +364,7 @@ function CreateUserDialog({
                 Người dùng sẽ được yêu cầu đổi mật khẩu ở lần đăng nhập đầu tiên.
               </p>
               {errors.password ? (
-                <p className="hr-error" role="alert">
+                <p key={`pwd-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
                   {errors.password}
                 </p>
               ) : null}
@@ -369,7 +376,7 @@ function CreateUserDialog({
             </div>
 
             {errors.form ? (
-              <p className="hr-error hr-field--full" role="alert">
+              <p key={`form-err-${errorAttempt}`} className="hr-error hr-field--full animate__animated animate__shakeX animate__faster" role="alert">
                 {errors.form}
               </p>
             ) : null}

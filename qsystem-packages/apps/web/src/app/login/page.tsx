@@ -201,9 +201,12 @@ export default function LoginPage() {
         </button>
       </div>
 
-      <section className="lg-brand">
+      <section className="lg-brand animate__animated animate__fadeIn">
         <div className="lg-logo">
-          <span className="lg-logo__mark" aria-hidden="true">Q</span>
+          <span className="lg-logo__mark" aria-label="Logo QTS">
+            Q
+            <img src="/qts-logo.png" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
+          </span>
           <span className="lg-logo__word">QSystem</span>
         </div>
         <h2 className="lg-headline">
@@ -231,7 +234,7 @@ export default function LoginPage() {
         <DashboardMockup />
       </section>
 
-      <section className="lg-card" aria-labelledby="lg-title">
+      <section className="lg-card animate__animated animate__fadeIn" aria-labelledby="lg-title">
         <h1 id="lg-title">Chào mừng trở lại</h1>
         <p className="lg-card__sub">Đăng nhập vào QSystem để tiếp tục làm việc.</p>
 
@@ -291,7 +294,7 @@ export default function LoginPage() {
           </div>
 
           {error ? (
-            <p role="alert" className="lg-error">
+            <p role="alert" className="lg-error animate__animated animate__shakeX animate__faster">
               {error}
             </p>
           ) : null}
@@ -332,7 +335,7 @@ export default function LoginPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="lg-forgot-title"
-            className="lg-forgot-dialog"
+            className="lg-forgot-dialog animate__animated animate__fadeIn"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="lg-forgot-head">
@@ -372,7 +375,11 @@ export default function LoginPage() {
               {forgotStatus ? (
                 <p
                   role={forgotStatus.kind === 'error' ? 'alert' : 'status'}
-                  className={forgotStatus.kind === 'error' ? 'lg-error' : 'lg-forgot-status'}
+                  className={
+                    forgotStatus.kind === 'error'
+                      ? 'lg-error animate__animated animate__shakeX animate__faster'
+                      : 'lg-forgot-status animate__animated animate__fadeIn'
+                  }
                 >
                   {forgotStatus.message}
                 </p>
@@ -414,9 +421,9 @@ function DashboardMockup() {
           <div className="lg-mock__hello">Xin chào, Director 👋</div>
           <div className="lg-mock__hint">Cùng tiếp tục công việc hôm nay.</div>
           <div className="lg-mock__stats">
-            <MockStat label="Công việc đang làm" value="24" color="#E8AD45" />
+            <MockStat label="Công việc đang làm" value="24" color="var(--qx-amber)" />
             <MockStat label="Dự án" value="6" color="#3DBE6E" />
-            <MockStat label="Nhân sự" value="128" color="#E8AD45" />
+            <MockStat label="Nhân sự" value="128" color="var(--qx-amber)" />
           </div>
           <div className="lg-mock__panel">
             <div className="lg-mock__panel-head">Tiến độ công việc<span>Tháng này</span></div>

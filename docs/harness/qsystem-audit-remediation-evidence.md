@@ -12,6 +12,16 @@ Date: 2026-11-16 (Asia/Saigon)
 - `corepack pnpm --filter web test`: passed, 67/67.
 - `corepack pnpm --filter api exec vitest run test/audit-remediation-scope.spec.ts`:
   passed, 2/2.
+- `corepack pnpm --filter api test` with local PostgreSQL/RustFS/Redis/Meilisearch
+  and injected `RLS_OWNER_URL`/`DATABASE_URL`: passed, 10 test files, 77/77.
+- Live RLS integration: `rls.spec.ts` passed, 12/12; restricted
+  `qsystem_app` and owner connections both verified.
+- Live S3/Meilisearch integration: `search-storage.spec.ts` passed, 12/12;
+  RustFS upload/download was verified byte-for-byte, and the Meilisearch
+  `documents` index returned a successful stats response with indexed documents.
+- Live notification, IAM, task policy, audit, social, and production-readiness
+  suites passed: notify 10/10, IAM 10/10, sensors 13/13, audit-error 5/5,
+  production-readiness 8/8, social 2/2, and scope 2/2.
 - `corepack pnpm --filter api typecheck`: passed.
 - `corepack pnpm --filter web typecheck`: passed.
 - `corepack pnpm --filter api build`: passed.
@@ -27,10 +37,17 @@ Date: 2026-11-16 (Asia/Saigon)
   `specify -> plan -> implement -> tasks` runtime) are blocked because this
   checkout has no `harness` package/command. The fallback spec, plan, tasks, and
   evidence artifacts are present, but this is not a Harness approval.
-- API integration suites are blocked at bootstrap because `RLS_OWNER_URL` and
-  PostgreSQL/S3/Meilisearch/Redis services are unavailable in the environment.
+- Production/cloud API integration remains unverified; local live integration
+  was run against Docker PostgreSQL/RustFS/Redis/Meilisearch with secrets
+  injected only into the test process.
 - Docker image/compose smoke and Playwright responsive render checks were not
-  executed because Docker/browser service availability was not established.
+  completed. Docker Desktop was available, but the production image build was
+  blocked by the monorepo filtered-install layout: Prisma/TypeScript/workspace
+  dependency binaries were not linked consistently inside the image. The
+  attempted Dockerfile packaging changes were reverted after verification.
+- Playwright Chromium launched, but both responsive E2E tests failed at the
+  initial `/login` navigation with `net::ERR_ABORTED; maybe frame was detached`
+  in both dev-server and `next start` runs. No responsive pass is claimed.
 - Fragment UI MCP and Hallmark sloplint were not callable from this CLI session;
   no new UI primitive was introduced.
 

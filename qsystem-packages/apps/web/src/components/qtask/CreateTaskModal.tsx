@@ -53,6 +53,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
   const [visibilityIdx, setVisibilityIdx] = React.useState(0);
   const [errors, setErrors] = React.useState<{ title?: string; assignee?: string; due?: string }>({});
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [errorAttempt, setErrorAttempt] = React.useState(0);
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
@@ -69,6 +70,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
     setVisibilityIdx(0);
     setErrors({});
     setSubmitError(null);
+    setErrorAttempt(0);
   }, [open, effectivePeople]);
 
   const close = React.useCallback(() => {
@@ -91,7 +93,10 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
     if (!iso) nextErrors.due = 'Ngày hạn chót không hợp lệ.';
     setErrors(nextErrors);
     setSubmitError(null);
-    if (!iso || Object.keys(nextErrors).length > 0) return;
+    if (!iso || Object.keys(nextErrors).length > 0) {
+      setErrorAttempt((count) => count + 1);
+      return;
+    }
 
     setSaving(true);
     const resolvedDesc =
@@ -122,6 +127,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
         setSubmitError(
           err instanceof ApiError ? humanizeApiError(err.code, err.status) : humanizeApiError(),
         );
+        setErrorAttempt((count) => count + 1);
         return;
       }
       const localTask: TaskViewItem = {
@@ -149,14 +155,14 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
 
   return (
     <div
-      className="qtk-overlay"
+      className="qtk-overlay animate__animated animate__fadeIn animate__faster"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close();
       }}
     >
       <div
         ref={modalRef}
-        className="qtk-modal"
+        className="qtk-modal animate__animated animate__fadeIn animate__faster"
         role="dialog"
         aria-modal="true"
         aria-labelledby="qtk-create-title"
@@ -172,7 +178,15 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
 
         <form onSubmit={(event) => void submit(event)} noValidate>
           <div className="qtk-modal__body">
-            {submitError ? <p className="qtk-error qtk-field--full" role="alert">{submitError}</p> : null}
+            {submitError ? (
+              <p
+                key={`submit-err-${errorAttempt}`}
+                className="qtk-error qtk-field--full animate__animated animate__shakeX animate__faster"
+                role="alert"
+              >
+                {submitError}
+              </p>
+            ) : null}
             <div className="qtk-field qtk-field--full">
               <label htmlFor="qtk-create-name" className="qtk-field__label">
                 Tên công việc <span className="qtk-field__req" aria-hidden="true">*</span>
@@ -186,7 +200,15 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                 placeholder="Ví dụ: Hoàn thiện báo cáo triển khai QSystem tháng 11"
                 aria-invalid={Boolean(errors.title)}
               />
-              {errors.title ? <p className="qtk-error" role="alert">{errors.title}</p> : null}
+              {errors.title ? (
+                <p
+                  key={`title-err-${errorAttempt}`}
+                  className="qtk-error animate__animated animate__shakeX animate__faster"
+                  role="alert"
+                >
+                  {errors.title}
+                </p>
+              ) : null}
             </div>
 
             <div className="qtk-field qtk-field--full">
@@ -231,7 +253,15 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                   ))}
                 </select>
               </div>
-              {errors.assignee ? <p className="qtk-error" role="alert">{errors.assignee}</p> : null}
+              {errors.assignee ? (
+                <p
+                  key={`assignee-err-${errorAttempt}`}
+                  className="qtk-error animate__animated animate__shakeX animate__faster"
+                  role="alert"
+                >
+                  {errors.assignee}
+                </p>
+              ) : null}
             </div>
 
             <div className="qtk-field">
@@ -275,7 +305,15 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                 />
                 <Calendar size={15} strokeWidth={1.6} aria-hidden="true" />
               </div>
-              {errors.due ? <p className="qtk-error" role="alert">{errors.due}</p> : null}
+              {errors.due ? (
+                <p
+                  key={`due-err-${errorAttempt}`}
+                  className="qtk-error animate__animated animate__shakeX animate__faster"
+                  role="alert"
+                >
+                  {errors.due}
+                </p>
+              ) : null}
             </div>
 
             <div className="qtk-field">

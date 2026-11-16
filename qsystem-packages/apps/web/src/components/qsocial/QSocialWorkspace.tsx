@@ -282,10 +282,18 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [authorFilter, setAuthorFilter] = React.useState<string | null>(null);
   const [activeNoticeId, setActiveNoticeId] = React.useState<string | null>(null);
+  const [composerShaking, setComposerShaking] = React.useState(false);
 
   const composerRef = React.useRef<HTMLInputElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const menuHostRef = React.useRef<HTMLDivElement>(null);
+  const shakeTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (shakeTimerRef.current !== null) window.clearTimeout(shakeTimerRef.current);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (muc === 'thong-bao') {
@@ -418,6 +426,9 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
     const content = draft.trim();
     if (!content) {
       toast.error('Vui lòng nhập nội dung trước khi đăng bài');
+      setComposerShaking(false);
+      if (shakeTimerRef.current !== null) window.clearTimeout(shakeTimerRef.current);
+      shakeTimerRef.current = window.setTimeout(() => setComposerShaking(true), 0);
       composerRef.current?.focus();
       return;
     }
@@ -660,7 +671,11 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
         </nav>
 
         <section className="qso__feed" aria-label="Bảng tin">
-          <form className="qx-card qso__composer" onSubmit={handlePublish}>
+          <form
+            className={`qx-card qso__composer${composerShaking ? ' animate__animated animate__shakeX animate__faster' : ''}`}
+            onAnimationEnd={() => setComposerShaking(false)}
+            onSubmit={handlePublish}
+          >
             <div className="qso__compose-row">
               <span className="qx-avatar qso__av" aria-hidden="true">{initialsOf(me.name)}</span>
               <label className="qso__sr" htmlFor="qso-draft">Nội dung bài viết</label>
@@ -670,12 +685,15 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                 className="qso__input"
                 placeholder="Chia sẻ tin tức, kiến thức hoặc một ý tưởng..."
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  if (composerShaking) setComposerShaking(false);
+                }}
               />
             </div>
 
             {attachment ? (
-              <div className="qso__attach-chip">
+              <div className="qso__attach-chip animate__animated animate__fadeInUp animate__faster">
                 <Paperclip size={12} aria-hidden="true" />
                 <span className="qso__attach-name">
                   {attachment.name} · {attachment.sizeLabel}
@@ -752,7 +770,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
           </div>
 
           {authorFilter ? (
-            <div className="qso__filter-bar">
+            <div className="qso__filter-bar animate__animated animate__fadeIn animate__faster">
               <span>Đang lọc bài viết của <strong>{authorFilter}</strong></span>
               <button
                 type="button"
@@ -765,14 +783,14 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
           ) : null}
 
           {feedError ? (
-            <div role="alert" className="qx-card qso__empty-feed">
+            <div role="alert" className="qx-card qso__empty-feed animate__animated animate__shakeX animate__faster">
               <span>Không thể tải bảng tin lúc này.</span>
               <button type="button" className="qx-btn qx-btn--sm" onClick={loadFeed}>
                 Thử lại
               </button>
             </div>
           ) : visible.length === 0 ? (
-            <div className="qx-card qso__empty-feed">
+            <div className="qx-card qso__empty-feed animate__animated animate__fadeIn animate__faster">
               <span>
                 {tab === 'saved'
                   ? 'Chưa có bài viết nào được lưu. Bấm biểu tượng tùy chọn trên bài viết để lưu lại.'
@@ -801,7 +819,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
               const allowDelete = canDeletePost(post);
 
               return (
-                <article key={post.id} id={post.id} className="qx-card qso__post-card">
+                <article key={post.id} id={post.id} className="qx-card qso__post-card animate__animated animate__fadeIn">
                   <header className="qso__post-head">
                     <span className="qx-avatar qso__av" aria-hidden="true">{initialsOf(post.author)}</span>
                     <div className="qso__who">
@@ -820,7 +838,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                         <MoreHorizontal size={18} aria-hidden="true" />
                       </button>
                       {isMenuOpen ? (
-                        <div className="qso__menu" role="menu" aria-label="Thao tác bài viết">
+                        <div className="qso__menu animate__animated animate__fadeIn animate__faster" role="menu" aria-label="Thao tác bài viết">
                           {allowPin ? (
                             <button
                               type="button"
@@ -925,11 +943,11 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                   ) : null}
 
                   {isCommentsOpen ? (
-                    <div className="qso__comments">
+                    <div className="qso__comments animate__animated animate__fadeIn animate__faster">
                       {post.commentItems.length > 0 ? (
                         <ul className="qso__comment-list">
                           {post.commentItems.map((cmt) => (
-                            <li key={cmt.id} className="qso__comment-item">
+                            <li key={cmt.id} className="qso__comment-item animate__animated animate__fadeIn animate__faster">
                               <span className="qx-avatar qso__comment-av" aria-hidden="true">
                                 {initialsOf(cmt.author)}
                               </span>

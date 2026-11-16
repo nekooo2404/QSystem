@@ -5,6 +5,7 @@ import { MeResponseSchema, type MeResponse } from '@qsystem/contracts';
 import { StateRegion } from '@qsystem/ui';
 import { QSocialWorkspace } from '../../../components/qsocial/QSocialWorkspace';
 import { apiFetch } from '../../../lib/api/client';
+import { useSession } from '../../../lib/auth/session-context';
 
 const FALLBACK_ME: MeResponse = {
   id: 'u-director-01',
@@ -35,7 +36,8 @@ function resolveLocalFallbackMe(): MeResponse {
 }
 
 export default function SocialPage() {
-  const [me, setMe] = React.useState<MeResponse | null>(null);
+  const { me: sessionMe } = useSession();
+  const [me, setMe] = React.useState<MeResponse | null>(sessionMe);
   const [failed, setFailed] = React.useState(false);
 
   const loadMe = React.useCallback(() => {
@@ -55,8 +57,12 @@ export default function SocialPage() {
   }, []);
 
   React.useEffect(() => {
+    if (sessionMe) {
+      setMe(sessionMe);
+      return;
+    }
     loadMe();
-  }, [loadMe]);
+  }, [sessionMe, loadMe]);
 
   if (failed) {
     return <StateRegion state="error" onRetry={loadMe} />;

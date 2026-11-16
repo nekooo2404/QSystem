@@ -11,19 +11,19 @@ colors:
   border-dark: "#30363D"
   fg-dark: "#F3F4F6"
   fg-muted-dark: "#9CA3AF"
-  bg-base-light: "#FAF8F4"
-  bg-sidebar-light: "#F4F1EA"
+  bg-base-light: "#F8FAFC"
+  bg-sidebar-light: "#F1F5F9"
   surface-1-light: "#FFFFFF"
-  bg-inverse-light: "#F3F0E8"
-  state-hover-light: "#EFECE4"
-  state-selected-light: "#E8E4DA"
-  border-light: "#DEDAD0"
+  bg-inverse-light: "#F1F5F9"
+  state-hover-light: "#E9EFF5"
+  state-selected-light: "#E2E8F0"
+  border-light: "#D5DCE4"
   fg-light: "#18181B"
   fg-muted-light: "#52525B"
-  brand-primary: "#E8AD45"
-  brand-ink: "#201708"
-  focus-dark: "#E8AD45"
-  focus-light: "#8A6000"
+  brand-primary: "#618DC9"  # QTS muted steel-blue on Dark; #2C568F on Light.
+  brand-ink: "#091423"
+  focus-dark: "#7BA2D6"
+  focus-light: "#1F406E"
   success-dark: "#3FB950"
   error-dark: "#F85149"
   warning-dark: "#F59E0B"
@@ -34,23 +34,23 @@ colors:
   info-light: "#2F6690"
 typography:
   display:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Be Vietnam Pro, sans-serif"
     fontSize: "26px"
     fontWeight: 500
     lineHeight: 1.25
     letterSpacing: "-0.02em"
   title:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "Be Vietnam Pro, sans-serif"
     fontSize: "17px"
     fontWeight: 600
     lineHeight: 1.4
   body:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "IBM Plex Sans, sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.5
   label:
-    fontFamily: "Inter, sans-serif"
+    fontFamily: "IBM Plex Sans, sans-serif"
     fontSize: "12px"
     fontWeight: 500
     lineHeight: 1.5

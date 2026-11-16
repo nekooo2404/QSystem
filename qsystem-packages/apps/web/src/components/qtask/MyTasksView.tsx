@@ -18,6 +18,7 @@ import {
 import { toast } from '@qsystem/ui';
 import { listTasks, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
 import { apiFetch, ApiError } from '../../lib/api/client';
+import { useSession } from '../../lib/auth/session-context';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import { CreateTaskModal, type AssigneeOption } from './CreateTaskModal';
 import {
@@ -314,7 +315,10 @@ export function MyTasksView() {
   const [creating, setCreating] = React.useState(false);
   const [people, setPeople] = React.useState<AssigneeOption[]>([]);
   const [departments, setDepartments] = React.useState<{ id: string; name: string }[]>([]);
-  const [me, setMe] = React.useState<{ id?: string; name?: string }>({});
+  const { me: sessionMe } = useSession();
+  const [me, setMe] = React.useState<{ id?: string; name?: string }>(() =>
+    sessionMe ? { id: sessionMe.id, name: sessionMe.name } : {},
+  );
   const [pendingIds, setPendingIds] = React.useState(new Set<string>());
   const calendarRef = React.useRef<HTMLDivElement>(null);
   const filterRef = React.useRef<HTMLDivElement>(null);
@@ -348,11 +352,15 @@ export function MyTasksView() {
     if (canUseDevPersistence()) {
       setTasks(mergeMineSampleTasks(loadStoredTasks()));
     }
-    void apiFetch<{ id: string; name: string }>('/api/me')
-      .then((user) => {
-        if (active) setMe(user);
-      })
-      .catch(() => {});
+    if (sessionMe) {
+      setMe({ id: sessionMe.id, name: sessionMe.name });
+    } else {
+      void apiFetch<{ id: string; name: string }>('/api/me')
+        .then((user) => {
+          if (active) setMe(user);
+        })
+        .catch(() => {});
+    }
     void apiFetch<{ id: string; name: string }[]>('/api/org/departments')
       .then((items) => {
         if (active && Array.isArray(items)) setDepartments(items);

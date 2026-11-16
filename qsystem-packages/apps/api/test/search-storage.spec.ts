@@ -12,7 +12,7 @@ import { SearchSyncWorker } from '../src/search/sync.worker';
 import { SearchResultSchema } from '@qsystem/contracts';
 import { resetLoginLimits } from '../src/iam/login-rate-limit';
 import { signedHeaderRequest, presignUrl, s3ConfigFromEnv } from '../src/storage/sigv4';
-import { StorageService } from '../src/storage/storage.service';
+import { MAX_FILE_SIZE_BYTES, StorageService } from '../src/storage/storage.service';
 import { scopeFilterFor } from '../src/search/search.service';
 import type { ScopeViewer } from '../src/prisma/prisma.service';
 
@@ -561,7 +561,7 @@ describe('Finding #9: SigV4 path canonicalisation + presignUpload input validati
         file: { findUnique: async () => null, create: async () => ({ id: 'f1' }) },
       }),
     } as never);
-    for (const size of [0, 2_147_483_647, undefined]) {
+    for (const size of [0, MAX_FILE_SIZE_BYTES, undefined]) {
       const r = await reachedDb.presignUpload(viewer, { bucket: BUCKET, key: 'a..b/ok.txt', size });
       expect(r.fileId).toBe('f1');
     }

@@ -5,15 +5,15 @@
 [data-theme='dark'] {
   --hr-teal: #2dd4bf;
   --hr-overlay-bg: rgb(6 8 12 / 0.72);
-  --hr-modal-shadow: 0 30px 70px rgb(0 0 0 / 0.5);
-  --hr-menu-shadow: 0 16px 36px rgb(0 0 0 / 0.35);
+  --hr-modal-shadow: 0 16px 32px rgb(0 0 0 / 0.44);
+  --hr-menu-shadow: 0 8px 16px rgb(0 0 0 / 0.34);
 }
 
 [data-theme='light'] {
   --hr-teal: #0d9488;
   --hr-overlay-bg: rgb(15 23 42 / 0.45);
-  --hr-modal-shadow: 0 24px 60px rgb(15 23 42 / 0.18);
-  --hr-menu-shadow: 0 14px 32px rgb(15 23 42 / 0.14);
+  --hr-modal-shadow: 0 14px 28px rgb(15 23 42 / 0.14);
+  --hr-menu-shadow: 0 8px 16px rgb(15 23 42 / 0.12);
 }
 
 @keyframes hr-pop-in {
@@ -456,11 +456,14 @@
   max-width: 100%;
   max-height: calc(100vh - 32px);
   overflow: auto;
-  border: 1px solid var(--qx-border);
+  border: 0;
   border-radius: 10px;
   background: var(--qx-card);
   color: var(--qx-fg);
   box-shadow: var(--hr-modal-shadow);
+}
+
+.hr-modal:not(.animate__animated) {
   animation: hr-modal-in 180ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both;
 }
 
@@ -813,6 +816,7 @@ select.hr-input {
   .hr-row-menu__item,
   .hr-pager__btn,
   .hr-modal,
+  .hr-modal:not(.animate__animated),
   .hr-modal__close,
   .hr-input,
   .hr-eye {

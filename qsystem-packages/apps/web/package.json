@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev --turbopack --port 3000",
+    "dev:webpack": "next dev --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
     "test": "vitest run",
@@ -12,6 +13,7 @@
   "dependencies": {
     "@qsystem/contracts": "file:../../packages/contracts",
     "@qsystem/ui": "file:../../packages/ui",
+    "animate.css": "^4.1.1",
     "lucide-react": "^1.72.0",
     "next": "^15.5.29",
     "react": "^18.3.1",

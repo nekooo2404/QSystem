@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  reactStrictMode: true,
+  transpilePackages: ['@qsystem/ui', '@qsystem/contracts'],
+  experimental: {
+    optimizePackageImports: ['@qsystem/ui', 'lucide-react'],
+  },
   async headers() {
     return [
       {

@@ -18,7 +18,8 @@ import {
   X,
 } from 'lucide-react';
 import { StateRegion, toast, useFloatingLayer } from '@qsystem/ui';
-import { ApiError, apiFetch } from '../../lib/api/client';
+import { ApiError, apiFetch, cachedApiFetch, invalidateApiCache } from '../../lib/api/client';
+import { getCachedEntry } from '../../lib/api/cache';
 import './qcrm.css';
 
 const CRM_STORAGE_KEY = 'qsystem:crm:customers:v1';
@@ -851,10 +852,24 @@ export function CrmCustomers() {
   const pathname = useSafePathname();
   const searchParams = useSafeSearchParams();
 
-  const [customers, setCustomers] = React.useState<CustomerRow[] | null>(null);
-  const [isDemoFallback, setIsDemoFallback] = React.useState(true);
+  const [customers, setCustomers] = React.useState<CustomerRow[] | null>(() => {
+    const cached = getCachedEntry<{ items?: CustomerRow[] } | CustomerRow[]>('/api/org/crm/customers');
+    if (cached) {
+      return Array.isArray(cached) ? cached : (cached.items ?? null);
+    }
+    if (canUseCrmLocalFallback()) {
+      return readStoredCustomers() ?? SAMPLE_CUSTOMERS;
+    }
+    return null;
+  });
+  const [isDemoFallback, setIsDemoFallback] = React.useState<boolean>(() => {
+    const cached = getCachedEntry<{ items?: CustomerRow[] } | CustomerRow[]>('/api/org/crm/customers');
+    return !cached;
+  });
   const [loadError, setLoadError] = React.useState<string | null>(null);
-  const [crmSummary, setCrmSummary] = React.useState<{ pipelineCents: number; wonCents: number; currency: string; dealCount: number } | null>(null);
+  const [crmSummary, setCrmSummary] = React.useState<{ pipelineCents: number; wonCents: number; currency: string; dealCount: number } | null>(
+    () => getCachedEntry<{ pipelineCents: number; wonCents: number; currency: string; dealCount: number }>('/api/org/crm/summary') ?? null,
+  );
   const [tab, setTab] = React.useState<'all' | CustomerSegment>('all');
   const [stageFilter, setStageFilter] = React.useState<'all' | CustomerStage>('all');
   const [search, setSearch] = React.useState('');
@@ -890,8 +905,8 @@ export function CrmCustomers() {
     const allowLocal = canUseCrmLocalFallback();
     setLoadError(null);
     Promise.all([
-      apiFetch<{ items?: CustomerRow[] } | CustomerRow[]>('/api/org/crm/customers'),
-      apiFetch<{ pipelineCents: number; wonCents: number; currency: string; dealCount: number }>('/api/org/crm/summary'),
+      cachedApiFetch<{ items?: CustomerRow[] } | CustomerRow[]>('/api/org/crm/customers'),
+      cachedApiFetch<{ pipelineCents: number; wonCents: number; currency: string; dealCount: number }>('/api/org/crm/summary'),
     ]).then(
       ([res, summary]) => {
         if (!active) return;
@@ -1565,6 +1580,7 @@ export function CrmCustomers() {
         existingEmails={existingEmails}
         isDemoFallback={isDemoFallback}
         onCreated={(created) => {
+          invalidateApiCache('/api/org/crm');
           const nextList = [created, ...(customers ?? []).filter((c) => c.id !== created.id)];
           setCustomers(nextList);
           persistStoredCustomers(nextList);

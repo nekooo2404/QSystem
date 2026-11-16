@@ -3,7 +3,7 @@
 .lg-root {
   --lg-card-bg: rgb(23 27 33 / 0.88);
   --lg-card-border: rgb(255 255 255 / 0.12);
-  --lg-card-shadow: 0 28px 70px rgb(0 0 0 / 0.55);
+  --lg-card-shadow: 0 8px 16px rgb(0 0 0 / 0.36);
   --lg-input-bg: rgb(14 17 22 / 0.88);
   --lg-input-border: rgb(255 255 255 / 0.13);
   --lg-sso-bg: rgb(16 20 26 / 0.8);
@@ -11,9 +11,9 @@
   --lg-tile-border: rgb(255 255 255 / 0.11);
   --lg-toggle-bg: rgb(21 25 32 / 0.78);
   --lg-toggle-border: rgb(255 255 255 / 0.1);
-  --lg-toggle-active-bg: rgb(232 173 69 / 0.12);
+  --lg-toggle-active-bg: color-mix(in srgb, var(--qx-amber) 14%, transparent);
   --lg-amber-display: var(--qx-amber);
-  --lg-amber-text: var(--qx-amber);
+  --lg-amber-text: var(--qx-amber-text);
   --lg-mock-bg: linear-gradient(155deg, rgb(26 30 38 / 0.96), rgb(16 19 25 / 0.98));
   --lg-mock-side: rgb(19 23 29 / 0.94);
   --lg-mock-card: rgb(255 255 255 / 0.035);
@@ -21,7 +21,7 @@
   --lg-mock-border-soft: rgb(255 255 255 / 0.07);
   --lg-mock-ghost-1: rgb(24 28 36 / 0.72);
   --lg-mock-ghost-2: rgb(20 24 31 / 0.52);
-  --lg-mock-shadow: 0 28px 68px rgb(0 0 0 / 0.65);
+  --lg-mock-shadow: 0 8px 16px rgb(0 0 0 / 0.42);
 
   position: relative;
   min-height: 100vh;
@@ -32,7 +32,9 @@
   column-gap: clamp(32px, 5vw, 88px);
   align-items: start;
   padding: 28px max(36px, calc((100vw - 1300px) / 2)) 0;
-  background: #0b0e13 url('/login-background.png') center center / cover no-repeat;
+  background:
+    linear-gradient(135deg, rgb(10 18 26 / 0.72), rgb(11 14 19 / 0.88)),
+    #0b0e13 url('/login-background.png') center center / cover no-repeat;
   color: var(--qx-fg);
   overflow: clip;
 }
@@ -40,7 +42,7 @@
 [data-theme='light'] .lg-root {
   --lg-card-bg: var(--qx-card);
   --lg-card-border: var(--qx-border);
-  --lg-card-shadow: 0 20px 50px rgb(24 24 27 / 0.06);
+  --lg-card-shadow: 0 8px 16px rgb(24 24 27 / 0.08);
   --lg-input-bg: var(--qx-bg);
   --lg-input-border: var(--qx-border);
   --lg-sso-bg: var(--qx-card-2);
@@ -49,16 +51,16 @@
   --lg-toggle-bg: var(--qx-sidebar);
   --lg-toggle-border: var(--qx-border);
   --lg-toggle-active-bg: var(--qx-card);
-  --lg-amber-display: #c9830c;
-  --lg-amber-text: #9d6204;
-  --lg-mock-bg: linear-gradient(155deg, #ffffff, #f7f5f0);
+  --lg-amber-display: var(--qx-amber);
+  --lg-amber-text: var(--qx-amber-text);
+  --lg-mock-bg: linear-gradient(155deg, #ffffff, #f4f7fa);
   --lg-mock-side: var(--qx-sidebar);
   --lg-mock-card: #ffffff;
   --lg-mock-border: var(--qx-border);
   --lg-mock-border-soft: var(--qx-border-soft);
   --lg-mock-ghost-1: rgb(244 241 234 / 0.92);
   --lg-mock-ghost-2: rgb(239 236 228 / 0.8);
-  --lg-mock-shadow: 0 24px 52px rgb(24 24 27 / 0.1);
+  --lg-mock-shadow: 0 8px 16px rgb(24 24 27 / 0.08);
 
   background: var(--qx-bg);
 }
@@ -132,6 +134,7 @@
 .lg-logo__mark {
   display: grid;
   place-items: center;
+  position: relative;
   width: 48px;
   height: 48px;
   border-radius: 12px;
@@ -140,9 +143,20 @@
   font-size: 27px;
   font-weight: 700;
   line-height: 1;
+  overflow: hidden;
+}
+
+.lg-logo__mark img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .lg-logo__word {
+  font-family: var(--qs-font-heading, var(--qs-font-body));
   font-size: 29px;
   font-weight: 700;
   letter-spacing: -0.025em;
@@ -150,6 +164,7 @@
 }
 
 .lg-headline {
+  font-family: var(--qs-font-heading, var(--qs-font-body));
   margin: 28px 0 0;
   font-size: clamp(34px, 3.2vw, 46px);
   font-weight: 700;
@@ -334,8 +349,8 @@
 }
 
 .lg-mock__nav.is-active {
-  background: rgb(232 173 69 / 0.13);
-  border-color: rgb(232 173 69 / 0.25);
+  background: color-mix(in srgb, var(--qx-amber) 14%, transparent);
+  border-color: color-mix(in srgb, var(--qx-amber) 28%, transparent);
   color: var(--qx-fg);
   font-weight: 600;
 }
@@ -889,6 +904,13 @@
     transition: none;
   }
 
+  .lg-root .animate__animated {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1;
+    transform: none !important;
+  }
+
   .lg-submit:not(:disabled):active {
     transform: none;
   }
@@ -918,8 +940,8 @@
   padding: 24px;
   border-radius: 16px;
   background: var(--qx-card, #161a20);
-  border: 1px solid var(--qx-border, #2a2f37);
-  box-shadow: var(--qx-menu-shadow, 0 20px 44px rgb(0 0 0 / 0.48));
+  border: 0;
+  box-shadow: var(--qx-menu-shadow, 0 8px 16px rgb(0 0 0 / 0.36));
   color: var(--qx-fg, #f3f4f6);
 }
 
@@ -1004,13 +1026,13 @@
 
 .lg-forgot-submit {
   border: 0;
-  background: var(--qx-amber, #f0b13f);
-  color: var(--qx-on-amber, #1d1405);
+  background: var(--qx-amber, #618dc9);
+  color: var(--qx-on-amber, #091423);
   font-weight: 600;
 }
 
 .lg-forgot-submit:hover {
-  background: var(--qx-amber-hover, #f5be5a);
+  background: var(--qx-amber-hover, #759ed4);
 }
 
 :is(.lg-forgot-close, .lg-forgot-cancel, .lg-forgot-submit):focus-visible {

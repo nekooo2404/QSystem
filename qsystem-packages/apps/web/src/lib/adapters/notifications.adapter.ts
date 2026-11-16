@@ -63,94 +63,152 @@ export function markAllRead(): Promise<{ ok: true; count: number; readAt: string
   });
 }
 
+interface PollingSubscriber {
+  onUpdate: (items: NotificationItem[]) => void;
+  intervalMs: number;
+  onError?: (err: unknown) => void;
+}
+
+const subscribers = new Set<PollingSubscriber>();
+let sharedTimer: ReturnType<typeof setTimeout> | null = null;
+let sharedStreamController: AbortController | null = null;
+let sharedInFlight = false;
+let sharedItems: NotificationItem[] | null = null;
+let isListeningVisibility = false;
+
+async function singletonPull() {
+  if (subscribers.size === 0 || (typeof document !== 'undefined' && document.hidden) || sharedInFlight) return;
+  sharedInFlight = true;
+  try {
+    const items = await list();
+    sharedItems = items;
+    for (const sub of Array.from(subscribers)) {
+      try {
+        sub.onUpdate(items);
+      } catch {
+        // ignore subscriber errors
+      }
+    }
+  } catch (err) {
+    for (const sub of Array.from(subscribers)) {
+      try {
+        sub.onError?.(err);
+      } catch {
+        // ignore subscriber errors
+      }
+    }
+  } finally {
+    sharedInFlight = false;
+  }
+}
+
+function getMinInterval(): number {
+  if (subscribers.size === 0) return 30_000;
+  let min = 30_000;
+  for (const sub of subscribers) {
+    if (sub.intervalMs < min) min = sub.intervalMs;
+  }
+  return min;
+}
+
+function scheduleSingleton() {
+  if (sharedTimer) clearTimeout(sharedTimer);
+  if (subscribers.size === 0) return;
+  const interval = getMinInterval();
+  sharedTimer = setTimeout(() => {
+    void singletonPull().then(scheduleSingleton);
+  }, interval);
+}
+
+function startSingletonStream() {
+  if (sharedStreamController || typeof AbortController === 'undefined') return;
+  const token = getAccessToken();
+  if (!token) return;
+  const ctrl = new AbortController();
+  sharedStreamController = ctrl;
+  void fetch('/api/notifications/stream', {
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'include',
+    signal: ctrl.signal,
+  })
+    .then(async (res) => {
+      const reader = res.body?.getReader?.();
+      if (!res.ok || !reader) return;
+      const decoder = new TextDecoder();
+      while (subscribers.size > 0 && !ctrl.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk.includes('event: notification')) {
+          void singletonPull();
+        }
+      }
+    })
+    .catch(() => {
+      // Fallback polling timer remains active.
+    });
+}
+
+function stopSingletonStream() {
+  if (sharedStreamController) {
+    sharedStreamController.abort();
+    sharedStreamController = null;
+  }
+}
+
+function onVisibilityChange() {
+  if (typeof document !== 'undefined' && document.hidden) {
+    if (sharedTimer) {
+      clearTimeout(sharedTimer);
+      sharedTimer = null;
+    }
+    stopSingletonStream();
+    return;
+  }
+  void singletonPull().then(scheduleSingleton);
+  startSingletonStream();
+}
+
 export function startPolling(
   onUpdate: (items: NotificationItem[]) => void,
   intervalMs = 30_000,
   onError?: (err: unknown) => void,
 ): () => void {
-  let active = true;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let streamController: AbortController | null = null;
-  let inFlight = false;
+  const subscriber: PollingSubscriber = { onUpdate, intervalMs, onError };
+  subscribers.add(subscriber);
 
-  async function pull() {
-    if (!active || document.hidden || inFlight) return;
-    inFlight = true;
-    try {
-      const items = await list();
-      if (active) onUpdate(items);
-    } catch (err) {
-      if (active) onError?.(err);
-    } finally {
-      inFlight = false;
+  if (subscribers.size === 1) {
+    if (!isListeningVisibility && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      isListeningVisibility = true;
     }
-  }
-
-  function schedule() {
-    if (timer) clearTimeout(timer);
-    if (!active) return;
-    timer = setTimeout(() => {
-      void pull().then(schedule);
-    }, intervalMs);
-  }
-
-  function startStream() {
-    if (streamController || typeof AbortController === 'undefined') return;
-    const token = getAccessToken();
-    if (!token) return;
-    const ctrl = new AbortController();
-    streamController = ctrl;
-    void fetch('/api/notifications/stream', {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
-      .then(async (res) => {
-        const reader = res.body?.getReader?.();
-        if (!res.ok || !reader) return;
-        const decoder = new TextDecoder();
-        while (active && !ctrl.signal.aborted) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          if (chunk.includes('event: notification')) {
-            void pull();
-          }
-        }
-      })
-      .catch(() => {
-        // Fallback polling timer remains active.
-      });
-  }
-
-  function stopStream() {
-    if (streamController) {
-      streamController.abort();
-      streamController = null;
+    void singletonPull().then(scheduleSingleton);
+    if (typeof document !== 'undefined' && !document.hidden) {
+      startSingletonStream();
     }
-  }
-
-  function onVisibilityChange() {
-    if (document.hidden) {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      stopStream();
-      return;
+  } else {
+    // Shared singleton: immediately deliver existing snapshot to new subscriber if present
+    if (sharedItems) {
+      onUpdate(sharedItems);
     }
-    void pull().then(schedule);
-    startStream();
+    scheduleSingleton();
   }
-
-  document.addEventListener('visibilitychange', onVisibilityChange);
-  void pull().then(schedule);
-  if (!document.hidden) startStream();
 
   return () => {
-    active = false;
-    document.removeEventListener('visibilitychange', onVisibilityChange);
-    if (timer) clearTimeout(timer);
-    stopStream();
+    subscribers.delete(subscriber);
+    if (subscribers.size === 0) {
+      if (sharedTimer) {
+        clearTimeout(sharedTimer);
+        sharedTimer = null;
+      }
+      stopSingletonStream();
+      if (isListeningVisibility && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        isListeningVisibility = false;
+      }
+      sharedItems = null;
+    } else {
+      scheduleSingleton();
+    }
   };
 }

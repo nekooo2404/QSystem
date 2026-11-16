@@ -63,10 +63,11 @@ function assertIsoDate(value: string | undefined): void {
 
 function canAdvanceTaskStatus(current: string, next: string): boolean {
   if (current === next) return true;
-  const ordered = TaskStatusSchema.options.slice(0, 3);
-  const currentIndex = ordered.indexOf(current as (typeof ordered)[number]);
-  const nextIndex = ordered.indexOf(next as (typeof ordered)[number]);
-  return currentIndex >= 0 && nextIndex === currentIndex + 1;
+  const allowed: Record<string, readonly string[]> = {
+    'Đang làm': ['Chờ duyệt', 'Hoàn thành'],
+    'Chờ duyệt': ['Hoàn thành'],
+  };
+  return allowed[current]?.includes(next) ?? false;
 }
 
 @Injectable()

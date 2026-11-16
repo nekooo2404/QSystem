@@ -409,7 +409,7 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
 
   return createPortal(
     <div
-      className="qp-overlay"
+      className="qp-overlay animate__animated animate__fadeIn animate__faster"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close(false);
       }}
@@ -420,7 +420,7 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
-        className="qp-modal"
+        className="qp-modal animate__animated animate__fadeIn animate__faster"
       >
         <h2 id={headingId} className="qp-visually-hidden">
           Tìm nhanh
@@ -446,7 +446,7 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
         </div>
 
         {error ? (
-          <div className="qp-recovery">
+          <div className="qp-recovery animate__animated animate__shakeX animate__faster">
             <p role="alert">{error}</p>
             <button
               type="button"

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { MeResponse } from '@qsystem/contracts';
 import { StateRegion } from '@qsystem/ui';
 import { apiFetch } from '../../../lib/api/client';
+import { useSession } from '../../../lib/auth/session-context';
 import { QhrmDirectory } from '../../../components/qhrm/QhrmDirectory';
 
 const FALLBACK_ME: MeResponse = {
@@ -44,10 +45,15 @@ function readSyncedDevProfile(): MeResponse {
 
 function OrgPageContent() {
   const router = useRouter();
-  const [me, setMe] = React.useState<MeResponse | null>(null);
+  const { me: sessionMe } = useSession();
+  const [me, setMe] = React.useState<MeResponse | null>(sessionMe);
   const [authError, setAuthError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (sessionMe) {
+      setMe(sessionMe);
+      return;
+    }
     let active = true;
     const allowDevFallback =
       process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -81,7 +87,7 @@ function OrgPageContent() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, sessionMe]);
 
   if (authError) {
     return (

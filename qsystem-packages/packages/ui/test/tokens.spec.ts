@@ -25,31 +25,31 @@ describe('tokens + styles', () => {
     expect(tokens.dark.border.base).toBe('#30363D');
     expect(tokens.dark.fg.base).toBe('#F3F4F6');
     expect(tokens.dark.fg.muted).toBe('#9CA3AF');
-    expect(tokens.dark.brand.primary).toBe('#E8AD45');
-    expect(tokens.dark.brand.primaryInk).toBe('#201708');
+    expect(tokens.dark.brand.primary).toBe('#618DC9');
+    expect(tokens.dark.brand.primaryInk).toBe('#091423');
     expect(tokens.dark.accent.red).toBe('#F85149');
     expect(tokens.dark.accent.green).toBe('#3FB950');
   });
 
-  it('ships the DESIGN.md Warm Paper Light palette', () => {
-    expect(tokens.light.bg.base).toBe('#FAF8F4');
-    expect(tokens.light.bg.sidebar).toBe('#F4F1EA');
+  it('ships the DESIGN.md Cool Slate Light palette', () => {
+    expect(tokens.light.bg.base).toBe('#F8FAFC');
+    expect(tokens.light.bg.sidebar).toBe('#F1F5F9');
     expect(tokens.light.surface[1]).toBe('#FFFFFF');
-    expect(tokens.light.bg.inverse).toBe('#F3F0E8');
-    expect(tokens.light.state.hover).toBe('#EFECE4');
-    expect(tokens.light.state.selected).toBe('#E8E4DA');
-    expect(tokens.light.border.base).toBe('#DEDAD0');
+    expect(tokens.light.bg.inverse).toBe('#F1F5F9');
+    expect(tokens.light.state.hover).toBe('#E9EFF5');
+    expect(tokens.light.state.selected).toBe('#E2E8F0');
+    expect(tokens.light.border.base).toBe('#D5DCE4');
     expect(tokens.light.fg.base).toBe('#18181B');
     expect(tokens.light.fg.muted).toBe('#52525B');
-    expect(tokens.light.brand.primary).toBe('#E8AD45');
-    expect(tokens.light.brand.primaryInk).toBe('#201708');
+    expect(tokens.light.brand.primary).toBe('#2C568F');
+    expect(tokens.light.brand.primaryInk).toBe('#FFFFFF');
     expect(tokens.light.accent.red).toBe('#B91C1C');
     expect(tokens.light.accent.green).toBe('#15803D');
   });
 
   it('lifts layered colours (scrim, shadow, danger, info) into tokens', () => {
-    expect(tokens.dark.brand.primaryHover).toBe('#F0BC63');
-    expect(tokens.light.brand.primaryHover).toBe('#D9A33E');
+    expect(tokens.dark.brand.primaryHover).toBe('#759ED4');
+    expect(tokens.light.brand.primaryHover).toBe('#234675');
     expect(tokens.dark.button.danger.bg).toBe('#B91C1C');
     expect(tokens.light.button.danger.text).toBe('#FFFFFF');
     expect(tokens.dark.overlay.scrim).toBe('rgb(8 10 14 / 0.68)');
@@ -68,7 +68,7 @@ describe('tokens + styles', () => {
     const css = readFileSync(join(__dirname, '..', 'src', 'styles.css'), 'utf8');
     expect(css).toMatch(/\[data-theme=['"]dark['"]\]/);
     expect(css).toMatch(/\[data-theme=['"]light['"]\]/);
-    expect(css).toContain('--qs-brand: #e8ad45');
+    expect(css).toContain('--qs-brand: #618dc9');
     expect(css.toLowerCase()).not.toContain('#6366f1');
     expect(css.toLowerCase()).not.toContain('#fafafa');
   });

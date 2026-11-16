@@ -1,14 +1,28 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Be_Vietnam_Pro, IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google';
 import { ToastRegion } from '../components/ToastHost';
 import { ThemeProvider } from '../lib/theme';
 import './globals.css';
 
-const inter = Inter({
+const ibmPlexSans = IBM_Plex_Sans({
   subsets: ['latin', 'vietnamese'],
-  weight: ['400', '500', '600'],
+  weight: ['400', '500', '600', '700'],
   display: 'swap',
   variable: '--qs-font-sans',
+});
+
+const beVietnamPro = Be_Vietnam_Pro({
+  subsets: ['latin', 'vietnamese'],
+  weight: ['500', '600', '700'],
+  display: 'swap',
+  variable: '--qs-font-display',
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ['latin', 'vietnamese'],
+  weight: ['400', '500'],
+  display: 'swap',
+  variable: '--qs-font-mono',
 });
 
 export const metadata: Metadata = {
@@ -23,8 +37,13 @@ const THEME_SCRIPT = `(function(){var t='dark';try{if(localStorage.getItem('qsys
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi" className={inter.variable} suppressHydrationWarning>
+    <html
+      lang="vi"
+      className={`${ibmPlexSans.variable} ${beVietnamPro.variable} ${ibmPlexMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
+        <meta name="color-scheme" content="dark light" />
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>

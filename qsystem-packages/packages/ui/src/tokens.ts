@@ -1,18 +1,18 @@
 export const tokens = {
   light: {
-    bg: { base: '#FAF8F4', sidebar: '#F4F1EA', inverse: '#F3F0E8' },
-    state: { hover: '#EFECE4', selected: '#E8E4DA' },
+    bg: { base: '#F8FAFC', sidebar: '#F1F5F9', inverse: '#F1F5F9' },
+    state: { hover: '#E9EFF5', selected: '#E2E8F0' },
     fg: { base: '#18181B', muted: '#52525B' },
-    brand: { primary: '#E8AD45', primaryInk: '#201708', primaryHover: '#D9A33E' },
+    brand: { primary: '#2C568F', primaryInk: '#FFFFFF', primaryHover: '#234675' },
     button: {
-      solid: { bg: '#18181B', hover: '#3F3F46', text: '#FAF8F4' },
+      solid: { bg: '#2C568F', hover: '#234675', text: '#FFFFFF' },
       danger: { bg: '#B91C1C', hover: '#991B1B', text: '#FFFFFF' },
     },
     overlay: { scrim: 'rgb(24 24 27 / 0.36)' },
     shadow: { float: '0 18px 40px rgb(24 24 27 / 0.14)' },
-    surface: { 1: '#FFFFFF', 2: '#F3F0E8' },
+    surface: { 1: '#FFFFFF', 2: '#F1F5F9' },
     accent: { green: '#15803D', red: '#B91C1C' },
-    border: { base: '#DEDAD0', muted: '#E8E4DA' },
+    border: { base: '#D5DCE4', muted: '#E2E8F0' },
     status: {
       success: { base: '#22C55E', bg: '#F0FDF4', fg: '#15803D', border: '#BBF7D0', muted: '#86EFAC' },
       error: { base: '#EF4444', bg: '#FEF2F2', fg: '#DC2626', border: '#FECACA', muted: '#FCA5A5' },
@@ -24,9 +24,9 @@ export const tokens = {
     bg: { base: '#111418', sidebar: '#191D23', inverse: '#0D1014' },
     state: { hover: '#222731', selected: '#252B36' },
     fg: { base: '#F3F4F6', muted: '#9CA3AF' },
-    brand: { primary: '#E8AD45', primaryInk: '#201708', primaryHover: '#F0BC63' },
+    brand: { primary: '#618DC9', primaryInk: '#091423', primaryHover: '#759ED4' },
     button: {
-      solid: { bg: '#E8AD45', hover: '#F0BC63', text: '#201708' },
+      solid: { bg: '#618DC9', hover: '#759ED4', text: '#091423' },
       danger: { bg: '#B91C1C', hover: '#991B1B', text: '#FFFFFF' },
     },
     overlay: { scrim: 'rgb(8 10 14 / 0.68)' },
@@ -45,9 +45,9 @@ export const tokens = {
     bg: { base: '#000000', sidebar: '#0F1115', inverse: '#181B22' },
     state: { hover: '#222731', selected: '#27272A' },
     fg: { base: '#FFFFFF', muted: '#D4D4D8' },
-    brand: { primary: '#F59E0B', primaryInk: '#000000', primaryHover: '#FBBF24' },
+    brand: { primary: '#759ED4', primaryInk: '#091423', primaryHover: '#8FB2DF' },
     button: {
-      solid: { bg: '#F59E0B', hover: '#FFFFFF', text: '#000000' },
+      solid: { bg: '#759ED4', hover: '#FFFFFF', text: '#091423' },
       danger: { bg: '#FF0000', hover: '#CC0000', text: '#FFFFFF' },
     },
     overlay: { scrim: 'rgb(0 0 0 / 0.8)' },

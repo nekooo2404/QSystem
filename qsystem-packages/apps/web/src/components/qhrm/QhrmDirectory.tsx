@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import { StateRegion, toast, useFloatingLayer } from '@qsystem/ui';
 import type { MeResponse } from '@qsystem/contracts';
-import { apiFetch } from '../../lib/api/client';
+import { apiFetch, cachedApiFetch, invalidateApiCache } from '../../lib/api/client';
+import { getCachedEntry } from '../../lib/api/cache';
 import { formatRole } from '../../lib/adapters/notifications.adapter';
 import { CreateUserModal } from './CreateUserModal';
 import './qhrm.css';
@@ -563,9 +564,15 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
   const pathname = useSafePathname();
   const searchParams = useSafeSearchParams();
 
-  const [departments, setDepartments] = React.useState<Department[] | null>(null);
-  const [users, setUsers] = React.useState<OrgUser[] | null>(null);
-  const [isSample, setIsSample] = React.useState(true);
+  const [departments, setDepartments] = React.useState<Department[] | null>(
+    () => getCachedEntry<Department[]>('/api/org/departments') ?? null,
+  );
+  const [users, setUsers] = React.useState<OrgUser[] | null>(
+    () => getCachedEntry<OrgUser[]>('/api/org/users') ?? null,
+  );
+  const [isSample, setIsSample] = React.useState(() => {
+    return !(getCachedEntry<Department[]>('/api/org/departments') && getCachedEntry<OrgUser[]>('/api/org/users'));
+  });
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [extraCreatedCount, setExtraCreatedCount] = React.useState(0);
   const [sampleActiveDelta, setSampleActiveDelta] = React.useState(0);
@@ -629,8 +636,8 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     const allowLocal = canUseOrgLocalFallback();
     setLoadError(null);
     Promise.all([
-      apiFetch<Department[]>('/api/org/departments'),
-      apiFetch<OrgUser[]>('/api/org/users'),
+      cachedApiFetch<Department[]>('/api/org/departments'),
+      cachedApiFetch<OrgUser[]>('/api/org/users'),
     ]).then(
       ([departmentList, userList]) => {
         if (!active) return;
@@ -898,6 +905,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
       sampleCount: 0,
     };
     const nextDepts = [...(departments ?? []), createdDept];
+    invalidateApiCache('/api/org/departments');
     setDepartments(nextDepts);
     persistOrgLocalState(nextDepts, users, meta);
     setNewDeptName('');
@@ -1412,6 +1420,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                   }
                 : extraDeptCounts;
 
+            invalidateApiCache('/api/org/users');
             setUsers(nextUsers);
             setExtraCreatedCount(nextExtraCount);
             setSampleActiveDelta(nextActiveDelta);

@@ -84,7 +84,7 @@ const MODULES: ModuleDef[] = [
     home: '/tasks',
     navLabel: 'QTask / Điều hướng',
     nav: [
-      { label: 'Tổng quan', href: '/', icon: Home },
+      { label: 'Tổng quan', href: '/?muc=tong-quan', icon: Home, match: '/?tong-quan' },
       { label: 'Tất cả công việc', href: '/', icon: SquareCheck, match: '/' },
       { label: 'Công việc của tôi', href: '/tasks', icon: Check, match: '/tasks', count: 3 },
       { label: 'Dự án', href: '/projects', icon: Folder, match: '/projects' },
@@ -202,6 +202,36 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
   React.useEffect(() => setNavOpen(false), [pathname, section]);
 
   React.useEffect(() => {
+    const idlePrefetch = () => {
+      const routes = ['/tasks', '/', '/org', '/crm', '/social', '/projects'];
+      routes.forEach((route) => {
+        try {
+          router.prefetch(route);
+        } catch {
+          // prefetch is best-effort
+        }
+      });
+    };
+    if (typeof window !== 'undefined') {
+      const win = window as unknown as {
+        requestIdleCallback?: (cb: () => void) => number;
+        cancelIdleCallback?: (id: number) => void;
+      };
+      if (typeof win.requestIdleCallback === 'function') {
+        const handle = win.requestIdleCallback(idlePrefetch);
+        return () => {
+          if (typeof win.cancelIdleCallback === 'function') {
+            win.cancelIdleCallback(handle);
+          }
+        };
+      } else {
+        const timeout = setTimeout(idlePrefetch, 200);
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [router]);
+
+  React.useEffect(() => {
     const savedId = loadStoredWorkspaceId();
     if (!savedId) return;
     const match = WORKSPACES.find((item) => item.id === savedId);
@@ -298,7 +328,13 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
       );
     }
     return (
-      <Link key={item.label} href={item.href} className="qx-nav__link" aria-current={item.match === matchKey ? 'page' : undefined}>
+      <Link
+        key={item.label}
+        href={item.href}
+        prefetch={true}
+        className="qx-nav__link"
+        aria-current={item.match === matchKey ? 'page' : undefined}
+      >
         <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
         {item.label}
         {item.count ? <span className="qx-nav__count">{item.count}</span> : null}
@@ -311,7 +347,10 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
       <div className="qx-backdrop" aria-hidden="true" onClick={() => setNavOpen(false)} />
       <aside className="qx-sidebar" aria-label="Điều hướng chính">
         <div className="qx-brand">
-          <span className="qx-brand__mark" aria-hidden="true">Q</span>
+          <span className="qx-brand__mark" aria-label="Logo QTS">
+            Q
+            <img src="/qts-logo.png" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
+          </span>
           <span className="qx-brand__name">QSystem</span>
           <span className="qx-brand__tag">WORKSPACE</span>
         </div>
@@ -390,7 +429,13 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
         <p className="qx-label">Không gian làm việc</p>
         <nav className="qx-modules" aria-label="Phân hệ">
           {MODULES.map((entry) => (
-            <Link key={entry.id} href={entry.home} className="qx-chip" aria-current={entry.id === module.id ? 'true' : undefined}>
+            <Link
+              key={entry.id}
+              href={entry.home}
+              prefetch={true}
+              className="qx-chip"
+              aria-current={entry.id === module.id ? 'true' : undefined}
+            >
               {entry.name}
             </Link>
           ))}
@@ -414,7 +459,7 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
             <span className="qx-user__name">{userName}</span>
             <span className="qx-user__role">{userRole}</span>
           </span>
-          <Link href="/account" className="qx-icon-btn" aria-label="Tài khoản của tôi">
+          <Link href="/account" prefetch={true} className="qx-icon-btn" aria-label="Tài khoản của tôi">
             <MoreHorizontal size={17} strokeWidth={1.6} aria-hidden="true" />
           </Link>
         </div>
@@ -448,7 +493,7 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
             <button type="button" className="qx-icon-btn" onClick={toggle} aria-label="Chuyển giao diện Sáng/Tối" aria-pressed={theme === 'dark'}>
               {theme === 'dark' ? <Sun size={17} strokeWidth={1.6} aria-hidden="true" /> : <Moon size={17} strokeWidth={1.6} aria-hidden="true" />}
             </button>
-            <Link href="/notifications" className="qx-icon-btn" aria-label={unread > 0 ? `Thông báo, ${unread} chưa đọc` : 'Thông báo'}>
+            <Link href="/notifications" prefetch={true} className="qx-icon-btn" aria-label={unread > 0 ? `Thông báo, ${unread} chưa đọc` : 'Thông báo'}>
               <Bell size={17} strokeWidth={1.6} aria-hidden="true" />
               {unread > 0 ? <span className="qx-icon-btn__dot" aria-hidden="true" /> : null}
             </Link>
@@ -475,7 +520,7 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
                     <span className="qx-user__name">{userName}</span>
                     <span className="qx-user__role">{userRole}</span>
                   </div>
-                  <Link href="/account" className="qx-menu__item" role="menuitem" tabIndex={-1} onClick={() => setMenuOpen(false)}>
+                  <Link href="/account" prefetch={true} className="qx-menu__item" role="menuitem" tabIndex={-1} onClick={() => setMenuOpen(false)}>
                     <User size={15} strokeWidth={1.6} aria-hidden="true" />
                     Trang tài khoản
                   </Link>

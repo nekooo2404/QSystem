@@ -1,8 +1,28 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 · app: web console · genre: modern-minimal · theme: console · macrostructure: workbench · states: 8 · contrast: pass (40–41) · mobile: pass (34, 49, 50–57) */
 @import '@qsystem/ui/styles.css';
+@import 'animate.css';
 
 :root {
-  --qs-font-body: var(--qs-font-sans, Inter, system-ui, sans-serif);
+  --qs-font-body: var(--qs-font-sans, 'IBM Plex Sans', system-ui, sans-serif);
+  --qs-font-heading: var(--qs-font-display, 'Be Vietnam Pro', system-ui, sans-serif);
+  --qs-font-code: var(--qs-font-mono, ui-monospace, 'SFMono-Regular', Menlo, monospace);
+  --animate-duration: 240ms;
+  accent-color: var(--qs-brand);
+}
+
+/* Enterprise Animate.css reduced-motion safeguard: settle directly in the
+   final visible state without any 1ms spatial jump or shake. */
+@media (prefers-reduced-motion: reduce) {
+  .animate__animated {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1;
+    transform: none !important;
+  }
+
+  .animate__animated[class*='Out'] {
+    opacity: 0;
+  }
 }
 
 *,
@@ -29,12 +49,24 @@ body {
 
 /* Codes, dates, timestamps and counters align digit-to-digit everywhere. */
 code,
+kbd,
+pre {
+  font-family: var(--qs-font-code);
+}
+
+code,
 time,
 output,
 .qs-numeric,
 .qs-table td,
 .qs-table th {
   font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--qs-font-heading);
 }
 
 h1 {

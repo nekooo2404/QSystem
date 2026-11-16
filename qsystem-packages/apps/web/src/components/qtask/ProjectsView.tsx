@@ -90,7 +90,7 @@ const SAMPLE_PROJECTS_LIST: ProjectItem[] = [
     id: 'proj-qsocial',
     name: 'QSocial Workspace',
     description: 'Truyền thông nội bộ',
-    accent: 'purple',
+    accent: 'blue',
     statusLabel: 'Sắp hoàn thành',
     badgeVariant: 'green',
     progress: 93,

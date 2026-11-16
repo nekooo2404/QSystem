@@ -25,9 +25,11 @@ import {
 import { toast } from '@qsystem/ui';
 import { listTasks, listTasksPage, TASK_STATUSES, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
 import { apiFetch, ApiError } from '../../lib/api/client';
+import { useSession } from '../../lib/auth/session-context';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import { CreateTaskModal, type AssigneeOption } from './CreateTaskModal';
 import { MyTasksView } from './MyTasksView';
+import { QTaskOverview } from './QTaskOverview';
 import {
   applyStatusPatch,
   canUseDevPersistence,
@@ -185,7 +187,10 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   const [serverTotal, setServerTotal] = React.useState<number | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
-  const [me, setMe] = React.useState<{ id?: string; name?: string }>({});
+  const { me: sessionMe } = useSession();
+  const [me, setMe] = React.useState<{ id?: string; name?: string }>(() =>
+    sessionMe ? { id: sessionMe.id, name: sessionMe.name } : {},
+  );
   const writes = React.useRef(new Set<string>());
   const [pendingIds, setPendingIds] = React.useState(new Set<string>());
   const mounted = React.useRef(true);
@@ -236,10 +241,14 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
       .then((result) => ({ ok: true as const, result }))
       .catch((err: unknown) => ({ ok: false as const, err }));
 
+    const mePromise = sessionMe
+      ? Promise.resolve({ id: sessionMe.id, name: sessionMe.name })
+      : apiFetch<{ id: string; name: string }>('/api/me').catch(() => ({}));
+
     Promise.all([
       apiFetch<Department[]>('/api/org/departments').catch(() => []),
       apiFetch<AssigneeOption[]>('/api/org/users').catch(() => []),
-      apiFetch<{ id: string; name: string }>('/api/me').catch(() => ({})),
+      mePromise,
       tasksPromise,
     ]).then(([depts, users, meRes, tasksResult]) => {
       if (!active) return;
@@ -608,6 +617,50 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
           value: name,
           label: name,
         }));
+
+  const isOverview = searchParams?.get('muc') === 'tong-quan';
+
+  if (isOverview) {
+    return (
+      <>
+        <QTaskOverview
+          tasks={tasks}
+          statTotal={statTotal}
+          statInProgress={statInProgress}
+          statDone={statDone}
+          statOverdue={statOverdue}
+          completionPct={completionPct}
+          onCreateTask={() => setCreating(true)}
+          onSelectTask={(task) => setSelectedId(task.id)}
+          isOverdue={isOverdue}
+        />
+
+        <TaskDetailDrawer
+          task={selected}
+          departmentName={selected ? departmentName(selected.departmentId, selected.departmentName) : 'Nhân sự'}
+          pending={selected ? pendingIds.has(selected.id) : false}
+          onClose={() => setSelectedId(null)}
+          onStatusChange={(status) => {
+            if (selected) void changeStatus(selected, status);
+          }}
+          onComplete={() => {
+            if (selected) void changeStatus(selected, 'Hoàn thành');
+          }}
+          currentUserName={me.name ?? 'Minh Khôi'}
+        />
+
+        <CreateTaskModal
+          open={creating}
+          onOpenChange={closeModal}
+          people={people}
+          onCreated={(task) => {
+            upsert(task);
+            toast.success(`Đã giao việc ${task.code} cho ${task.assigneeName}`);
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <section className="qx-page" aria-label="Tất cả công việc">

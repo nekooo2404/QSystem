@@ -3,19 +3,19 @@
 
 :root,
 [data-theme='dark'] {
-  --qfl-pop-shadow: 0 18px 40px rgb(0 0 0 / 0.45);
-  --qfl-modal-shadow: 0 24px 60px rgb(0 0 0 / 0.48);
+  --qfl-pop-shadow: 0 8px 16px rgb(0 0 0 / 0.34);
+  --qfl-modal-shadow: 0 16px 32px rgb(0 0 0 / 0.42);
   --qfl-overlay-bg: rgb(6 8 12 / 0.72);
   --qfl-json-fg: var(--qx-amber);
-  --qfl-amber-link: var(--qx-amber-text, #f0b13f);
+  --qfl-amber-link: var(--qx-amber-text, #7ba2d6);
 }
 
 [data-theme='light'] {
-  --qfl-pop-shadow: 0 16px 34px rgb(24 24 27 / 0.14);
-  --qfl-modal-shadow: 0 22px 50px rgb(24 24 27 / 0.18);
+  --qfl-pop-shadow: 0 8px 16px rgb(24 24 27 / 0.12);
+  --qfl-modal-shadow: 0 14px 28px rgb(24 24 27 / 0.14);
   --qfl-overlay-bg: rgb(24 24 27 / 0.36);
   --qfl-json-fg: #854d0e;
-  --qfl-amber-link: var(--qx-amber-text, #8a5c00);
+  --qfl-amber-link: var(--qx-amber-text, #264c80);
 }
 
 @keyframes qfl-pop-in {
@@ -510,7 +510,7 @@ label.qx-btn:focus-within {
   width: 420px;
   max-width: 100%;
   padding: 22px;
-  border: 1px solid var(--qx-border);
+  border: 0;
   border-radius: 10px;
   background: var(--qx-card);
   color: var(--qx-fg);

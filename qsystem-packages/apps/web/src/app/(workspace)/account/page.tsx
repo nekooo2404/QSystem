@@ -6,6 +6,7 @@ import { Activity, ArrowRight, Bell, KeyRound, Settings, ShieldCheck, Sun, User 
 import { StateRegion, toast } from '@qsystem/ui';
 import { ChangePasswordSchema, type MeResponse } from '@qsystem/contracts';
 import { ApiError, apiFetch, setAccessToken } from '../../../lib/api/client';
+import { useSession } from '../../../lib/auth/session-context';
 import { humanizeApiError } from '../../../lib/errors/humanize';
 import '../../../components/account/account.css';
 
@@ -120,14 +121,15 @@ function formatAccountRole(role?: string): string {
 
 export default function AccountPage() {
   const router = useRouter();
-  const [me, setMe] = React.useState<MeResponse | null>(null);
+  const { me: sessionMe, updateMe } = useSession();
+  const [me, setMe] = React.useState<MeResponse | null>(sessionMe);
   const [loadError, setLoadError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(!sessionMe);
   const [attempt, setAttempt] = React.useState(0);
 
   const [activeNav, setActiveNav] = React.useState<NavKey>('profile');
   const [editingProfile, setEditingProfile] = React.useState(false);
-  const [displayName, setDisplayName] = React.useState('Minh Khôi');
+  const [displayName, setDisplayName] = React.useState(sessionMe?.name ?? 'Minh Khôi');
   const [savedDepartment, setSavedDepartment] = React.useState('Ban Giám đốc');
   const [departmentName, setDepartmentName] = React.useState('Ban Giám đốc');
 
@@ -151,6 +153,12 @@ export default function AccountPage() {
 
   React.useEffect(() => {
     let active = true;
+    if (sessionMe && attempt === 0) {
+      setMe(sessionMe);
+      setDisplayName(sessionMe.name);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setLoadError(null);
     const stored = readStoredProfile();
@@ -296,6 +304,7 @@ export default function AccountPage() {
     const trimmed = displayName.trim() || me.name;
     const nextDepartment = departmentName.trim() || 'Ban Giám đốc';
     setMe({ ...me, name: trimmed });
+    updateMe({ ...me, name: trimmed });
     setDisplayName(trimmed);
     setDepartmentName(nextDepartment);
     setSavedDepartment(nextDepartment);

@@ -2,6 +2,14 @@
 
 <!-- impeccable:product-schema 1 -->
 
+## Current Brand Update
+
+The QTS shield logo in `apps/web/public/qts-logo.png` is the primary brand asset
+for login and workspace navigation. Use the QTS cyan/navy/silver direction for
+new UI work; the current token values are `#00D9FF` (dark), `#007A99` (light),
+`#06263A` (ink), and `#005F73` (light focus). Preserve contrast and keep the
+textual `Q` fallback when the raster asset is unavailable.
+
 ## Platform
 
 web

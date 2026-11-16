@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { MeResponseSchema, type MeResponse } from '@qsystem/contracts';
 import { apiFetch } from '../../lib/api/client';
 import { AppWorkspaceShell } from './AppWorkspaceShell';
+import { SessionProvider } from '../../lib/auth/session-context';
 
 const PROFILE_STORAGE_KEY = 'qsystem:account:profile:v1';
 
@@ -95,8 +96,10 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <React.Suspense fallback={null}>
-      <AppWorkspaceShell me={me}>{children}</AppWorkspaceShell>
-    </React.Suspense>
+    <SessionProvider me={me}>
+      <React.Suspense fallback={null}>
+        <AppWorkspaceShell me={me}>{children}</AppWorkspaceShell>
+      </React.Suspense>
+    </SessionProvider>
   );
 }

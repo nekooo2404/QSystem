@@ -1,3 +1,7 @@
+import { cachedApiFetch, invalidateApiCache, clearApiCache, type CacheOptions } from './cache';
+
+export { cachedApiFetch, invalidateApiCache, clearApiCache };
+
 export interface ValueSchema<T> {
   parse(data: unknown): T;
 }
@@ -57,6 +61,10 @@ function refreshOnce(): Promise<string | null> {
 export interface ApiFetchInit<T> extends RequestInit {
   /** Any Zod schema (or anything with `parse`); the return type is its output. */
   schema?: ValueSchema<T>;
+  /** If true, routes the request through the in-memory SWR cache and deduplicator. */
+  useCache?: boolean;
+  /** Custom TTL and cache options when useCache is enabled. */
+  cacheOptions?: CacheOptions;
 }
 
 async function send(path: string, init: RequestInit): Promise<Response> {
@@ -68,7 +76,12 @@ async function send(path: string, init: RequestInit): Promise<Response> {
 const SKIP_REFRESH_PATHS = new Set(['/api/auth/refresh', '/api/auth/login', '/api/auth/logout']);
 
 export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit<T> = {}): Promise<T> {
-  const { schema, ...requestInit } = init;
+  if (init.useCache) {
+    const { useCache, cacheOptions, ...rest } = init;
+    return cachedApiFetch<T>(path, rest, cacheOptions);
+  }
+
+  const { schema, useCache, cacheOptions, ...requestInit } = init;
   let res = await send(path, requestInit);
 
   if (res.status === 401 && !SKIP_REFRESH_PATHS.has(path)) {

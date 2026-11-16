@@ -411,9 +411,9 @@ export function TaskDetailContent({
 
       {tab === 'trao-doi' ? (
         <>
-          <ul className="qtk-comments">
+          <ul className="qtk-comments animate__animated animate__fadeIn animate__faster">
             {comments.map((comment) => (
-              <li key={comment.id} className="qtk-comment">
+              <li key={comment.id} className="qtk-comment animate__animated animate__fadeIn animate__faster">
                 <span className="qx-avatar qx-avatar--sm qtk-avatar-cell" aria-hidden="true">
                   {comment.initials}
                 </span>
@@ -444,7 +444,7 @@ export function TaskDetailContent({
           </form>
         </>
       ) : tab === 'tep-dinh-kem' ? (
-        <div>
+        <div className="animate__animated animate__fadeIn animate__faster">
           <div className="qtk-attach-bar">
             <span className="qtk-drawer__empty">
               {attachments.length > 0 ? `${attachments.length} tệp đính kèm` : 'Chưa có tệp nào đính kèm.'}
@@ -468,7 +468,7 @@ export function TaskDetailContent({
           {attachments.length === 0 ? null : (
             <ul className="qtk-attach-list">
               {attachments.map((file) => (
-                <li key={file.id} className="qtk-attach-item">
+                <li key={file.id} className="qtk-attach-item animate__animated animate__fadeIn animate__faster">
                   <span className="qx-person">
                     <Paperclip size={14} strokeWidth={1.6} aria-hidden="true" />
                     <span>{file.name}</span>
@@ -480,7 +480,7 @@ export function TaskDetailContent({
           )}
         </div>
       ) : (
-        <ul className="qtk-history-list">
+        <ul className="qtk-history-list animate__animated animate__fadeIn animate__faster">
           {history.map((item) => (
             <li key={item.id} className="qtk-history-item">
               <span className="qx-person">
@@ -556,10 +556,10 @@ export function TaskDetailDrawer({
 
   return (
     <>
-      <div className="qtk-drawer-backdrop" aria-hidden="true" onClick={onClose} />
+      <div className="qtk-drawer-backdrop animate__animated animate__fadeIn animate__faster" aria-hidden="true" onClick={onClose} />
       <aside
         ref={drawerRef}
-        className="qtk-drawer"
+        className="qtk-drawer animate__animated animate__fadeInRight"
         role="dialog"
         aria-modal="true"
         aria-label={task.title}
