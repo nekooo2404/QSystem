@@ -16,6 +16,7 @@ interface LookupRow {
   password_hash: string;
   role: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE';
   department_id: string | null;
+  status: string;
 }
 
 interface RefreshRow {
@@ -24,6 +25,7 @@ interface RefreshRow {
   expires_at: Date | string;
   revoked_at: Date | string | null;
   replaced_by_id: string | null;
+  remember: boolean;
 }
 
 type TxClient = Prisma.TransactionClient;
@@ -106,13 +108,14 @@ export class IamService {
     return new Date(value).getTime();
   }
 
-  private async createRefreshToken(db: TxClient, userId: string): Promise<string> {
+  private async createRefreshToken(db: TxClient, userId: string, remember = true): Promise<string> {
     const raw = crypto.randomBytes(32).toString('hex');
     await db.refreshToken.create({
       data: {
         userId,
         tokenHash: this.hashToken(raw),
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
+        remember,
         tenantId: null,
       },
     });
@@ -164,11 +167,11 @@ export class IamService {
     const valid = identity
       ? await argon2.verify(identity.password_hash, password).catch(() => false)
       : false;
-    if (!identity || !valid) {
+    if (!identity || !valid || identity.status !== 'ACTIVE') {
       throw error('INVALID_CREDENTIALS', 'Invalid email or password', HttpStatus.UNAUTHORIZED);
     }
     const raw = await this.prisma.withIdentity(identity.id, (tx) =>
-      this.createRefreshToken(tx, identity.id),
+      this.createRefreshToken(tx, identity.id, remember),
     );
     res.cookie(REFRESH_COOKIE, raw, this.refreshCookieOptions(remember));
     return { accessToken: this.signAccess({ id: identity.id, role: identity.role }) };
@@ -212,7 +215,7 @@ export class IamService {
       const accessToken = await this.prisma.withIdentity(row.user_id, async (tx) => {
         // Rotation: issue the replacement first, then retire the old token
         // linked to it — reuse of the old token is detectable via replaced_by_id.
-        const rawNext = await this.createRefreshToken(tx, row.user_id);
+        const rawNext = await this.createRefreshToken(tx, row.user_id, row.remember);
         const next = await tx.refreshToken.findUniqueOrThrow({
           where: { tokenHash: this.hashToken(rawNext) },
           select: { id: true },
@@ -229,7 +232,7 @@ export class IamService {
           where: { id: row.user_id },
           select: { role: true },
         });
-        res.cookie(REFRESH_COOKIE, rawNext, this.refreshCookieOptions());
+        res.cookie(REFRESH_COOKIE, rawNext, this.refreshCookieOptions(row.remember));
         return this.signAccess({ id: row.user_id, role: identity.role });
       });
       return { accessToken };
@@ -327,6 +330,29 @@ export class IamService {
       });
       // Password change revokes every live session.
       await this.revokeChain(tx, viewerId);
+    });
+  }
+
+  async listSessions(viewer: RequestViewer | undefined, currentToken?: string) {
+    if (!viewer?.id) throw codedUnauthorized();
+    const currentId = currentToken ? (await this.lookupRefresh(this.hashToken(currentToken)))?.id : undefined;
+    return this.prisma.withIdentity(viewer.id, (tx) =>
+      tx.refreshToken.findMany({
+        where: { userId: viewer.id, revokedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, createdAt: true, expiresAt: true, remember: true },
+      }).then((rows) => rows.map((row) => ({ ...row, current: row.id === currentId }))),
+    );
+  }
+
+  async revokeSession(viewer: RequestViewer | undefined, sessionId: string): Promise<void> {
+    if (!viewer?.id) throw codedUnauthorized();
+    await this.prisma.withIdentity(viewer.id, async (tx) => {
+      const result = await tx.refreshToken.updateMany({
+        where: { id: sessionId, userId: viewer.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (result.count === 0) throw error('NOT_FOUND', 'Session not found', HttpStatus.NOT_FOUND);
     });
   }
 

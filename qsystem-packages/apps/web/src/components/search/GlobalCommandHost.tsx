@@ -90,7 +90,8 @@ function extractRecordItems(raw: unknown): Array<Record<string, unknown>> {
 
 function searchWorkspaceRecords(query: string, go: (href: string) => void): PaletteItem[] {
   const needle = query.trim();
-  if (!needle || typeof window === 'undefined' || process.env.NODE_ENV === 'test') return [];
+  const demoMode = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  if (!needle || typeof window === 'undefined' || process.env.NODE_ENV === 'test' || !demoMode) return [];
   const matchesList: PaletteItem[] = [];
   const seen = new Set<string>();
 

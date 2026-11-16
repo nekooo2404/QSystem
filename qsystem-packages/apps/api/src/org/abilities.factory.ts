@@ -112,12 +112,13 @@ export class AbilitiesFactory {
         where: { id: viewer.id },
         select: {
           role: true,
+          status: true,
           departmentId: true,
           managedDepartments: { select: { id: true } },
         },
       }),
     );
-    if (!row) {
+    if (!row || row.status !== 'ACTIVE') {
       throw new HttpException(
         { code: 'UNAUTHORIZED', message: 'User account no longer exists' },
         HttpStatus.UNAUTHORIZED,

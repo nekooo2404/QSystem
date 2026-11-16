@@ -1,7 +1,17 @@
-# QSystem Production Readiness — Implementation Evidence
+# QSystem Production Readiness — Historical Implementation Evidence
+
+> **Evidence status (2026-11-16): superseded and not a release approval.**
+> The live DB/S3/Meilisearch, Docker, and Playwright claims below were recorded
+> by an earlier run and are not reproducible from the current checkout without
+> its external services. The current audit-remediation run records only direct
+> local evidence and keeps unavailable integration gates blocked.
+
+For the current scope, findings, and verification state see
+`docs/harness/qsystem-audit-remediation-spec.md` and
+`docs/harness/qsystem-audit-remediation-tasks.json`.
 
 **Task ID:** `qsystem-production-readiness`  
-**Status:** Completed (local codebase + live DB/S3/Meilisearch + Playwright E2E verified; CI Docker/deploy jobs require runner & cluster environment)
+**Status:** Historical record only; live/integration evidence must be re-run for the current checkout.
 
 ## 1. Delivered Waves
 

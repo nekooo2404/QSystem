@@ -8,7 +8,7 @@ const task = { id: 't-1', code: 'CV-1042', title: `Rà soát danh sách chi nhá
 const notification = { id: 'n-1', channel: 'EMAIL', recipient: me.email, recipientId: me.id, payload: { title: sample }, status: 'SENT', attempts: 1, readAt: null, createdAt: '2026-11-14T06:00:00Z' };
 
 async function fixtures(page: Page) {
-  await page.context().addCookies([{ name: 'refresh_token', value: 'browser-fixture-only', url: test.info().project.use.baseURL || 'http://127.0.0.1:3000' }]);
+  await page.context().addCookies([{ name: 'refresh_token', value: 'browser-fixture-only-token-2026', url: test.info().project.use.baseURL || 'http://127.0.0.1:3000' }]);
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     const body = path === '/api/me' ? me

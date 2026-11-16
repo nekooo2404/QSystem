@@ -88,7 +88,7 @@ export class OrgController {
     return this.org.updateUser(
       await this.viewer(user),
       id,
-      parseBody<{ role?: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE'; departmentId?: string | null; reportsToId?: string | null }>(UpdateUserSchema, body),
+      parseBody<{ role?: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE'; status?: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'; jobTitle?: string | null; departmentId?: string | null; reportsToId?: string | null }>(UpdateUserSchema, body),
     );
   }
 
@@ -155,5 +155,10 @@ export class OrgController {
     @Param('id') id: string,
   ) {
     return this.org.deleteCrmCustomer(await this.viewer(user), id);
+  }
+
+  @Get('crm/summary')
+  async crmSummary(@CurrentUser() user: RequestViewer | undefined) {
+    return this.org.crmSummary(await this.viewer(user));
   }
 }

@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { getRuntimeEnv } from '../config/env.config';
+import { getRuntimeEnv, readSecretOrEnv } from '../config/env.config';
 import { PrismaService } from '../prisma/prisma.service';
 import { meiliConfigFromEnv } from '../search/search.service';
-import { s3ConfigFromEnv } from '../storage/sigv4';
+import { signedHeaderRequest, s3ConfigFromEnv } from '../storage/sigv4';
+import { execRedisCommands } from '../iam/redis-resp.client';
 
 export interface DependencyCheck {
   ok: boolean;
@@ -18,6 +19,7 @@ export interface ReadinessReport {
     database: DependencyCheck;
     s3: DependencyCheck;
     meilisearch: DependencyCheck;
+    redis?: DependencyCheck;
   };
 }
 
@@ -37,17 +39,19 @@ export class HealthService {
   }
 
   async ready(): Promise<ReadinessReport> {
-    const [database, s3, meilisearch] = await Promise.all([
+    const [database, s3, meilisearch, redis] = await Promise.all([
       this.checkDatabase(),
       this.checkS3(),
       this.checkMeilisearch(),
+      this.checkRedis(),
     ]);
-    const ok = database.ok && s3.ok && meilisearch.ok;
+    const redisRequired = process.env.RATE_LIMIT_STORE?.trim().toLowerCase() === 'redis';
+    const ok = database.ok && s3.ok && meilisearch.ok && (!redisRequired || redis.ok);
     return {
       ok,
       status: ok ? 'ready' : 'not_ready',
       env: getRuntimeEnv(),
-      checks: { database, s3, meilisearch },
+      checks: { database, s3, meilisearch, ...(redisRequired ? { redis } : {}) },
     };
   }
 
@@ -72,18 +76,36 @@ export class HealthService {
     const start = Date.now();
     try {
       const cfg = s3ConfigFromEnv();
-      const url = `${cfg.endpoint.replace(/\/$/, '')}/`;
-      const res = await fetch(url, {
-        method: 'GET',
+      const bucket = readSecretOrEnv('S3_BUCKET');
+      if (!bucket) return { ok: false, latencyMs: Date.now() - start, error: 'MISCONFIGURED' };
+      const signed = signedHeaderRequest(cfg, 'GET', `/${bucket}`, { 'list-type': '2', 'max-keys': '1' });
+      const res = await fetch(signed.url, {
+        method: signed.method,
+        headers: signed.headers,
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       });
-      if (res.status >= 500) {
-        return { ok: false, latencyMs: Date.now() - start, error: 'HTTP_5XX' };
-      }
+      if (!res.ok) return { ok: false, latencyMs: Date.now() - start, error: `HTTP_${res.status}` };
       return { ok: true, latencyMs: Date.now() - start };
     } catch (err) {
       const code = err instanceof Error && err.message.includes('required') ? 'MISCONFIGURED' : 'UNAVAILABLE';
       return { ok: false, latencyMs: Date.now() - start, error: code };
+    }
+  }
+
+  private async checkRedis(): Promise<DependencyCheck> {
+    const start = Date.now();
+    if (process.env.RATE_LIMIT_STORE?.trim().toLowerCase() !== 'redis') {
+      return { ok: true, latencyMs: 0 };
+    }
+    try {
+      const url = process.env.REDIS_URL?.trim();
+      if (!url) return { ok: false, latencyMs: Date.now() - start, error: 'MISCONFIGURED' };
+      const [pong] = await execRedisCommands(url, [['PING']], PROBE_TIMEOUT_MS);
+      return pong === 'PONG'
+        ? { ok: true, latencyMs: Date.now() - start }
+        : { ok: false, latencyMs: Date.now() - start, error: 'INVALID_RESPONSE' };
+    } catch {
+      return { ok: false, latencyMs: Date.now() - start, error: 'UNAVAILABLE' };
     }
   }
 

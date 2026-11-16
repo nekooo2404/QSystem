@@ -102,6 +102,7 @@ export class StorageController {
     id: string;
     bucket: string;
     key: string;
+    displayName: string;
     mimeType: string | null;
     size: number | null;
     url: string;
@@ -125,6 +126,7 @@ export class StorageController {
       id: file.id,
       bucket: file.bucket,
       key: file.key,
+      displayName: file.displayName,
       mimeType: file.mimeType,
       size: file.size,
       url: file.url,
@@ -136,7 +138,7 @@ export class StorageController {
   async updateFile(
     @CurrentUser() user: RequestViewer | undefined,
     @Param('id') id: string,
-    @Body() body: { key?: string; mimeType?: string },
+    @Body() body: { key?: string; displayName?: string; mimeType?: string },
   ) {
     if (!user?.id) {
       throw codedUnauthorized();
@@ -147,6 +149,7 @@ export class StorageController {
     });
     const updated = await this.storage.updateFile(viewer, id, {
       key: typeof body?.key === 'string' ? body.key : undefined,
+      displayName: typeof body?.displayName === 'string' ? body.displayName : undefined,
       mimeType: typeof body?.mimeType === 'string' ? body.mimeType : undefined,
     });
     if (!updated) throw codedNotFound();

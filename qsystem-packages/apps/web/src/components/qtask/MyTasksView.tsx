@@ -476,7 +476,9 @@ export function MyTasksView() {
 
     setPendingIds((prev) => new Set(prev).add(task.id));
     try {
-      const updated = await updateTaskStatus(task.id, nextStatus);
+      const updated = task.version === undefined
+        ? await updateTaskStatus(task.id, nextStatus)
+        : await updateTaskStatus(task.id, nextStatus, task.version);
       setTasks((prev) =>
         prev.map((item) =>
           item.id === task.id ? { ...item, ...updated, displayStatus: updated.status } : item,

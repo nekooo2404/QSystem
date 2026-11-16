@@ -61,6 +61,9 @@ export function getRuntimeEnv(): RuntimeEnv {
   if (candidate === 'production' || candidate === 'staging' || candidate === 'test') {
     return candidate;
   }
+  if (candidate !== 'development') {
+    throw new Error(`env: APP_ENV/NODE_ENV must be development, test, staging, or production; received ${candidate}`);
+  }
   return 'development';
 }
 
@@ -87,6 +90,23 @@ export function validateRuntimeEnv(): { env: RuntimeEnv; productionLike: boolean
   hydrateSecretsFromFiles();
   const env = getRuntimeEnv();
   const productionLike = isProductionLike();
+  const tenancyMode = (process.env.TENANCY_MODE ?? 'single-tenant').trim().toLowerCase();
+  if (tenancyMode !== 'single-tenant') {
+    throw new Error('env: multi-tenant mode is not supported by this deployment; use TENANCY_MODE=single-tenant');
+  }
+
+  if (productionLike) {
+    if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
+      throw new Error(`env: NEXT_PUBLIC_DEMO_MODE must be false or unset in ${env} mode`);
+    }
+    if (process.env.COOKIE_SECURE?.trim().toLowerCase() === 'false') {
+      throw new Error(`env: COOKIE_SECURE must not be false in ${env} mode`);
+    }
+    const sameSite = process.env.COOKIE_SAME_SITE?.trim().toLowerCase();
+    if (sameSite === 'none' && process.env.COOKIE_SECURE?.trim().toLowerCase() !== 'true') {
+      throw new Error('env: COOKIE_SECURE=true is required when COOKIE_SAME_SITE=none');
+    }
+  }
 
   if (productionLike) {
     assertNonPlaceholderSecret('JWT_SECRET', 32);

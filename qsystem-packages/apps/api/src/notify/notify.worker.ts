@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { Notification } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -16,6 +17,7 @@ export const MAX_ATTEMPTS = 3;
  * only rows whose last write is older than this are provably abandoned.
  */
 export const REAP_GRACE_MS = 60_000;
+export const DELIVERY_LEASE_MS = 30_000;
 
 /**
  * Poll-based local outbox worker (plan-approved deterministic adapter in
@@ -36,15 +38,29 @@ export const REAP_GRACE_MS = 60_000;
  * no in-memory state to lose.
  */
 @Injectable()
-export class NotifyWorker {
+export class NotifyWorker implements OnModuleInit, OnModuleDestroy {
   /** In-process overlap guard for tick(). */
   private running = false;
+  private readonly workerId = randomUUID();
+  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     // Explicit tokens — esbuild (vitest) does not emit decorator metadata.
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject('NOTIFY_PROVIDERS') private readonly providers: NotificationProvider[],
   ) {}
+
+  onModuleInit(): void {
+    if (process.env.NODE_ENV === 'test' || process.env.NOTIFY_WORKER_ENABLED === 'false') return;
+    const interval = Math.max(1000, Number(process.env.NOTIFY_WORKER_INTERVAL_MS ?? 5000));
+    this.timer = setInterval(() => void this.tick(), interval);
+    this.timer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
 
   /** One poll pass over eligible PENDING outbox rows. */
   async tick(): Promise<void> {
@@ -73,16 +89,22 @@ export class NotifyWorker {
     // untouched for REAP_GRACE_MS are reaped, so a row another instance is
     // delivering right now is never cut off mid-flight. Dead-lettering is
     // bookkeeping only: no provider call for reaped rows.
+    const now = new Date();
     await this.prisma.notification.updateMany({
       where: {
         status: 'PENDING',
         attempts: { gte: MAX_ATTEMPTS },
         updatedAt: { lt: new Date(Date.now() - REAP_GRACE_MS) },
+        OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
       },
-      data: { status: 'DEAD' },
+      data: { status: 'DEAD', lockedBy: null, lockedUntil: null },
     });
     const rows = await this.prisma.notification.findMany({
-      where: { status: 'PENDING', attempts: { lt: MAX_ATTEMPTS } },
+      where: {
+        status: 'PENDING',
+        attempts: { lt: MAX_ATTEMPTS },
+        OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
+      },
       orderBy: { createdAt: 'asc' },
     });
     for (const row of rows) {
@@ -93,8 +115,17 @@ export class NotifyWorker {
   /** Claim (attempts+1) → deliver → SENT or retry/DEAD bookkeeping. */
   private async processRow(row: Notification): Promise<void> {
     const claimed = await this.prisma.notification.updateMany({
-      where: { id: row.id, status: 'PENDING', attempts: row.attempts },
-      data: { attempts: { increment: 1 } },
+      where: {
+        id: row.id,
+        status: 'PENDING',
+        attempts: row.attempts,
+        OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date() } }],
+      },
+      data: {
+        attempts: { increment: 1 },
+        lockedBy: this.workerId,
+        lockedUntil: new Date(Date.now() + DELIVERY_LEASE_MS),
+      },
     });
     if (claimed.count === 0) {
       return; // raced with another tick — next pass re-reads fresh state
@@ -113,13 +144,15 @@ export class NotifyWorker {
           where: { id: row.id },
           data: {
             status: 'SENT',
+            lockedBy: null,
+            lockedUntil: null,
             payload: { ...((row.payload ?? {}) as Record<string, unknown>), worker_note: outcome.note },
           },
         });
       } else {
         await this.prisma.notification.update({
           where: { id: row.id },
-          data: { status: 'SENT' },
+            data: { status: 'SENT', lockedBy: null, lockedUntil: null },
         });
       }
     } catch (deliveryErr) {
@@ -136,7 +169,7 @@ export class NotifyWorker {
       try {
         await this.prisma.notification.update({
           where: { id: row.id },
-          data: { status: nextStatus },
+            data: { status: nextStatus, lockedBy: null, lockedUntil: null },
         });
       } catch (bookkeepingErr) {
         // Left PENDING with attempts >= MAX — reaped to DEAD by the next tick.

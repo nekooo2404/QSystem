@@ -32,6 +32,7 @@ type ScopeTab = 'all' | 'recent' | 'shared' | 'starred';
 interface ApiFileItem {
   id: string;
   key: string;
+  displayName?: string;
   mimeType?: string;
   size?: number;
   uploaderName?: string;
@@ -214,7 +215,7 @@ function formatDateLabel(iso?: string): string {
 }
 
 function toRemoteRow(item: ApiFileItem): FileRow {
-  const title = item.key.split('/').pop() || item.key;
+  const title = item.displayName || item.key.split('/').pop() || item.key;
   const ext = extOf(title);
   return {
     id: item.id,
@@ -654,30 +655,40 @@ export default function FilesPage() {
     setRenameDraft(row.title);
   }
 
-  function handleRenameSubmit(event: React.FormEvent) {
+  async function handleRenameSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!renameTarget) return;
     const nextTitle = renameDraft.trim();
     if (!nextTitle) return;
     const target = renameTarget;
-    setRenamedTitles((current) => ({ ...current, [target.id]: nextTitle }));
     if (target.real) {
-      void apiFetch(`/api/files/${target.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: `uploads/${nextTitle}` }),
-      }).catch(() => {});
+      try {
+        await apiFetch(`/api/files/${target.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ displayName: nextTitle }),
+        });
+      } catch (error) {
+        toast.error(error instanceof ApiError ? humanizeApiError(error.code, error.status) : 'Không thể đổi tên tài liệu.');
+        return;
+      }
     }
+    setRenamedTitles((current) => ({ ...current, [target.id]: nextTitle }));
     toast.success(`Đã đổi tên thành "${nextTitle}"`);
     setRenameTarget(null);
   }
 
-  function deleteFile(row: FileRow) {
-    setDeletedIds((current) => new Set(current).add(row.id));
+  async function deleteFile(row: FileRow) {
     setOpenMenuId(null);
     if (row.real) {
-      void apiFetch(`/api/files/${row.id}`, { method: 'DELETE' }).catch(() => {});
+      try {
+        await apiFetch(`/api/files/${row.id}`, { method: 'DELETE' });
+      } catch (error) {
+        toast.error(error instanceof ApiError ? humanizeApiError(error.code, error.status) : 'Không thể xóa tài liệu.');
+        return;
+      }
     }
+    setDeletedIds((current) => new Set(current).add(row.id));
     toast.success(`Đã xóa "${row.title}"`);
   }
 

@@ -1,0 +1,11 @@
+{
+  "taskId": "qsystem-audit-remediation",
+  "objective": "Resolve the 2026-11-16 QSystem enterprise production audit findings",
+  "tasks": [
+    { "id": "data-authorization", "title": "Fix persisted data and authorization findings", "findings": ["F01", "F02", "F03", "F04", "F05", "F17", "F18", "F19", "F25"] },
+    { "id": "security-reliability", "title": "Fix security, storage, notification, and audit findings", "findings": ["F06", "F08", "F09", "F11", "F12", "F14", "F15", "F16"] },
+    { "id": "platform-operations", "title": "Fix configuration, CI, health, and operations findings", "findings": ["F20", "F21", "F22", "F23", "F24", "F26", "F29", "F30"] },
+    { "id": "web-experience", "title": "Fix web persistence, search, navigation, and design findings", "findings": ["F07", "F10", "F13", "F27", "F28"] },
+    { "id": "independent-verification", "title": "Review and verify every completed workstream", "dependsOn": ["data-authorization", "security-reliability", "platform-operations", "web-experience"] }
+  ]
+}

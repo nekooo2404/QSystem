@@ -108,6 +108,7 @@ export interface FileDownload {
   id: string;
   bucket: string;
   key: string;
+  displayName: string;
   mimeType: string | null;
   size: number | null;
   ownerId: string;
@@ -197,6 +198,7 @@ export class StorageService {
           data: {
             bucket: input.bucket,
             key,
+            displayName: key.split('/').pop() ?? key,
             ownerId: viewer.id,
             departmentId: viewer.departmentId ?? null,
             mimeType: input.mimeType ?? null,
@@ -238,6 +240,7 @@ export class StorageService {
         id: true,
         bucket: true,
         key: true,
+        displayName: true,
         mimeType: true,
         size: true,
         ownerId: true,
@@ -259,6 +262,7 @@ export class StorageService {
       id: row.id,
       bucket: row.bucket,
       key: row.key,
+      displayName: row.displayName ?? row.key.split('/').pop() ?? row.key,
       mimeType: row.mimeType,
       size: row.size,
       ownerId: row.ownerId,
@@ -273,19 +277,16 @@ export class StorageService {
   async updateFile(
     viewer: ScopeViewer,
     fileId: string,
-    input: { key?: string; mimeType?: string },
+    input: { key?: string; displayName?: string; mimeType?: string },
   ) {
     const row = await this.prisma.forUser(viewer).file.findUnique({ where: { id: fileId } });
     if (!row) return null;
-    if (input.key !== undefined) {
-      const key = input.key;
-      if (typeof key !== 'string' || key.trim().length === 0 || key.length > 1024) {
+    const displayName = input.displayName ?? (input.key !== undefined ? input.key.split('/').pop() : undefined);
+    if (displayName !== undefined) {
+      if (typeof displayName !== 'string' || displayName.trim().length === 0 || displayName.length > 255) {
         throw new InvalidKeyError();
       }
-      if (key.startsWith('/') || key.split('/').some((s) => s === '.' || s === '..')) {
-        throw new InvalidKeyError();
-      }
-      const lowerKey = key.trim().toLowerCase();
+      const lowerKey = displayName.trim().toLowerCase();
       if (BLOCKED_EXTENSIONS.some((ext) => lowerKey.endsWith(ext))) {
         throw new InvalidFileTypeError();
       }
@@ -299,7 +300,7 @@ export class StorageService {
     return this.prisma.forUser(viewer).file.update({
       where: { id: fileId },
       data: {
-        ...(input.key !== undefined ? { key: input.key } : {}),
+        ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
         ...(input.mimeType !== undefined ? { mimeType: input.mimeType } : {}),
       },
     });

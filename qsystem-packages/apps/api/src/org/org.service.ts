@@ -1,10 +1,11 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type CrmCustomer as PrismaCrmCustomer } from '@prisma/client';
 import * as argon2 from 'argon2';
 import {
   CreateTaskSchema,
   CreateUserSchema,
   TaskQuerySchema,
+  TaskStatusSchema,
   UpdateTaskSchema,
 } from '@qsystem/contracts';
 import { AuditService } from '../common/audit.service';
@@ -31,77 +32,11 @@ export interface CrmCustomerRecord {
   stage: CrmStage;
   lastContact: string;
   createdById?: string;
+  ownerId?: string;
+  departmentId?: string | null;
 }
 
 const VALID_CRM_STAGES = new Set<CrmStage>(['Mới', 'Tiềm năng', 'Đàm phán', 'Đang chăm sóc']);
-
-const BASELINE_CRM_CUSTOMERS: CrmCustomerRecord[] = [
-  {
-    id: 'c-1',
-    code: 'QT',
-    name: 'QTS Group',
-    email: 'qtsgroup@example.com',
-    industry: 'Công nghệ',
-    segment: 'enterprise',
-    ownerInitials: 'LA',
-    ownerName: 'Lan Anh',
-    ownerTone: 'indigo',
-    stage: 'Đang chăm sóc',
-    lastContact: '12/11/2026',
-  },
-  {
-    id: 'c-2',
-    code: 'VI',
-    name: 'VietHealth',
-    email: 'viethealth@example.com',
-    industry: 'Y tế',
-    segment: 'enterprise',
-    ownerInitials: 'HM',
-    ownerName: 'Hà My',
-    ownerTone: 'slate',
-    stage: 'Tiềm năng',
-    lastContact: '13/11/2026',
-  },
-  {
-    id: 'c-3',
-    code: 'GR',
-    name: 'GreenFarm',
-    email: 'greenfarm@example.com',
-    industry: 'Nông nghiệp',
-    segment: 'enterprise',
-    ownerInitials: 'ĐA',
-    ownerName: 'Đức Anh',
-    ownerTone: 'plum',
-    stage: 'Đàm phán',
-    lastContact: '14/11/2026',
-  },
-  {
-    id: 'c-4',
-    code: 'NO',
-    name: 'Nova Studio',
-    email: 'novastudio@example.com',
-    industry: 'Thiết kế',
-    segment: 'individual',
-    ownerInitials: 'BT',
-    ownerName: 'Bảo Trâm',
-    ownerTone: 'teal',
-    stage: 'Mới',
-    lastContact: '15/11/2026',
-  },
-  {
-    id: 'c-5',
-    code: 'EA',
-    name: 'EastBridge',
-    email: 'eastbridge@example.com',
-    industry: 'Dịch vụ',
-    segment: 'enterprise',
-    ownerInitials: 'MK',
-    ownerName: 'Minh Khôi',
-    ownerTone: 'plum',
-    stage: 'Đang chăm sóc',
-    lastContact: '15/11/2026',
-  },
-];
 
 function crmInitials(name: string, fallback: string): string {
   const letters = name.trim().replace(/[^a-zA-ZÀ-ỹ0-9]/g, '');
@@ -120,12 +55,22 @@ function formatTodayVi(): string {
   return `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 }
 
+function assertIsoDate(value: string | undefined): void {
+  if (value !== undefined && Number.isNaN(Date.parse(value))) {
+    throw error('INVALID_INPUT', 'Invalid due date', HttpStatus.BAD_REQUEST);
+  }
+}
+
+function canAdvanceTaskStatus(current: string, next: string): boolean {
+  if (current === next) return true;
+  const ordered = TaskStatusSchema.options.slice(0, 3);
+  const currentIndex = ordered.indexOf(current as (typeof ordered)[number]);
+  const nextIndex = ordered.indexOf(next as (typeof ordered)[number]);
+  return currentIndex >= 0 && nextIndex === currentIndex + 1;
+}
+
 @Injectable()
 export class OrgService {
-  private readonly crmCustomers = new Map<string, CrmCustomerRecord>(
-    BASELINE_CRM_CUSTOMERS.map((row) => [row.id, { ...row }]),
-  );
-
   // NOTE: explicit @Inject — vitest runs through esbuild, which does not emit
   // decorator metadata, so constructor-param DI needs explicit tokens.
   constructor(
@@ -280,6 +225,7 @@ export class OrgService {
         id: true,
         email: true,
         name: true,
+        jobTitle: true,
         role: true,
         departmentId: true,
         reportsToId: true,
@@ -299,7 +245,7 @@ export class OrgService {
   async updateUser(
     viewer: ScopeViewer,
     id: string,
-    body: { role?: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE'; departmentId?: string | null; reportsToId?: string | null },
+    body: { role?: 'DIRECTOR' | 'MANAGER' | 'EMPLOYEE'; status?: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'; jobTitle?: string | null; departmentId?: string | null; reportsToId?: string | null },
   ) {
     if (viewer.role !== 'DIRECTOR') {
       throw error('FORBIDDEN', 'Only DIRECTOR may update users', HttpStatus.FORBIDDEN);
@@ -334,7 +280,9 @@ export class OrgService {
             id: true,
             email: true,
             name: true,
+            jobTitle: true,
             role: true,
+            status: true,
             departmentId: true,
             reportsToId: true,
           },
@@ -352,6 +300,12 @@ export class OrgService {
           where: { id },
           data: {
             ...(body.role !== undefined ? { role: body.role } : {}),
+            ...(body.status !== undefined ? {
+              status: body.status,
+              suspendedAt: body.status === 'SUSPENDED' ? new Date() : null,
+              deactivatedAt: body.status === 'DEACTIVATED' ? new Date() : null,
+            } : {}),
+            ...(body.jobTitle !== undefined ? { jobTitle: body.jobTitle?.trim() || null } : {}),
             ...(body.departmentId !== undefined ? { departmentId: body.departmentId } : {}),
             ...(body.reportsToId !== undefined ? { reportsToId: body.reportsToId } : {}),
           },
@@ -359,7 +313,9 @@ export class OrgService {
             id: true,
             email: true,
             name: true,
+            jobTitle: true,
             role: true,
+            status: true,
             departmentId: true,
             reportsToId: true,
           },
@@ -381,11 +337,15 @@ export class OrgService {
         entityId: id,
         oldData: {
           role: existing.role,
+          status: existing.status,
+          jobTitle: existing.jobTitle,
           departmentId: existing.departmentId,
           reportsToId: existing.reportsToId,
         },
         newData: {
           role: updated.role,
+          status: updated.status,
+          jobTitle: updated.jobTitle,
           departmentId: updated.departmentId,
           reportsToId: updated.reportsToId,
         },
@@ -435,6 +395,7 @@ export class OrgService {
             name: body.name.trim(),
             passwordHash,
             role: body.role,
+            jobTitle: body.jobTitle ?? null,
             departmentId: body.departmentId ?? null,
             reportsToId: body.reportsToId ?? (viewer.role === 'MANAGER' ? viewer.id : null),
             tenantId: null,
@@ -443,6 +404,7 @@ export class OrgService {
             id: true,
             email: true,
             name: true,
+            jobTitle: true,
             role: true,
             departmentId: true,
             reportsToId: true,
@@ -463,7 +425,7 @@ export class OrgService {
       });
       return {
         ...created,
-        ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
+        ...(created.jobTitle ? { jobTitle: created.jobTitle } : {}),
       };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -534,12 +496,12 @@ export class OrgService {
     const matchedAssignee = candidateUserId
       ? await this.client(viewer).user.findUnique({
           where: { id: candidateUserId },
-          select: { id: true, name: true, departmentId: true },
+          select: { id: true, name: true, email: true, departmentId: true },
         })
       : null;
 
-    const ownerId =
-      viewer.role === 'EMPLOYEE' ? viewer.id : (matchedAssignee?.id ?? viewer.id);
+    assertIsoDate(body.dueDate);
+    const ownerId = viewer.id;
     const departmentId =
       body.departmentId !== undefined
         ? body.departmentId
@@ -581,6 +543,18 @@ export class OrgService {
           tenantId: null,
         },
       });
+      if (matchedAssignee && matchedAssignee.id !== viewer.id) {
+        await this.prisma.notification.create({
+          data: {
+            channel: 'SOCKET',
+            recipient: matchedAssignee.email,
+            recipientId: matchedAssignee.id,
+            payload: { type: 'TASK_ASSIGNED', taskId: task.id, taskCode: task.code },
+            status: 'PENDING',
+            tenantId: null,
+          },
+        });
+      }
       await this.recordAudit({
         actorId: viewer.id,
         action: 'CREATE',
@@ -613,6 +587,7 @@ export class OrgService {
       );
     }
     const body = parsed.data;
+    assertIsoDate(body.dueDate);
     const existing = await this.client(viewer).task.findUnique({ where: { id } });
     if (!existing) {
       if (viewer.role === 'DIRECTOR') {
@@ -622,6 +597,31 @@ export class OrgService {
     }
 
     const nextDepartmentId = body.departmentId !== undefined ? body.departmentId : existing.departmentId;
+    const nextAssigneeId = body.assigneeId !== undefined ? body.assigneeId : existing.assigneeId;
+    const nextAssignee = nextAssigneeId
+      ? await this.client(viewer).user.findUnique({
+          where: { id: nextAssigneeId },
+          select: { id: true, name: true, departmentId: true },
+        })
+      : null;
+    if (nextAssigneeId && !nextAssignee) {
+      throw error('BAD_REQUEST', 'Unknown assignee', HttpStatus.BAD_REQUEST);
+    }
+    if (viewer.role === 'EMPLOYEE' && body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId) {
+      throw error('FORBIDDEN', 'Employees cannot reassign tasks', HttpStatus.FORBIDDEN);
+    }
+    if (viewer.role === 'MANAGER' && nextAssignee?.departmentId && !viewer.managedDepartmentIds.includes(nextAssignee.departmentId)) {
+      throw error('FORBIDDEN', 'Cannot assign task outside managed departments', HttpStatus.FORBIDDEN);
+    }
+    if (existing.flow === 'DIRECT' && viewer.role === 'MANAGER') {
+      throw error('FLOW2_MONITOR_ONLY', 'Direct-flow tasks are monitor-only for managers', HttpStatus.FORBIDDEN);
+    }
+    if (body.flow !== undefined && body.flow !== existing.flow && viewer.role !== 'DIRECTOR') {
+      throw error('FORBIDDEN', 'Only DIRECTOR may change task flow', HttpStatus.FORBIDDEN);
+    }
+    if (body.status !== undefined && !canAdvanceTaskStatus(existing.status, body.status)) {
+      throw error('INVALID_TRANSITION', 'Task status transition is not allowed', HttpStatus.CONFLICT);
+    }
     if (
       viewer.role === 'MANAGER' &&
       nextDepartmentId &&
@@ -634,8 +634,8 @@ export class OrgService {
     }
 
     try {
-      const task = await this.client(viewer).task.update({
-        where: { id },
+      const claimed = await this.client(viewer).task.updateMany({
+        where: { id, version: body.version ?? existing.version },
         data: {
           ...(body.title !== undefined ? { title: body.title } : {}),
           ...(body.what !== undefined ? { what: body.what } : {}),
@@ -647,10 +647,15 @@ export class OrgService {
           ...(body.flow !== undefined ? { flow: body.flow } : {}),
           ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
           ...(body.assigneeId !== undefined ? { assigneeId: body.assigneeId } : {}),
-          ...(body.assigneeName !== undefined ? { assigneeName: body.assigneeName } : {}),
+          ...(body.assigneeName !== undefined ? { assigneeName: body.assigneeName } : (nextAssignee ? { assigneeName: nextAssignee.name } : {})),
           ...(body.departmentId !== undefined ? { departmentId: body.departmentId } : {}),
+          version: { increment: 1 },
         },
       });
+      if (claimed.count === 0) {
+        throw error('CONFLICT', 'Task was changed by another user', HttpStatus.CONFLICT);
+      }
+      const task = await this.client(viewer).task.findUniqueOrThrow({ where: { id } });
       await this.recordAudit({
         actorId: viewer.id,
         action: 'UPDATE',
@@ -678,24 +683,48 @@ export class OrgService {
     }
   }
 
-  async listCrmCustomers(_viewer: ScopeViewer, query?: { q?: string; segment?: string; stage?: string }) {
+  private crmRecord(row: PrismaCrmCustomer): CrmCustomerRecord {
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      email: row.email,
+      industry: row.industry,
+      segment: row.segment as CrmSegment,
+      ownerInitials: row.ownerInitials,
+      ownerName: row.ownerName,
+      ownerTone: 'indigo',
+      stage: row.stage as CrmStage,
+      lastContact: row.lastContact,
+      createdById: row.createdById,
+    };
+  }
+
+  async listCrmCustomers(viewer: ScopeViewer, query?: { q?: string; segment?: string; stage?: string }) {
     const q = typeof query?.q === 'string' ? query.q.trim().toLowerCase() : '';
     const segment = query?.segment === 'enterprise' || query?.segment === 'individual' ? query.segment : null;
     const stage = typeof query?.stage === 'string' && VALID_CRM_STAGES.has(query.stage as CrmStage) ? query.stage : null;
 
-    const all = Array.from(this.crmCustomers.values());
-    const items = all.filter((row) => {
-      if (segment && row.segment !== segment) return false;
-      if (stage && row.stage !== stage) return false;
-      if (!q) return true;
-      return (
-        row.name.toLowerCase().includes(q) ||
-        row.email.toLowerCase().includes(q) ||
-        row.industry.toLowerCase().includes(q) ||
-        row.ownerName.toLowerCase().includes(q)
-      );
-    });
-    return { items, total: items.length };
+    const where: Prisma.CrmCustomerWhereInput = {
+      ...(segment ? { segment } : {}),
+      ...(stage ? { stage } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+              { industry: { contains: q, mode: 'insensitive' } },
+              { ownerName: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const client = this.client(viewer);
+    const [rows, total] = await Promise.all([
+      client.crmCustomer.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }),
+      client.crmCustomer.count({ where }),
+    ]);
+    return { items: rows.map((row) => this.crmRecord(row)), total };
   }
 
   async createCrmCustomer(viewer: ScopeViewer, raw: unknown) {
@@ -705,13 +734,6 @@ export class OrgService {
     if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw error('INVALID_INPUT', 'Valid customer name and email are required', HttpStatus.BAD_REQUEST);
     }
-    const duplicate = Array.from(this.crmCustomers.values()).some(
-      (c) => c.email.toLowerCase() === email,
-    );
-    if (duplicate) {
-      throw error('CONFLICT', 'Customer email already exists', HttpStatus.CONFLICT);
-    }
-
     const segment: CrmSegment = payload.segment === 'individual' ? 'individual' : 'enterprise';
     const stage: CrmStage =
       typeof payload.stage === 'string' && VALID_CRM_STAGES.has(payload.stage as CrmStage)
@@ -723,6 +745,20 @@ export class OrgService {
       typeof payload.lastContact === 'string' && payload.lastContact.trim()
         ? payload.lastContact.trim()
         : formatTodayVi();
+    const requestedOwnerId = typeof payload.ownerId === 'string' ? payload.ownerId : viewer.id;
+    if (viewer.role === 'EMPLOYEE' && requestedOwnerId !== viewer.id) {
+      throw error('FORBIDDEN', 'Employees may only own their customers', HttpStatus.FORBIDDEN);
+    }
+    const owner = await this.client(viewer).user.findUnique({
+      where: { id: requestedOwnerId },
+      select: { id: true, name: true, departmentId: true },
+    });
+    if (!owner) throw error('FORBIDDEN', 'Customer owner is outside your scope', HttpStatus.FORBIDDEN);
+    const departmentId = typeof payload.departmentId === 'string' ? payload.departmentId : owner.departmentId;
+    if (viewer.role === 'MANAGER' && departmentId && !viewer.managedDepartmentIds.includes(departmentId)) {
+      throw error('FORBIDDEN', 'Customer department is outside your scope', HttpStatus.FORBIDDEN);
+    }
+    const verifiedOwnerName = owner.name;
     const record: CrmCustomerRecord = {
       id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       code: crmInitials(name, 'KH'),
@@ -730,33 +766,51 @@ export class OrgService {
       email,
       industry,
       segment,
-      ownerInitials: ownerInitials(ownerName),
-      ownerName,
+       ownerInitials: ownerInitials(verifiedOwnerName),
+       ownerName: verifiedOwnerName,
       ownerTone: 'indigo',
       stage,
       lastContact,
-      createdById: viewer.id,
+       createdById: viewer.id,
+       ownerId: requestedOwnerId,
+       departmentId,
     };
-    const nextEntries: Array<[string, CrmCustomerRecord]> = [
-      [record.id, record],
-      ...Array.from(this.crmCustomers.entries()),
-    ];
-    this.crmCustomers.clear();
-    for (const [k, v] of nextEntries) {
-      this.crmCustomers.set(k, v);
+    try {
+      const created = await this.client(viewer).crmCustomer.create({
+        data: {
+          code: record.code,
+          name: record.name,
+          email: record.email,
+          industry: record.industry,
+          segment: record.segment,
+          ownerInitials: record.ownerInitials,
+          ownerName: record.ownerName,
+          ownerId: record.ownerId ?? viewer.id,
+          stage: record.stage,
+          lastContact: record.lastContact,
+          createdById: viewer.id,
+          departmentId: record.departmentId,
+          tenantId: null,
+        },
+      });
+      await this.recordAudit({
+        actorId: viewer.id,
+        action: 'CREATE',
+        entity: 'CrmCustomer',
+        entityId: created.id,
+        newData: { name: created.name, email: created.email, stage: created.stage },
+      });
+      return { ok: true as const, customer: this.crmRecord(created) };
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw error('CONFLICT', 'Customer email already exists', HttpStatus.CONFLICT);
+      }
+      throw err;
     }
-    await this.recordAudit({
-      actorId: viewer.id,
-      action: 'CREATE',
-      entity: 'CrmCustomer',
-      entityId: record.id,
-      newData: { name: record.name, email: record.email, stage: record.stage },
-    });
-    return { ok: true as const, customer: record };
   }
 
   async updateCrmCustomer(viewer: ScopeViewer, id: string, raw: unknown) {
-    const existing = this.crmCustomers.get(id);
+    const existing = await this.client(viewer).crmCustomer.findUnique({ where: { id } });
     if (!existing) {
       throw error('NOT_FOUND', 'Customer not found', HttpStatus.NOT_FOUND);
     }
@@ -766,68 +820,72 @@ export class OrgService {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
       throw error('INVALID_INPUT', 'Invalid email address', HttpStatus.BAD_REQUEST);
     }
-    const emailConflict = Array.from(this.crmCustomers.values()).some(
-      (c) => c.id !== id && c.email.toLowerCase() === nextEmail,
-    );
-    if (emailConflict) {
-      throw error('CONFLICT', 'Customer email already exists', HttpStatus.CONFLICT);
-    }
-
     const nextName =
       typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : existing.name;
-    const nextOwner =
-      typeof payload.ownerName === 'string' && payload.ownerName.trim()
-        ? payload.ownerName.trim()
-        : existing.ownerName;
+    const nextOwnerId = typeof payload.ownerId === 'string' ? payload.ownerId : existing.ownerId;
+    if (viewer.role === 'EMPLOYEE' && (nextOwnerId !== existing.ownerId || nextOwnerId !== viewer.id)) {
+      throw error('FORBIDDEN', 'Employees cannot reassign customer ownership', HttpStatus.FORBIDDEN);
+    }
+    const owner = await this.client(viewer).user.findUnique({
+      where: { id: nextOwnerId },
+      select: { id: true, name: true, departmentId: true },
+    });
+    if (!owner) throw error('FORBIDDEN', 'Customer owner is outside your scope', HttpStatus.FORBIDDEN);
+    const nextDepartmentId = typeof payload.departmentId === 'string' ? payload.departmentId : existing.departmentId;
+    if (viewer.role === 'MANAGER' && nextDepartmentId && !viewer.managedDepartmentIds.includes(nextDepartmentId)) {
+      throw error('FORBIDDEN', 'Customer department is outside your scope', HttpStatus.FORBIDDEN);
+    }
+    const nextOwner = owner.name;
     const nextStage: CrmStage =
       typeof payload.stage === 'string' && VALID_CRM_STAGES.has(payload.stage as CrmStage)
         ? (payload.stage as CrmStage)
-        : existing.stage;
+        : (existing.stage as CrmStage);
     if (typeof payload.stage === 'string' && !VALID_CRM_STAGES.has(payload.stage as CrmStage)) {
       throw error('INVALID_INPUT', 'Invalid CRM stage', HttpStatus.BAD_REQUEST);
     }
-    const updated: CrmCustomerRecord = {
-      ...existing,
-      code: crmInitials(nextName, existing.code),
-      name: nextName,
-      email: nextEmail,
-      industry:
-        typeof payload.industry === 'string' && payload.industry.trim()
-          ? payload.industry.trim()
-          : existing.industry,
-      segment:
-        payload.segment === 'individual' || payload.segment === 'enterprise'
-          ? payload.segment
-          : existing.segment,
-      ownerName: nextOwner,
-      ownerInitials: ownerInitials(nextOwner),
-      stage: nextStage,
-      lastContact:
-        typeof payload.lastContact === 'string' && payload.lastContact.trim()
-          ? payload.lastContact.trim()
-          : formatTodayVi(),
-    };
-    this.crmCustomers.set(id, updated);
-    await this.recordAudit({
-      actorId: viewer.id,
-      action: 'UPDATE',
-      entity: 'CrmCustomer',
-      entityId: id,
-      oldData: { stage: existing.stage, ownerName: existing.ownerName },
-      newData: { stage: updated.stage, ownerName: updated.ownerName },
-    });
-    return { ok: true as const, customer: updated };
+    try {
+      const updated = await this.client(viewer).crmCustomer.update({
+        where: { id },
+        data: {
+          code: crmInitials(nextName, existing.code),
+          name: nextName,
+          email: nextEmail,
+          industry: typeof payload.industry === 'string' && payload.industry.trim() ? payload.industry.trim() : existing.industry,
+          segment: payload.segment === 'individual' || payload.segment === 'enterprise' ? payload.segment : existing.segment,
+          ownerName: nextOwner,
+          ownerInitials: ownerInitials(nextOwner),
+          ownerId: nextOwnerId,
+          departmentId: nextDepartmentId,
+          stage: nextStage,
+          lastContact: typeof payload.lastContact === 'string' && payload.lastContact.trim() ? payload.lastContact.trim() : formatTodayVi(),
+        },
+      });
+      await this.recordAudit({
+        actorId: viewer.id,
+        action: 'UPDATE',
+        entity: 'CrmCustomer',
+        entityId: id,
+        oldData: { stage: existing.stage, ownerName: existing.ownerName },
+        newData: { stage: updated.stage, ownerName: updated.ownerName },
+      });
+      return { ok: true as const, customer: this.crmRecord(updated) };
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw error('CONFLICT', 'Customer email already exists', HttpStatus.CONFLICT);
+      }
+      throw err;
+    }
   }
 
   async deleteCrmCustomer(viewer: ScopeViewer, id: string) {
-    const existing = this.crmCustomers.get(id);
+    const existing = await this.client(viewer).crmCustomer.findUnique({ where: { id } });
     if (!existing) {
       throw error('NOT_FOUND', 'Customer not found', HttpStatus.NOT_FOUND);
     }
-    if (viewer.role === 'EMPLOYEE' && existing.createdById !== viewer.id) {
-      throw error('FORBIDDEN', 'Only DIRECTOR, MANAGER, or record creator may delete customers', HttpStatus.FORBIDDEN);
+    if (viewer.role === 'EMPLOYEE' && existing.createdById !== viewer.id && existing.ownerId !== viewer.id) {
+      throw error('FORBIDDEN', 'Only the customer owner may delete this customer', HttpStatus.FORBIDDEN);
     }
-    this.crmCustomers.delete(id);
+    await this.client(viewer).crmCustomer.delete({ where: { id } });
     await this.recordAudit({
       actorId: viewer.id,
       action: 'DELETE',
@@ -836,5 +894,23 @@ export class OrgService {
       oldData: { name: existing.name, email: existing.email },
     });
     return { ok: true as const, id };
+  }
+
+  async crmSummary(viewer: ScopeViewer) {
+    const deals = await this.client(viewer).crmDeal.findMany({
+      select: { amountCents: true, probability: true, stage: true, currency: true },
+    });
+    const pipelineCents = deals
+      .filter((deal) => !['WON', 'LOST', 'Đã thắng', 'Đã mất'].includes(deal.stage))
+      .reduce((sum, deal) => sum + Math.round(deal.amountCents * Math.max(0, Math.min(100, deal.probability)) / 100), 0);
+    const wonCents = deals
+      .filter((deal) => ['WON', 'Đã thắng'].includes(deal.stage))
+      .reduce((sum, deal) => sum + deal.amountCents, 0);
+    return {
+      currency: deals[0]?.currency ?? 'VND',
+      pipelineCents,
+      wonCents,
+      dealCount: deals.length,
+    };
   }
 }

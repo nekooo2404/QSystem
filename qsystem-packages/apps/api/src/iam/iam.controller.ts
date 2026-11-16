@@ -8,11 +8,13 @@ import {
   Inject,
   Patch,
   Post,
+  Delete,
+  Param,
   Req,
   Res,
 } from '@nestjs/common';
 import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
-import { IamService } from './iam.service';
+import { IamService, type RequestViewer } from './iam.service';
 import { ChangePasswordDto, LoginDto, type MeResponse } from './dto/login.dto';
 import { CurrentUser } from './current-user.decorator';
 import { Public } from './jwt-auth.guard';
@@ -183,5 +185,23 @@ export class IamController {
     await this.iam.changePassword(user, body.oldPassword, body.newPassword);
     this.iam.clearRefreshCookie(res);
     return { ok: true };
+  }
+
+  @Get('auth/sessions')
+  async listSessions(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Req() req: ExpressRequest,
+  ) {
+    const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
+    return this.iam.listSessions(user, raw);
+  }
+
+  @Delete('auth/sessions/:id')
+  @HttpCode(204)
+  async revokeSession(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.iam.revokeSession(user, id);
   }
 }

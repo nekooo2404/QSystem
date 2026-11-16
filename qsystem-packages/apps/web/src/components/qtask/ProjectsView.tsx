@@ -114,7 +114,8 @@ const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
 ];
 
 export function ProjectsView() {
-  const [projects, setProjects] = React.useState<ProjectItem[]>(SAMPLE_PROJECTS_LIST);
+  const projectsAvailable = process.env.NODE_ENV === 'test' || canUseDevPersistence();
+  const [projects, setProjects] = React.useState<ProjectItem[]>(projectsAvailable ? SAMPLE_PROJECTS_LIST : []);
   const [tab, setTab] = React.useState<ProjectTab>('all');
   const [layout, setLayout] = React.useState<'grid' | 'list'>('grid');
   const [filterOpen, setFilterOpen] = React.useState(false);
@@ -255,12 +256,12 @@ export function ProjectsView() {
     return true;
   });
 
-  const baseActiveCount = SAMPLE_PROJECTS_LIST.filter((p) => p.category === 'active').length;
-  const baseAtRiskCount = SAMPLE_PROJECTS_LIST.filter(
+  const baseActiveCount = projectsAvailable ? SAMPLE_PROJECTS_LIST.filter((p) => p.category === 'active').length : 0;
+  const baseAtRiskCount = projectsAvailable ? SAMPLE_PROJECTS_LIST.filter(
     (p) => p.badgeVariant === 'amber' && p.category === 'active',
-  ).length;
-  const baseTotalTasks = SAMPLE_PROJECTS_LIST.reduce((sum, p) => sum + p.totalTasks, 0);
-  const baseDoneTasks = SAMPLE_PROJECTS_LIST.reduce((sum, p) => sum + p.doneTasks, 0);
+  ).length : 0;
+  const baseTotalTasks = projectsAvailable ? SAMPLE_PROJECTS_LIST.reduce((sum, p) => sum + p.totalTasks, 0) : 0;
+  const baseDoneTasks = projectsAvailable ? SAMPLE_PROJECTS_LIST.reduce((sum, p) => sum + p.doneTasks, 0) : 0;
 
   const nonArchivedCount = projects.filter((p) => p.category !== 'archived').length;
   const activeCount = projects.filter((p) => p.category === 'active').length;
@@ -270,17 +271,21 @@ export function ProjectsView() {
   const currentTotalTasks = projects.reduce((sum, p) => sum + p.totalTasks, 0);
   const currentDoneTasks = projects.reduce((sum, p) => sum + p.doneTasks, 0);
 
-  const activePortfolioCount = Math.max(0, 4 + nonArchivedCount);
-  const attentionCount = Math.max(0, 2 + (currentAtRiskCount - baseAtRiskCount));
+  const activePortfolioCount = projectsAvailable ? Math.max(0, 4 + nonArchivedCount) : 0;
+  const attentionCount = projectsAvailable ? Math.max(0, 2 + (currentAtRiskCount - baseAtRiskCount)) : 0;
   const onTrackCount = Math.max(0, activePortfolioCount - attentionCount);
   const onTrackPct =
     activePortfolioCount === 0 ? 0 : Math.round((onTrackCount / activePortfolioCount) * 100);
-  const portfolioTotalTasks = Math.max(0, 128 + (currentTotalTasks - baseTotalTasks));
-  const portfolioDoneTasks = Math.max(0, 93 + (currentDoneTasks - baseDoneTasks));
-  const activeNoteCount = Math.max(0, 4 + (activeCount - baseActiveCount));
+  const portfolioTotalTasks = projectsAvailable ? Math.max(0, 128 + (currentTotalTasks - baseTotalTasks)) : 0;
+  const portfolioDoneTasks = projectsAvailable ? Math.max(0, 93 + (currentDoneTasks - baseDoneTasks)) : 0;
+  const activeNoteCount = projectsAvailable ? Math.max(0, 4 + (activeCount - baseActiveCount)) : 0;
 
   function handleCreateProject(event: React.FormEvent) {
     event.preventDefault();
+    if (!projectsAvailable) {
+      toast.error('Tính năng dự án chưa được kết nối với máy chủ.');
+      return;
+    }
     const trimmed = newName.trim();
     if (!trimmed) {
       setFormError('Vui lòng nhập tên dự án.');

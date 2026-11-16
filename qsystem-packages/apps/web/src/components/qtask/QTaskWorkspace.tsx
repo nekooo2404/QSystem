@@ -23,7 +23,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from '@qsystem/ui';
-import { listTasks, TASK_STATUSES, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
+import { listTasks, listTasksPage, TASK_STATUSES, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
 import { apiFetch, ApiError } from '../../lib/api/client';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import { CreateTaskModal, type AssigneeOption } from './CreateTaskModal';
@@ -182,6 +182,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   const [deletedIds, setDeletedIds] = React.useState<Set<string>>(() => new Set());
   const [query, setQuery] = React.useState(initialQuery);
   const [page, setPage] = React.useState(initialPage);
+  const [serverTotal, setServerTotal] = React.useState<number | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [me, setMe] = React.useState<{ id?: string; name?: string }>({});
@@ -223,8 +224,16 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
       setDeletedIds(new Set(stored.deletedAll));
     }
 
-    const tasksPromise = listTasks()
-      .then((rows) => ({ ok: true as const, rows }))
+    const tasksPromise = (process.env.NODE_ENV === 'test' || canUseDevPersistence()
+      ? listTasks().then((items) => ({ items, total: items.length, page: 1, pageSize: items.length }))
+      : listTasksPage({
+          page,
+          pageSize: 6,
+          q: query || undefined,
+          status: filters.status,
+          assigneeId: filters.assigneeId,
+        }))
+      .then((result) => ({ ok: true as const, result }))
       .catch((err: unknown) => ({ ok: false as const, err }));
 
     Promise.all([
@@ -240,12 +249,14 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
 
       if (tasksResult.ok) {
         setLoadError(null);
-        if (tasksResult.rows.length > 0) {
+        if (tasksResult.result.items.length > 0) {
           const deptMap = new Map((Array.isArray(depts) ? depts : []).map((d) => [d.id, d.name]));
-          setTasks(tasksResult.rows.map((row) => toViewTask(row, deptMap)));
+          setTasks(tasksResult.result.items.map((row) => toViewTask(row, deptMap)));
+          setServerTotal(tasksResult.result.total);
           setUsingSample(false);
         } else if (!canUseDevPersistence()) {
           setTasks([]);
+          setServerTotal(tasksResult.result.total);
           setUsingSample(false);
         }
       } else if (!canUseDevPersistence()) {
@@ -255,13 +266,14 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
             : humanizeApiError(),
         );
         setTasks([]);
+        setServerTotal(null);
         setUsingSample(false);
       }
     });
     return () => {
       active = false;
     };
-  }, [reloadTick]);
+  }, [reloadTick, page, query, filters.status, filters.assigneeId]);
 
   React.useEffect(() => {
     if (!filterOpen) return;
@@ -339,7 +351,11 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   const totalCount = isUnfilteredSample
     ? Math.max(visible.length, 156 + customAddedCount - deletedSampleCount)
     : visible.length;
-  const totalPages = isUnfilteredSample ? 26 : Math.max(1, Math.ceil(visible.length / pageSize));
+  const totalPages = isUnfilteredSample
+    ? 26
+    : serverTotal !== null
+      ? Math.max(1, Math.ceil(serverTotal / pageSize))
+      : Math.max(1, Math.ceil(visible.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const rawSlice = visible.slice((safePage - 1) * pageSize, safePage * pageSize);
   const generatedSlice =
@@ -349,7 +365,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
           .map((item) => editedSampleMap[item.id] ?? item)
           .slice(0, pageSize - rawSlice.length)
       : [];
-  const paged = [...rawSlice, ...generatedSlice];
+  const paged = serverTotal !== null && !usingSample ? visible : [...rawSlice, ...generatedSlice];
 
   const selected =
     tasks.find((task) => task.id === selectedId) ??
@@ -479,7 +495,9 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
     writes.current.add(task.id);
     setPendingIds(new Set(writes.current));
     try {
-      const updated = await updateTaskStatus(task.id, status);
+      const updated = task.version === undefined
+        ? await updateTaskStatus(task.id, status)
+        : await updateTaskStatus(task.id, status, task.version);
       if (!mounted.current) return;
       upsert({ ...task, ...updated, displayStatus: updated.status });
       toast.success(

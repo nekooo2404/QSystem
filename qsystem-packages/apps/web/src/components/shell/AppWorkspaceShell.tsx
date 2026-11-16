@@ -75,7 +75,6 @@ interface WorkspaceProfile {
 
 const WORKSPACES: WorkspaceProfile[] = [
   { id: 'qts', name: 'QTS Workspace', plan: 'Gói doanh nghiệp' },
-  { id: 'qsys-ent', name: 'QSystem Enterprise', plan: 'Môi trường vận hành' },
 ];
 
 const MODULES: ModuleDef[] = [

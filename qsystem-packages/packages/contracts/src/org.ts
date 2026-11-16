@@ -23,6 +23,8 @@ export type UpdateDepartmentInput = z.infer<typeof UpdateDepartmentSchema>;
 /** PATCH /org/users/:id body — all optional, ids nullable (clear assignment). */
 export const UpdateUserSchema = z.object({
   role: RoleSchema.optional(),
+  status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']).optional(),
+  jobTitle: z.string().trim().max(120).nullable().optional(),
   departmentId: z.string().nullable().optional(),
   reportsToId: z.string().nullable().optional(),
 });
@@ -59,6 +61,7 @@ export const TaskPayload4WSchema = z
     where: z.string().min(1),
     flow: z.string().optional(),
     action: z.string().optional(),
+    version: z.coerce.number().int().min(1).optional(),
   })
   .passthrough();
 export type TaskPayload4W = z.infer<typeof TaskPayload4WSchema>;

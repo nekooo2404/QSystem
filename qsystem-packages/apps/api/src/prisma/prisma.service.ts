@@ -428,15 +428,15 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   }
 
   /** Pre-identity lookup via SECURITY DEFINER — never queries users directly. */
-  async lookupIdentity(email: string): Promise<{ id: string; password_hash: string; role: string; department_id: string | null }[]> {
-    return this.$queryRaw<{ id: string; password_hash: string; role: string; department_id: string | null }[]>`
+  async lookupIdentity(email: string): Promise<{ id: string; password_hash: string; role: string; department_id: string | null; status: string }[]> {
+    return this.$queryRaw<{ id: string; password_hash: string; role: string; department_id: string | null; status: string }[]>`
       SELECT * FROM auth_user_lookup(${email})
     `;
   }
 
   /** Pre-identity refresh-token lookup via DEFINER — never queries table directly. */
-  async lookupRefresh(tokenHash: string): Promise<{ id: string; user_id: string; expires_at: Date | string; revoked_at: Date | string | null; replaced_by_id: string | null }[]> {
-    return this.$queryRaw<{ id: string; user_id: string; expires_at: Date | string; revoked_at: Date | string | null; replaced_by_id: string | null }[]>`
+  async lookupRefresh(tokenHash: string): Promise<{ id: string; user_id: string; expires_at: Date | string; revoked_at: Date | string | null; replaced_by_id: string | null; remember: boolean }[]> {
+    return this.$queryRaw<{ id: string; user_id: string; expires_at: Date | string; revoked_at: Date | string | null; replaced_by_id: string | null; remember: boolean }[]>`
       SELECT * FROM auth_refresh_lookup(${tokenHash})
     `;
   }

@@ -325,10 +325,25 @@ jobs:
           curl -sf http://127.0.0.1:3101/health/live | grep -q '"ok":true'
           curl -sf http://127.0.0.1:3100/login >/dev/null
 
+  release-gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    needs: [contracts, ui, api, web, playwright, containers]
+    if: always()
+    steps:
+      - name: Require every quality gate
+        run: |
+          test "${{ needs.contracts.result }}" = success
+          test "${{ needs.ui.result }}" = success
+          test "${{ needs.api.result }}" = success
+          test "${{ needs.web.result }}" = success
+          test "${{ needs.playwright.result }}" = success
+          test "${{ needs.containers.result }}" = success
+
   deploy-staging:
     name: Deploy Staging
     runs-on: ubuntu-latest
-    needs: [playwright, containers]
+    needs: [release-gate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_CONTAINER_DEPLOY == 'true'
     environment: staging
     permissions:

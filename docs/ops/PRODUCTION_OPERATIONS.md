@@ -7,10 +7,13 @@ This runbook defines release verification, backup/restore drills, storage lifecy
 | Environment | Purpose | Runtime Config | Secrets Source |
 | :--- | :--- | :--- | :--- |
 | Development | Local feature work | `NODE_ENV=development` | Developer `.env` (gitignored, non-prod credentials only) |
-| Staging | Pre-release smoke, migration drill, E2E | `APP_ENV=staging`, `COOKIE_SECURE=true`, `COOKIE_PATH=/api/auth` | Container/orchestrator secret mounts (`*_FILE`) |
-| Production | Live tenant traffic | `APP_ENV=production`, `COOKIE_SECURE=true`, `COOKIE_PATH=/api/auth`, `STRICT_CSRF_ORIGIN=true` | Secret manager (AWS Secrets Manager / Vault / K8s Sealed Secrets) mounted to `/run/secrets/*` |
+| Staging | Pre-release smoke, migration drill, E2E | `APP_ENV=staging`, `COOKIE_SECURE=true`, `COOKIE_PATH=/` | Container/orchestrator secret mounts (`*_FILE`) |
+| Production | Live tenant traffic | `APP_ENV=production`, `COOKIE_SECURE=true`, `COOKIE_PATH=/`, `STRICT_CSRF_ORIGIN=true` | Secret manager (AWS Secrets Manager / Vault / K8s Sealed Secrets) mounted to `/run/secrets/*` |
 
 Rules enforced by `apps/api/src/config/env.config.ts`:
+- This checkout explicitly runs in `TENANCY_MODE=single-tenant`; the UI does not
+  expose a fake tenant/workspace switcher. Multi-tenant SaaS requires a separate
+  organization/membership/RLS rollout before it can be enabled.
 - Production/staging startup fails closed (`validateRuntimeEnv()`) if any required secret (`JWT_SECRET`, `DATABASE_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `MEILI_MASTER_KEY`, or `REDIS_URL` when Redis rate limiting is enabled) is missing, too short, or matches a development placeholder.
 - Every secret key supports `<KEY>_FILE` (e.g. `JWT_SECRET_FILE=/run/secrets/jwt_secret`) so plain secret values never sit in container environment inspection or CI logs.
 - Never commit real credentials or run `prisma migrate dev` outside local development. Release pipelines run `prisma migrate deploy` only under the `RLS_OWNER_URL` maintenance credential, while runtime pods connect via the RLS-restricted `qsystem_app` PostgreSQL role (`DATABASE_URL`).
@@ -42,7 +45,10 @@ Rules enforced by `apps/api/src/config/env.config.ts`:
 
 ## 3. S3-Compatible Storage Lifecycle & Backup
 
-- **Buckets**: `qsystem-docs`, `qsystem-avatars` (enforced by `ALLOWED_BUCKETS` in `apps/api/src/storage/storage.service.ts`).
+- **Buckets**: configure `S3_BUCKET` as the logical document bucket and keep it in the
+  server-side allowlist (`qsystem-docs`/`qsystem-avatars`). Do not use the old
+  `qsystem-prod-docs` or `qsystem-staging-docs` template values unless the
+  allowlist and deployment provisioning are changed together.
 - **Versioning**: Enable bucket versioning on `qsystem-docs` and `qsystem-avatars` so accidental overwrites or deletes can be recovered.
 - **Lifecycle rules**:
   - Abort incomplete multipart uploads after **7 days**.
@@ -101,7 +107,7 @@ PostgreSQL (`tasks`, `files`, and indexed documents) is always the authoritative
 
 ### Reverse Proxy & TLS
 - Terminate **TLS 1.2 / TLS 1.3** (modern ciphers, HSTS enforced by API in `APP_ENV=staging|production`) at Nginx / Caddy / Cloud ALB on `443`.
-- Route `/api/*` through `apps/web` same-origin proxy (or directly strip `/api` -> `apps/api:3001` at ingress while keeping `COOKIE_PATH=/api/auth` and `APP_ORIGIN=https://<domain>` aligned).
+- Route `/api/*` through `apps/web` same-origin proxy (or directly strip `/api` -> `apps/api:3001` at ingress). Keep `COOKIE_PATH=/` so middleware can see the refresh cookie on protected page routes.
 - Forward `X-Request-Id`, `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` cleanly, and configure `TRUST_PROXY=1` on `apps/api`.
 - Disable response buffering (`X-Accel-Buffering: no`, `proxy_read_timeout 3600s`) on `/api/notifications/stream` SSE connections.
 

@@ -22,7 +22,9 @@ type ModelName =
   | 'auditLog'
   | 'notification'
   | 'file'
-  | 'task';
+  | 'task'
+  | 'crmCustomer'
+  | 'crmDeal';
 
 type Where = Record<string, unknown>;
 type Row = Record<string, unknown>;
@@ -65,8 +67,16 @@ export function scopeFor(model: ModelName, viewer: ScopeViewer): Where | undefin
         : { ownerId: viewer.id };
     case 'task':
       return viewer.role === 'MANAGER'
+        ? { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }, { departmentId: managed }] }
+        : { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }] };
+    case 'crmCustomer':
+      return viewer.role === 'MANAGER'
         ? { OR: [{ ownerId: viewer.id }, { departmentId: managed }] }
-        : { ownerId: viewer.id };
+        : { OR: [{ ownerId: viewer.id }, { createdById: viewer.id }] };
+    case 'crmDeal':
+      return viewer.role === 'MANAGER'
+        ? { customer: { OR: [{ ownerId: viewer.id }, { departmentId: managed }] } }
+        : { customer: { OR: [{ ownerId: viewer.id }, { createdById: viewer.id }] } };
     case 'auditLog':
       return viewer.role === 'MANAGER'
         ? {
@@ -112,9 +122,17 @@ export function isAllowed(model: ModelName, viewer: ScopeViewer, row: Row): bool
         : row.ownerId === viewer.id;
     case 'task':
       return viewer.role === 'MANAGER'
-        ? row.ownerId === viewer.id ||
+        ? row.ownerId === viewer.id || row.assigneeId === viewer.id ||
           (typeof row.departmentId === 'string' && managed.includes(row.departmentId))
-        : row.ownerId === viewer.id;
+        : row.ownerId === viewer.id || row.assigneeId === viewer.id;
+    case 'crmCustomer':
+      return viewer.role === 'MANAGER'
+        ? row.ownerId === viewer.id || (typeof row.departmentId === 'string' && managed.includes(row.departmentId))
+        : row.ownerId === viewer.id || row.createdById === viewer.id;
+    case 'crmDeal': {
+      const customer = row.customer as Row | undefined;
+      return !!customer && isAllowed('crmCustomer', viewer, customer);
+    }
     case 'auditLog': {
       if (row.actorId === viewer.id) return true;
       if (viewer.role !== 'MANAGER') return false;
@@ -194,6 +212,8 @@ export function withScope(viewer: ScopeViewer) {
     'notification',
     'file',
     'task',
+    'crmCustomer',
+    'crmDeal',
   ];
 
   interface ScopedReader {
@@ -204,6 +224,8 @@ export function withScope(viewer: ScopeViewer) {
   notification: ReaderDelegate;
   file: ReaderDelegate;
   task: ReaderDelegate;
+  crmCustomer: ReaderDelegate;
+  crmDeal: ReaderDelegate;
 }
 
 interface ReaderDelegate {

@@ -854,6 +854,7 @@ export function CrmCustomers() {
   const [customers, setCustomers] = React.useState<CustomerRow[] | null>(null);
   const [isDemoFallback, setIsDemoFallback] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [crmSummary, setCrmSummary] = React.useState<{ pipelineCents: number; wonCents: number; currency: string; dealCount: number } | null>(null);
   const [tab, setTab] = React.useState<'all' | CustomerSegment>('all');
   const [stageFilter, setStageFilter] = React.useState<'all' | CustomerStage>('all');
   const [search, setSearch] = React.useState('');
@@ -888,8 +889,11 @@ export function CrmCustomers() {
     let active = true;
     const allowLocal = canUseCrmLocalFallback();
     setLoadError(null);
-    apiFetch<{ items?: CustomerRow[] } | CustomerRow[]>('/api/org/crm/customers').then(
-      (res) => {
+    Promise.all([
+      apiFetch<{ items?: CustomerRow[] } | CustomerRow[]>('/api/org/crm/customers'),
+      apiFetch<{ pipelineCents: number; wonCents: number; currency: string; dealCount: number }>('/api/org/crm/summary'),
+    ]).then(
+      ([res, summary]) => {
         if (!active) return;
         const list = Array.isArray(res) ? res : (res.items ?? []);
         if (allowLocal && list.length === 0) {
@@ -897,6 +901,7 @@ export function CrmCustomers() {
           return;
         }
         setCustomers(list);
+        setCrmSummary(summary);
         setIsDemoFallback(false);
         setLoadError(null);
       },
@@ -1192,7 +1197,11 @@ export function CrmCustomers() {
   const adjustedBillion = isDemoFallback
     ? Math.max(0.1, baseBillion + deltaDeals * 0.15)
     : Math.max(0, (openStageCount + wonCount) * 0.15);
-  const dynamicPipelineValue = `${adjustedBillion.toFixed(1).replace('.', ',')} tỷ`;
+  const dynamicPipelineValue = isDemoFallback
+    ? `${adjustedBillion.toFixed(1).replace('.', ',')} tỷ`
+    : crmSummary && crmSummary.dealCount > 0
+      ? `${(crmSummary.pipelineCents / 100_000_000_000).toFixed(1).replace('.', ',')} tỷ`
+      : 'Chưa có dữ liệu';
   const funnelData = {
     ...baseFunnel,
     stages: funnelStages,
@@ -1531,7 +1540,7 @@ export function CrmCustomers() {
           <div className="crm-funnel__summary">
             <p className="crm-funnel__sum-label">Giá trị pipeline dự kiến</p>
             <p className="crm-funnel__sum-value">
-              {funnelData.pipelineValue} <span className="crm-dong">đ</span>
+              {funnelData.pipelineValue === 'Chưa có dữ liệu' ? funnelData.pipelineValue : <>{funnelData.pipelineValue} <span className="crm-dong">đ</span></>}
             </p>
             <p className="crm-funnel__trend">
               <ArrowUp size={11} strokeWidth={2.4} aria-hidden="true" />

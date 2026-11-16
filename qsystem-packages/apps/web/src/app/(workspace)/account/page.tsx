@@ -137,7 +137,10 @@ export default function AccountPage() {
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
 
-  const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(true);
+  // MFA and remote session management are intentionally unavailable until
+  // their server-backed flows exist; never present a localStorage toggle as
+  // account security.
+  const [twoFactorEnabled] = React.useState(false);
   const [showDevices, setShowDevices] = React.useState(false);
   const [sessions, setSessions] = React.useState<DeviceSession[]>(INITIAL_SESSIONS);
   const [loggingOut, setLoggingOut] = React.useState(false);
@@ -155,9 +158,6 @@ export default function AccountPage() {
       if (typeof stored.departmentName === 'string' && stored.departmentName.trim()) {
         setDepartmentName(stored.departmentName.trim());
         setSavedDepartment(stored.departmentName.trim());
-      }
-      if (typeof stored.twoFactorEnabled === 'boolean') {
-        setTwoFactorEnabled(stored.twoFactorEnabled);
       }
       setSessions(readStoredSessions());
     }
@@ -582,13 +582,9 @@ export default function AccountPage() {
                   <button
                     type="button"
                     className="qa-sec-toggle"
+                    disabled
+                    aria-disabled="true"
                     aria-pressed={twoFactorEnabled}
-                    onClick={() => {
-                      const next = !twoFactorEnabled;
-                      setTwoFactorEnabled(next);
-                      writeStoredProfile({ twoFactorEnabled: next });
-                      toast.success(next ? 'Đã bật xác thực hai yếu tố.' : 'Đã tạm tắt xác thực hai yếu tố.');
-                    }}
                   >
                     {twoFactorEnabled ? 'Đã bật' : 'Đang tắt'}
                   </button>
@@ -607,6 +603,8 @@ export default function AccountPage() {
                   <button
                     type="button"
                     className="qx-btn qx-btn--sm"
+                    disabled
+                    aria-disabled="true"
                     aria-expanded={showDevices}
                     onClick={() => setShowDevices((prev) => !prev)}
                   >
@@ -616,25 +614,7 @@ export default function AccountPage() {
 
                 {showDevices ? (
                   <div className="qa-device-list" role="region" aria-label="Danh sách thiết bị đăng nhập">
-                    {sessions.map((session) => (
-                      <div key={session.id} className="qa-device-box">
-                        <div className="qa-device-meta">
-                          <span className="qa-device-name">{session.device}</span>
-                          <span className="qa-device-sub">{session.detail}</span>
-                        </div>
-                        {session.current ? (
-                          <span className="qx-badge qx-badge--green qa-sec-badge">Đang hoạt động</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="qx-btn qx-btn--sm"
-                            onClick={() => revokeSession(session.id)}
-                          >
-                            Đăng xuất thiết bị
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    <p className="qa-helper">Quản lý phiên đăng nhập chưa được triển khai trên máy chủ.</p>
                   </div>
                 ) : null}
               </div>

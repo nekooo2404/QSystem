@@ -44,7 +44,7 @@ services:
     secrets:
       - rls_owner_url
       - jwt_secret
-    command: ['pnpm', 'run', 'db:migrate:deploy']
+    command: ['node', '/app/apps/api/scripts/migrate-deploy.mjs']
 
   api:
     image: ${QSYSTEM_API_IMAGE:-qsystem/api:latest}
@@ -93,7 +93,7 @@ services:
     ports:
       - '127.0.0.1:3001:3001'
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3001/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       start_period: 20s

@@ -15,6 +15,7 @@ export interface Task {
   dueDate: string;
   departmentId?: string;
   status: TaskStatus;
+  version?: number;
   priority?: TaskPriorityLabel;
   project?: string;
   description?: string;
@@ -50,6 +51,7 @@ interface ApiTaskRow {
   dueDate: string;
   departmentId?: string | null;
   status: TaskStatus;
+  version?: number;
   priority?: string | null;
   project?: string | null;
   description?: string | null;
@@ -57,6 +59,13 @@ interface ApiTaskRow {
 
 interface TaskListResponse {
   items: ApiTaskRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface TaskPage {
+  items: Task[];
   total: number;
   page: number;
   pageSize: number;
@@ -103,6 +112,7 @@ function normalizeTask(row: ApiTaskRow): Task {
     dueDate: row.dueDate,
     ...(row.departmentId ? { departmentId: row.departmentId } : {}),
     status: TASK_STATUSES.includes(row.status) ? row.status : 'Đang làm',
+    ...(typeof row.version === 'number' ? { version: row.version } : {}),
     ...(priority ? { priority } : {}),
     ...(row.project ? { project: row.project } : {}),
     ...(row.description ? { description: row.description } : {}),
@@ -119,7 +129,7 @@ export function toPayload(input: TaskInput, status?: TaskStatus): TaskPayload4W 
   };
 }
 
-export async function listTasks(filter?: TaskFilter): Promise<Task[]> {
+export async function listTasksPage(filter?: TaskFilter): Promise<TaskPage> {
   const params = new URLSearchParams();
   if (filter?.status) params.set('status', filter.status);
   if (filter?.departmentId) params.set('departmentId', filter.departmentId);
@@ -130,8 +140,19 @@ export async function listTasks(filter?: TaskFilter): Promise<Task[]> {
   if (filter?.pageSize) params.set('pageSize', String(filter.pageSize));
   const qs = params.toString();
   const res = await apiFetch<TaskListResponse | ApiTaskRow[]>(`/api/org/tasks${qs ? `?${qs}` : ''}`);
-  const rows = Array.isArray(res) ? res : (res.items ?? []);
-  return rows.map(normalizeTask);
+  if (Array.isArray(res)) {
+    return { items: res.map(normalizeTask), total: res.length, page: filter?.page ?? 1, pageSize: filter?.pageSize ?? res.length };
+  }
+  return {
+    items: (res.items ?? []).map(normalizeTask),
+    total: res.total,
+    page: res.page,
+    pageSize: res.pageSize,
+  };
+}
+
+export async function listTasks(filter?: TaskFilter): Promise<Task[]> {
+  return (await listTasksPage(filter)).items;
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {
@@ -155,11 +176,11 @@ export async function createTask(input: TaskInput): Promise<Task> {
   return normalizeTask(res.task);
 }
 
-export async function updateTaskStatus(id: string, status: TaskStatus): Promise<Task> {
+export async function updateTaskStatus(id: string, status: TaskStatus, version?: number): Promise<Task> {
   const res = await apiFetch<{ ok: true; task: ApiTaskRow }>(`/api/org/tasks/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status, action: status }),
+    body: JSON.stringify({ status, action: status, ...(version !== undefined ? { version } : {}) }),
   });
   return normalizeTask(res.task);
 }
