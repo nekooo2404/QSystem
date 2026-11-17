@@ -3,10 +3,13 @@ import { Prisma, type CrmCustomer as PrismaCrmCustomer } from '@prisma/client';
 import * as argon2 from 'argon2';
 import {
   CreateTaskSchema,
+  CreateProjectSchema,
+  CreateWorkPackageSchema,
   CreateUserSchema,
   TaskQuerySchema,
   TaskStatusSchema,
   UpdateTaskSchema,
+  UpdateWorkPackageSchema,
 } from '@qsystem/contracts';
 import { AuditService } from '../common/audit.service';
 import { isAllowed } from '../prisma/prisma-scope.extension';
@@ -439,6 +442,100 @@ export class OrgService {
     }
   }
 
+  async listWorkPackages(viewer: ScopeViewer, projectId?: string) {
+    return this.client(viewer).workPackage.findMany({
+      where: projectId ? { projectId } : undefined,
+      orderBy: { createdAt: 'desc' },
+      include: { project: { select: { id: true, name: true } } },
+    });
+  }
+
+  async listProjects(viewer: ScopeViewer) {
+    return this.client(viewer).project.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { workPackages: true },
+    });
+  }
+
+  async createProject(viewer: ScopeViewer, raw: unknown) {
+    const parsed = CreateProjectSchema.safeParse(raw ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { code: 'INVALID_INPUT', message: 'Invalid project payload', details: parsed.error.issues },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (viewer.role !== 'DIRECTOR') {
+      throw error('FORBIDDEN', 'Only DIRECTOR may create projects', HttpStatus.FORBIDDEN);
+    }
+    return this.client(viewer).project.create({
+      data: {
+        name: parsed.data.name.trim(),
+        description: parsed.data.description?.trim() || null,
+        ownerId: viewer.id,
+        tenantId: null,
+      },
+    });
+  }
+
+  async createWorkPackage(viewer: ScopeViewer, raw: unknown) {
+    const parsed = CreateWorkPackageSchema.safeParse(raw ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { code: 'INVALID_INPUT', message: 'Invalid work package payload', details: parsed.error.issues },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (viewer.role !== 'DIRECTOR') {
+      throw error('FORBIDDEN', 'Only DIRECTOR may assign work packages', HttpStatus.FORBIDDEN);
+    }
+    const body = parsed.data;
+    const manager = await this.client(viewer).user.findUnique({
+      where: { id: body.managerId },
+      select: { id: true, role: true },
+    });
+    if (!manager || manager.role !== 'MANAGER') {
+      throw error('BAD_REQUEST', 'Work packages must be assigned to a MANAGER', HttpStatus.BAD_REQUEST);
+    }
+    const workPackage = await this.client(viewer).workPackage.create({
+      data: {
+        projectId: body.projectId,
+        name: body.name.trim(),
+        description: body.description?.trim() || null,
+        managerId: body.managerId,
+        assignedById: viewer.id,
+        dueDate: body.dueDate ?? null,
+      },
+    });
+    await this.prisma.notification.create({
+      data: {
+        channel: 'SOCKET',
+        recipient: manager.id,
+        recipientId: manager.id,
+        payload: { type: 'WORK_PACKAGE_ASSIGNED', workPackageId: workPackage.id, projectId: workPackage.projectId },
+        status: 'PENDING',
+        tenantId: null,
+      },
+    });
+    return workPackage;
+  }
+
+  async updateWorkPackage(viewer: ScopeViewer, id: string, raw: unknown) {
+    const parsed = UpdateWorkPackageSchema.safeParse(raw ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { code: 'INVALID_INPUT', message: 'Invalid work package update', details: parsed.error.issues },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const existing = await this.client(viewer).workPackage.findUnique({ where: { id } });
+    if (!existing) throw error('NOT_FOUND', 'Work package not found', HttpStatus.NOT_FOUND);
+    if (viewer.role === 'EMPLOYEE' || (viewer.role === 'MANAGER' && existing.managerId !== viewer.id)) {
+      throw error('FORBIDDEN', 'Insufficient permission for work package', HttpStatus.FORBIDDEN);
+    }
+    return this.client(viewer).workPackage.update({ where: { id }, data: parsed.data });
+  }
+
   async listTasks(viewer: ScopeViewer, rawQuery: Record<string, unknown>) {
     const parsed = TaskQuerySchema.safeParse(rawQuery ?? {});
     if (!parsed.success) {
@@ -519,6 +616,22 @@ export class OrgService {
     if (viewer.role === 'EMPLOYEE' && departmentId && departmentId !== viewer.departmentId) {
       throw error('FORBIDDEN', 'Cannot assign task outside your department', HttpStatus.FORBIDDEN);
     }
+    if (body.workPackageId) {
+      const workPackage = await this.client(viewer).workPackage.findUnique({
+        where: { id: body.workPackageId },
+        select: { id: true, managerId: true, projectId: true },
+      });
+      if (!workPackage) throw error('NOT_FOUND', 'Work package not found', HttpStatus.NOT_FOUND);
+      if (viewer.role === 'MANAGER' && workPackage.managerId !== viewer.id) {
+        throw error('FORBIDDEN', 'Only the package manager may assign package tasks', HttpStatus.FORBIDDEN);
+      }
+      if (viewer.role === 'EMPLOYEE') {
+        throw error('FORBIDDEN', 'Employees cannot assign package tasks', HttpStatus.FORBIDDEN);
+      }
+    }
+    if (body.assignmentMode === 'PACKAGE_TO_MANAGER' && viewer.role !== 'DIRECTOR') {
+      throw error('FORBIDDEN', 'Only DIRECTOR may assign work packages', HttpStatus.FORBIDDEN);
+    }
     if (!isAllowed('task', viewer, { ownerId, departmentId })) {
       throw error('FORBIDDEN', 'Insufficient permission to create task in scope', HttpStatus.FORBIDDEN);
     }
@@ -542,6 +655,10 @@ export class OrgService {
           ownerId,
           departmentId,
           tenantId: null,
+          projectId: body.projectId ?? null,
+          workPackageId: body.workPackageId ?? null,
+          assignmentMode: body.assignmentMode ?? 'TASK_TO_EMPLOYEE',
+          progress: body.progress ?? 0,
         },
       });
       if (matchedAssignee && matchedAssignee.id !== viewer.id) {
@@ -555,6 +672,24 @@ export class OrgService {
             tenantId: null,
           },
         });
+      }
+      if (body.assignmentMode === 'TASK_TO_EMPLOYEE' && matchedAssignee?.departmentId) {
+        const manager = await this.client(viewer).user.findFirst({
+          where: { departmentId: matchedAssignee.departmentId, role: 'MANAGER' },
+          select: { id: true },
+        });
+        if (manager && manager.id !== matchedAssignee.id && manager.id !== viewer.id) {
+          await this.prisma.notification.create({
+            data: {
+              channel: 'SOCKET',
+              recipient: manager.id,
+              recipientId: manager.id,
+              payload: { type: 'DIRECT_TASK_ASSIGNED', taskId: task.id, taskCode: task.code },
+              status: 'PENDING',
+              tenantId: null,
+            },
+          });
+        }
       }
       await this.recordAudit({
         actorId: viewer.id,
@@ -633,6 +768,13 @@ export class OrgService {
     if (viewer.role === 'EMPLOYEE' && nextDepartmentId !== existing.departmentId) {
       throw error('FORBIDDEN', 'Employees cannot reassign task departments', HttpStatus.FORBIDDEN);
     }
+    if (
+      body.progress !== undefined &&
+      viewer.role === 'EMPLOYEE' &&
+      nextAssigneeId !== viewer.id
+    ) {
+      throw error('FORBIDDEN', 'Employees may only update progress on their own tasks', HttpStatus.FORBIDDEN);
+    }
 
     try {
       const claimed = await this.client(viewer).task.updateMany({
@@ -650,6 +792,10 @@ export class OrgService {
           ...(body.assigneeId !== undefined ? { assigneeId: body.assigneeId } : {}),
           ...(body.assigneeName !== undefined ? { assigneeName: body.assigneeName } : (nextAssignee ? { assigneeName: nextAssignee.name } : {})),
           ...(body.departmentId !== undefined ? { departmentId: body.departmentId } : {}),
+          ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
+          ...(body.workPackageId !== undefined ? { workPackageId: body.workPackageId } : {}),
+          ...(body.assignmentMode !== undefined ? { assignmentMode: body.assignmentMode } : {}),
+          ...(body.progress !== undefined ? { progress: body.progress } : {}),
           version: { increment: 1 },
         },
       });

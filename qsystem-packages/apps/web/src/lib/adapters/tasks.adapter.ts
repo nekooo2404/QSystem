@@ -5,6 +5,7 @@ export const TASK_STATUSES = ['Đang làm', 'Chờ duyệt', 'Hoàn thành', 'Qu
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export type TaskPriorityLabel = 'Ưu tiên cao' | 'Trung bình' | 'Thấp';
+export type TaskAssignmentMode = 'PACKAGE_TO_MANAGER' | 'TASK_TO_EMPLOYEE';
 
 export interface Task {
   id: string;
@@ -18,6 +19,10 @@ export interface Task {
   version?: number;
   priority?: TaskPriorityLabel;
   project?: string;
+  projectId?: string;
+  workPackageId?: string;
+  assignmentMode?: TaskAssignmentMode;
+  progress?: number;
   description?: string;
 }
 
@@ -29,6 +34,10 @@ export interface TaskInput {
   departmentId?: string;
   priority?: TaskPriorityLabel;
   project?: string;
+  projectId?: string;
+  workPackageId?: string;
+  assignmentMode?: TaskAssignmentMode;
+  progress?: number;
   description?: string;
 }
 
@@ -55,6 +64,14 @@ interface ApiTaskRow {
   priority?: string | null;
   project?: string | null;
   description?: string | null;
+  workPackageId?: string | null;
+}
+
+export interface WorkPackageRow {
+  id: string;
+  name: string;
+  projectId: string;
+  project: { id: string; name: string } | null;
 }
 
 interface TaskListResponse {
@@ -115,8 +132,14 @@ function normalizeTask(row: ApiTaskRow): Task {
     ...(typeof row.version === 'number' ? { version: row.version } : {}),
     ...(priority ? { priority } : {}),
     ...(row.project ? { project: row.project } : {}),
+    ...(row.workPackageId ? { workPackageId: row.workPackageId } : {}),
     ...(row.description ? { description: row.description } : {}),
   };
+}
+
+export async function listWorkPackages(): Promise<WorkPackageRow[]> {
+  const res = await apiFetch<WorkPackageRow[]>('/api/org/work-packages');
+  return Array.isArray(res) ? res : [];
 }
 
 export function toPayload(input: TaskInput, status?: TaskStatus): TaskPayload4W & Record<string, unknown> {
@@ -170,6 +193,7 @@ export async function createTask(input: TaskInput): Promise<Task> {
       departmentId: input.departmentId ?? null,
       ...(apiPriority ? { priority: apiPriority } : {}),
       ...(input.project ? { project: input.project } : {}),
+      ...(input.workPackageId ? { workPackageId: input.workPackageId } : {}),
       ...(input.description ? { description: input.description } : {}),
     }),
   });

@@ -21,6 +21,44 @@ body {
   overflow-x: clip;
 }
 
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--qs-fg-muted) transparent;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--qs-fg-muted);
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--qs-fg-secondary);
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-button,
+body::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 body {
   background: var(--qs-bg);
   color: var(--qs-fg);
@@ -28,6 +66,49 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+@keyframes qs-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Shared Tasko-style entrance and hover language for every QSystem module.
+   QTask has a richer local stagger; these rules cover QHRM, QCRM, QSocial
+   and system pages without requiring each screen to opt in manually. */
+.qx-content > *:not(.qtk-dashboard):not(.qtk-subpage) {
+  animation: qs-page-enter 360ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .qx-card,
+  .qx-stat {
+    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .qx-card:hover,
+  .qx-stat:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgb(24 38 56 / 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qx-content > *:not(.qtk-dashboard):not(.qtk-subpage) {
+    animation: none;
+  }
+
+  .qx-card,
+  .qx-stat {
+    transition: none;
+  }
 }
 
 /* Codes, dates, timestamps and counters align digit-to-digit everywhere. */

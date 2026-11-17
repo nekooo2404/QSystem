@@ -11,10 +11,22 @@ test('diagnose overflow elements', async ({ page }) => {
     body.style.overflowX = 'visible';
 
     const vw = window.innerWidth;
-    const elements = [];
+    const elements: Array<{
+      tag: string;
+      className: string;
+      role: string | null;
+      ariaLabel: string | null;
+      rect: { left: number; right: number; width: number };
+      overflowX: string;
+      width: string;
+      minWidth: string;
+      maxWidth: string;
+      text: string;
+    }> = [];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
-    let node;
-    while (node = walker.nextNode()) {
+    let node: Node | null = null;
+    while ((node = walker.nextNode()) !== null) {
+      if (!(node instanceof HTMLElement)) continue;
       if (node === html || node === body) continue;
       const rect = node.getBoundingClientRect();
       if (rect.width > vw + 1 || rect.left < -1 || rect.right > vw + 1) {

@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Activity,
+  BarChart3,
   Bell,
   Bookmark,
   Building2,
   CalendarCheck,
+  CalendarDays,
   Check,
   ChevronDown,
   Clock,
@@ -33,7 +35,6 @@ import {
   Target,
   User,
   UserRound,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import { toast, useFloatingLayer } from '@qsystem/ui';
@@ -91,6 +92,8 @@ const MODULE_NAV_BY_ID: Record<ModuleId, { navLabel: string; nav: NavItem[] }> =
       { label: 'Tổng quan', href: '/?muc=tong-quan', icon: Home, match: '/?tong-quan' },
       { label: 'Tất cả công việc', href: '/', icon: SquareCheck, match: '/' },
       { label: 'Công việc của tôi', href: '/tasks', icon: Check, match: '/tasks', count: 3 },
+      { label: 'Calendar', href: '/calendar', icon: CalendarDays, match: '/calendar' },
+      { label: 'Analytics', href: '/analytics', icon: BarChart3, match: '/analytics' },
       { label: 'Dự án', href: '/projects', icon: Folder, match: '/projects' },
     ],
   },
@@ -184,6 +187,8 @@ function activeModule(pathname: string): BusinessModuleDef | null {
   if (
     matchesRoute(clean, '/') ||
     matchesRoute(clean, '/tasks') ||
+    matchesRoute(clean, '/calendar') ||
+    matchesRoute(clean, '/analytics') ||
     matchesRoute(clean, '/projects')
   ) {
     return MODULES[0];
@@ -429,7 +434,11 @@ export function AppWorkspaceShell({ children, me, allowedModuleIds }: AppWorkspa
   };
 
   return (
-    <div className="qx-shell" data-nav={navOpen ? 'open' : 'closed'}>
+    <div
+      className="qx-shell"
+      data-nav={navOpen ? 'open' : 'closed'}
+      data-qtask={module?.id === 'qtask' ? 'true' : undefined}
+    >
       <div ref={navLayerRef} className="qx-nav-layer">
         <div className="qx-backdrop" aria-hidden="true" onClick={() => setNavOpen(false)} />
         <aside
@@ -444,14 +453,6 @@ export function AppWorkspaceShell({ children, me, allowedModuleIds }: AppWorkspa
               {logoError ? 'Q' : <img src="/qts-logo.png" alt="" onError={() => setLogoError(true)} />}
             </span>
             <span className="qx-brand__name">QSystem</span>
-            <button
-              type="button"
-              className="qx-icon-btn qx-sidebar__close"
-              aria-label="Đóng điều hướng"
-              onClick={() => setNavOpen(false)}
-            >
-              <X size={18} strokeWidth={1.5} aria-hidden="true" />
-            </button>
           </div>
 
           <div className="qx-ws-wrap" ref={wsMenuRef}>

@@ -13,6 +13,7 @@ body {
 
 /* --- Layout -------------------------------------------------------------- */
 .qx-shell {
+  --qx-sidebar-width: 240px;
   display: flex;
   min-height: 100vh;
   background: var(--qs-bg);
@@ -25,11 +26,13 @@ body {
 }
 
 .qx-sidebar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
   flex: 0 0 240px;
   width: 240px;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   padding: 16px 12px;
@@ -38,6 +41,58 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+/* Keep the workspace rail visible while the main surface scrolls. */
+.qx-sidebar {
+  align-self: flex-start;
+  scrollbar-width: thin;
+  scrollbar-color: var(--qs-border-strong) transparent;
+}
+
+.qx-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.qx-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.qx-sidebar::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--qs-border-strong);
+  background-clip: padding-box;
+}
+
+.qx-sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--qs-fg-muted);
+  background-clip: padding-box;
+}
+
+.qx-main {
+  scrollbar-width: thin;
+  scrollbar-color: var(--qs-border-strong) transparent;
+}
+
+.qx-main::-webkit-scrollbar {
+  width: 8px;
+}
+
+.qx-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.qx-main::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--qs-border-strong);
+  background-clip: padding-box;
+}
+
+.qx-main::-webkit-scrollbar-thumb:hover {
+  background: var(--qs-fg-muted);
+  background-clip: padding-box;
 }
 
 .qx-brand {
@@ -350,6 +405,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  margin-left: var(--qx-sidebar-width);
 }
 .qx-topbar {
   position: sticky;
@@ -915,6 +971,7 @@ body {
   }
   .qx-sidebar {
     position: fixed;
+    margin-left: 0;
     left: 0;
     z-index: 50;
     transform: translateX(-100%);
@@ -1432,3 +1489,34 @@ body {
   }
 }
 
+/* Badge text contrast — WCAG AA on both themes. */
+[data-theme='light'] .qx-badge,
+[data-theme='light'] .qx-badge--amber,
+[data-theme='light'] .qx-badge--blue,
+[data-theme='light'] .qx-badge--green,
+[data-theme='light'] .qx-badge--red,
+[data-theme='light'] .qx-badge--purple {
+  color: #111827 !important;
+}
+
+[data-theme='dark'] .qx-badge,
+[data-theme='dark'] .qx-badge--amber,
+[data-theme='dark'] .qx-badge--blue,
+[data-theme='dark'] .qx-badge--green,
+[data-theme='dark'] .qx-badge--red,
+[data-theme='dark'] .qx-badge--purple {
+  color: #ffffff !important;
+}
+
+
+/* Desktop rail follows the viewport while the workspace content scrolls. */
+@media (min-width: 1024px) {
+  .qx-shell[data-qtask='true'] {
+    --qx-sidebar-width: 256px;
+  }
+
+  .qx-shell[data-qtask='true'] .qx-sidebar {
+    width: 256px;
+    flex-basis: 256px;
+  }
+}

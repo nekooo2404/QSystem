@@ -3,7 +3,11 @@
 import * as React from 'react';
 import { Calendar, Paperclip, Plus, Users, X } from 'lucide-react';
 import { Select, useFloatingLayer, type SelectOption } from '@qsystem/ui';
-import { createTask } from '../../lib/adapters/tasks.adapter';
+import {
+  createTask,
+  listWorkPackages,
+  type WorkPackageRow,
+} from '../../lib/adapters/tasks.adapter';
 import { ApiError } from '../../lib/api/client';
 import { formatDdMmYyyy, getLocalDateIso } from '../../lib/date';
 import { humanizeApiError } from '../../lib/errors/humanize';
@@ -66,6 +70,9 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
   const [description, setDescription] = React.useState('');
   const [assigneeId, setAssigneeId] = React.useState(effectivePeople[0]?.id ?? 'la');
   const [project, setProject] = React.useState(SAMPLE_PROJECTS[0]);
+  const [workPackages, setWorkPackages] = React.useState<WorkPackageRow[]>([]);
+  const [workPackageId, setWorkPackageId] = React.useState<string>('');
+  const [workPackageLocked, setWorkPackageLocked] = React.useState(false);
   const [dueDate, setDueDate] = React.useState(() => getDefaultDue());
   const [priority, setPriority] = React.useState<'Ưu tiên cao' | 'Trung bình' | 'Thấp'>('Ưu tiên cao');
   const [attachmentName, setAttachmentName] = React.useState<string | null>(null);
@@ -83,6 +90,8 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
       effectivePeople.find((p) => p.name === 'Lan Anh') ?? effectivePeople[0];
     setAssigneeId(defaultPerson?.id ?? '');
     setProject(SAMPLE_PROJECTS[0]);
+    setWorkPackageId('');
+    setWorkPackageLocked(false);
     setDueDate(getDefaultDue());
     setPriority('Ưu tiên cao');
     setAttachmentName(null);
@@ -91,6 +100,35 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
     setSubmitError(null);
     setErrorAttempt(0);
   }, [open, effectivePeople]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void listWorkPackages()
+      .then((rows) => {
+        if (!cancelled) setWorkPackages(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkPackages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const selectedWorkPackage = workPackages.find((row) => row.id === workPackageId) ?? null;
+
+  const handleWorkPackageChange = React.useCallback((nextId: string) => {
+    setWorkPackageId(nextId);
+    const next = workPackages.find((row) => row.id === nextId) ?? null;
+    if (next) {
+      const knownProject = SAMPLE_PROJECTS.find((p) => p === next.project?.name);
+      setProject(knownProject ?? SAMPLE_PROJECTS[0]);
+      setWorkPackageLocked(true);
+    } else {
+      setWorkPackageLocked(false);
+    }
+  }, [workPackages]);
 
   const close = React.useCallback(() => {
     onOpenChange(false);
@@ -128,12 +166,14 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
         assigneeName: selectedPerson?.name ?? assigneeId,
         dueDate: iso,
         project,
+        workPackageId: workPackageId || undefined,
         priority,
         description: resolvedDesc,
       });
       onCreated({
         ...created,
         project,
+        ...(selectedWorkPackage ? { workPackageId: selectedWorkPackage.id } : {}),
         priority,
         description: resolvedDesc,
         displayStatus: created.status,
@@ -159,6 +199,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
         status: 'Đang làm',
         displayStatus: 'Đang làm',
         project,
+        ...(workPackageId ? { workPackageId } : {}),
         priority,
         description: resolvedDesc,
         attachments: attachmentName ? [{ id: `att-${Date.now()}`, name: attachmentName, size: '128 KB' }] : [],
@@ -282,7 +323,33 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                 onValueChange={setProject}
                 options={PROJECT_OPTIONS}
                 controlSize="md"
+                disabled={workPackageLocked}
               />
+            </div>
+
+            <div className="qtk-field">
+              <label htmlFor="qtk-create-package" className="qtk-field__label">
+                Gói thầu
+              </label>
+              <Select
+                id="qtk-create-package"
+                aria-label="Gói thầu"
+                value={workPackageId}
+                onValueChange={handleWorkPackageChange}
+                options={[
+                  { value: '', label: 'Không thuộc gói thầu' },
+                  ...workPackages.map((row) => ({
+                    value: row.id,
+                    label: row.name,
+                  })),
+                ]}
+                controlSize="md"
+              />
+              {selectedWorkPackage ? (
+                <p className="qtk-field__hint">
+                  Thuộc gói thầu “{selectedWorkPackage.name}”
+                </p>
+              ) : null}
             </div>
 
             <div className="qtk-field">

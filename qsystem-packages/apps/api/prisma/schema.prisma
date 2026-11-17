@@ -35,64 +35,109 @@ model Department {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  manager  User?        @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
-  parent   Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children Department[] @relation("DepartmentHierarchy")
-  members  User[]       @relation("UserDepartment")
-  files       File[]
-  tasks       Task[]
-  socialPosts SocialPost[]
+  manager      User?         @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+  parent       Department?   @relation("DepartmentHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Department[]  @relation("DepartmentHierarchy")
+  members      User[]        @relation("UserDepartment")
+  files        File[]
+  tasks        Task[]
+  socialPosts  SocialPost[]
   crmCustomers CrmCustomer[]
 
   @@map("departments")
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String
-  jobTitle     String?   @map("job_title")
-  passwordHash String    @map("password_hash")
-  role         Role      @default(EMPLOYEE)
-  status       String    @default("ACTIVE")
-  suspendedAt  DateTime? @map("suspended_at")
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  jobTitle      String?   @map("job_title")
+  passwordHash  String    @map("password_hash")
+  role          Role      @default(EMPLOYEE)
+  status        String    @default("ACTIVE")
+  suspendedAt   DateTime? @map("suspended_at")
   deactivatedAt DateTime? @map("deactivated_at")
-  departmentId String?   @map("department_id")
-  reportsToId  String?   @map("reports_to_id")
-  tenantId     String?   @map("tenant_id")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  departmentId  String?   @map("department_id")
+  reportsToId   String?   @map("reports_to_id")
+  tenantId      String?   @map("tenant_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  department           Department?           @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
-  reportsTo            User?                 @relation("UserReports", fields: [reportsToId], references: [id], onDelete: SetNull)
-  directReports        User[]                @relation("UserReports")
-  managedDepartments   Department[]          @relation("DepartmentManager")
-  ownedFiles           File[]                @relation("FileOwner")
-  ownedTasks           Task[]                @relation("TaskOwner")
-  assignedTasks        Task[]                @relation("TaskAssignee")
-  sentDelegations      ApprovalDelegation[]  @relation("DelegationFrom")
-  receivedDelegations  ApprovalDelegation[]  @relation("DelegationTo")
-  auditActions         AuditLog[]            @relation("AuditActor")
-  notifications        Notification[]        @relation("NotificationRecipient")
-  refreshTokens        RefreshToken[]        @relation("RefreshTokenUser")
-  socialPosts          SocialPost[]          @relation("SocialPostAuthor")
-  socialComments       SocialComment[]       @relation("SocialCommentAuthor")
-  socialPostLikes      SocialPostLike[]      @relation("SocialPostLikeUser")
-  crmCustomersOwned    CrmCustomer[]         @relation("CrmCustomerOwner")
-  crmCustomersCreated  CrmCustomer[]         @relation("CrmCustomerCreator")
+  department           Department?          @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  reportsTo            User?                @relation("UserReports", fields: [reportsToId], references: [id], onDelete: SetNull)
+  directReports        User[]               @relation("UserReports")
+  managedDepartments   Department[]         @relation("DepartmentManager")
+  ownedFiles           File[]               @relation("FileOwner")
+  ownedTasks           Task[]               @relation("TaskOwner")
+  assignedTasks        Task[]               @relation("TaskAssignee")
+  ownedProjects        Project[]            @relation("ProjectOwner")
+  managedWorkPackages  WorkPackage[]        @relation("WorkPackageManager")
+  assignedWorkPackages WorkPackage[]        @relation("WorkPackageAssignee")
+  sentDelegations      ApprovalDelegation[] @relation("DelegationFrom")
+  receivedDelegations  ApprovalDelegation[] @relation("DelegationTo")
+  auditActions         AuditLog[]           @relation("AuditActor")
+  notifications        Notification[]       @relation("NotificationRecipient")
+  refreshTokens        RefreshToken[]       @relation("RefreshTokenUser")
+  socialPosts          SocialPost[]         @relation("SocialPostAuthor")
+  socialComments       SocialComment[]      @relation("SocialCommentAuthor")
+  socialPostLikes      SocialPostLike[]     @relation("SocialPostLikeUser")
+  crmCustomersOwned    CrmCustomer[]        @relation("CrmCustomerOwner")
+  crmCustomersCreated  CrmCustomer[]        @relation("CrmCustomerCreator")
 
   @@map("users")
 }
 
-model ApprovalDelegation {
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String   @map("owner_id")
+  tenantId    String?  @map("tenant_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner        User          @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  workPackages WorkPackage[]
+  tasks        Task[]
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+model WorkPackage {
   id           String   @id @default(cuid())
-  fromUserId   String   @map("from_user_id")
-  toUserId     String   @map("to_user_id")
-  startsAt     DateTime @map("starts_at")
-  endsAt       DateTime @map("ends_at")
-  moduleScope  String?  @map("module_scope")
+  projectId    String   @map("project_id")
+  name         String
+  description  String?
+  managerId    String   @map("manager_id")
+  assignedById String   @map("assigned_by_id")
+  dueDate      String?  @map("due_date")
+  status       String   @default("NOT_STARTED")
+  progress     Int      @default(0)
   tenantId     String?  @map("tenant_id")
   createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  manager    User    @relation("WorkPackageManager", fields: [managerId], references: [id], onDelete: Restrict)
+  assignedBy User    @relation("WorkPackageAssignee", fields: [assignedById], references: [id], onDelete: Restrict)
+  tasks      Task[]
+
+  @@index([projectId])
+  @@index([managerId])
+  @@index([assignedById])
+  @@map("work_packages")
+}
+
+model ApprovalDelegation {
+  id          String   @id @default(cuid())
+  fromUserId  String   @map("from_user_id")
+  toUserId    String   @map("to_user_id")
+  startsAt    DateTime @map("starts_at")
+  endsAt      DateTime @map("ends_at")
+  moduleScope String?  @map("module_scope")
+  tenantId    String?  @map("tenant_id")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   from User @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
   to   User @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Cascade)
@@ -140,33 +185,42 @@ model Notification {
 }
 
 model Task {
-  id           String      @id @default(cuid())
-  code         String      @unique
-  title        String
-  what         String
-  who          String
-  when         String
-  where        String
-  status       String      @default("Đang làm")
-  priority     String      @default("NORMAL")
-  flow         String?
-  dueDate      String      @map("due_date")
-  assigneeId   String?     @map("assignee_id")
-  assigneeName String      @map("assignee_name")
-  ownerId      String      @map("owner_id")
-  owner        User        @relation("TaskOwner", fields: [ownerId], references: [id])
-  assignee     User?       @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  departmentId String?     @map("department_id")
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  tenantId     String?     @map("tenant_id")
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  version      Int         @default(1)
+  id             String      @id @default(cuid())
+  code           String      @unique
+  title          String
+  what           String
+  who            String
+  when           String
+  where          String
+  status         String      @default("Đang làm")
+  priority       String      @default("NORMAL")
+  flow           String?
+  dueDate        String      @map("due_date")
+  assigneeId     String?     @map("assignee_id")
+  assigneeName   String      @map("assignee_name")
+  ownerId        String      @map("owner_id")
+  owner          User        @relation("TaskOwner", fields: [ownerId], references: [id])
+  assignee       User?       @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  departmentId   String?     @map("department_id")
+  department     Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  tenantId       String?     @map("tenant_id")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  version        Int         @default(1)
+  projectId      String?     @map("project_id")
+  workPackageId  String?     @map("work_package_id")
+  assignmentMode String      @default("TASK_TO_EMPLOYEE") @map("assignment_mode")
+  progress       Int         @default(0)
+
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  workPackage WorkPackage? @relation(fields: [workPackageId], references: [id], onDelete: SetNull)
 
   @@index([ownerId])
   @@index([departmentId])
   @@index([status])
   @@index([assigneeId])
+  @@index([projectId])
+  @@index([workPackageId])
   @@map("tasks")
 }
 
@@ -200,17 +254,17 @@ model CrmCustomer {
 }
 
 model CrmDeal {
-  id          String      @id @default(cuid())
-  customerId  String      @map("customer_id")
+  id          String    @id @default(cuid())
+  customerId  String    @map("customer_id")
   name        String
-  amountCents Int         @default(0) @map("amount_cents")
-  currency    String      @default("VND")
-  probability Int         @default(0)
+  amountCents Int       @default(0) @map("amount_cents")
+  currency    String    @default("VND")
+  probability Int       @default(0)
   stage       String
-  closeDate   DateTime?   @map("close_date")
-  tenantId    String?     @map("tenant_id")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  closeDate   DateTime? @map("close_date")
+  tenantId    String?   @map("tenant_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   customer CrmCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
@@ -219,16 +273,16 @@ model CrmDeal {
 }
 
 model File {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   bucket       String
   key          String
-  displayName  String?   @map("display_name")
-  ownerId      String    @map("owner_id")
-  departmentId String?   @map("department_id")
+  displayName  String?  @map("display_name")
+  ownerId      String   @map("owner_id")
+  departmentId String?  @map("department_id")
   size         Int?
-  mimeType     String?   @map("mime_type")
-  tenantId     String?   @map("tenant_id")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  mimeType     String?  @map("mime_type")
+  tenantId     String?  @map("tenant_id")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   owner      User        @relation("FileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -267,18 +321,18 @@ model RateLimitHit {
 }
 
 model SocialPost {
-  id             String      @id @default(cuid())
-  authorId       String      @map("author_id")
-  authorName     String      @map("author_name")
-  authorRole     Role        @default(EMPLOYEE) @map("author_role")
-  departmentId   String?     @map("department_id")
-  departmentName String?     @map("department_name")
-  category       String      @default("SHARING")
+  id             String   @id @default(cuid())
+  authorId       String   @map("author_id")
+  authorName     String   @map("author_name")
+  authorRole     Role     @default(EMPLOYEE) @map("author_role")
+  departmentId   String?  @map("department_id")
+  departmentName String?  @map("department_name")
+  category       String   @default("SHARING")
   content        String
-  pinned         Boolean     @default(false)
-  tenantId       String?     @map("tenant_id")
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
+  pinned         Boolean  @default(false)
+  tenantId       String?  @map("tenant_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   author     User             @relation("SocialPostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   department Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)

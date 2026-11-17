@@ -19,7 +19,16 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Select, toast, type SelectOption } from '@qsystem/ui';
-import { listTasks, listTasksPage, TASK_STATUSES, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
+import {
+  listTasks,
+  listTasksPage,
+  listWorkPackages,
+  TASK_STATUSES,
+  updateTaskStatus,
+  type Task,
+  type TaskStatus,
+  type WorkPackageRow,
+} from '../../lib/adapters/tasks.adapter';
 import { apiFetch, ApiError } from '../../lib/api/client';
 import { useSession } from '../../lib/auth/session-context';
 import { addLocalDaysIso, diffCalendarDays } from '../../lib/date';
@@ -179,6 +188,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   const [reloadTick, setReloadTick] = React.useState(0);
   const [departments, setDepartments] = React.useState<Department[]>([]);
   const [people, setPeople] = React.useState<AssigneeOption[]>([]);
+  const [workPackages, setWorkPackages] = React.useState<WorkPackageRow[]>([]);
   const [filters, setFilters] = React.useState<Filters>(initialFilters);
   const [filterOpen, setFilterOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'table' | 'cards'>('table');
@@ -252,12 +262,14 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
     Promise.all([
       apiFetch<Department[]>('/api/org/departments').catch(() => []),
       apiFetch<AssigneeOption[]>('/api/org/users').catch(() => []),
+      listWorkPackages().catch(() => [] as WorkPackageRow[]),
       mePromise,
       tasksPromise,
-    ]).then(([depts, users, meRes, tasksResult]) => {
+    ]).then(([depts, users, packages, meRes, tasksResult]) => {
       if (!active) return;
       if (Array.isArray(depts)) setDepartments(depts);
       if (Array.isArray(users)) setPeople(users);
+      if (Array.isArray(packages)) setWorkPackages(packages);
       if (meRes && typeof meRes === 'object') setMe(meRes as { id?: string; name?: string });
 
       if (tasksResult.ok) {
@@ -933,6 +945,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
                   <th scope="col">Mã</th>
                   <th scope="col">Công việc</th>
                   <th scope="col">Dự án</th>
+                  <th scope="col">Gói thầu</th>
                   <th scope="col">Người phụ trách</th>
                   <th scope="col">Thời hạn</th>
                   <th scope="col">Trạng thái</th>
@@ -942,13 +955,14 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
               <tbody>
                 {paged.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--qs-fg-muted)', height: 108 }}>
+                    <td colSpan={8} style={{ textAlign: 'center', color: 'var(--qs-fg-muted)', height: 108 }}>
                       Không có công việc nào khớp với lựa chọn hiện tại
                     </td>
                   </tr>
                 ) : (
                   paged.map((task) => {
                     const badgeLabel = task.displayStatus ?? task.status;
+                    const workPackage = workPackages.find((row) => row.id === task.workPackageId) ?? null;
                     const isSelected = selected?.id === task.id;
                     const isMenuOpen = menuTaskId === task.id;
                     return (
@@ -972,6 +986,13 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
                           <span className="qtk-task-title">{task.title}</span>
                         </td>
                         <td>{task.project ?? departmentName(task.departmentId, task.departmentName)}</td>
+                        <td>
+                          {workPackage ? (
+                            <span title={workPackage.project?.name ?? ''}>{workPackage.name}</span>
+                          ) : (
+                            <span className="qtk-muted">—</span>
+                          )}
+                        </td>
                         <td>
                           <span className="qx-person">
                             <span className="qx-avatar qx-avatar--sm qtk-avatar-cell" aria-hidden="true">

@@ -48,6 +48,12 @@ export type TaskStatusDto = z.infer<typeof TaskStatusSchema>;
 export const TaskPrioritySchema = z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']);
 export type TaskPriorityDto = z.infer<typeof TaskPrioritySchema>;
 
+export const TaskAssignmentModeSchema = z.enum(['PACKAGE_TO_MANAGER', 'TASK_TO_EMPLOYEE']);
+export type TaskAssignmentMode = z.infer<typeof TaskAssignmentModeSchema>;
+
+export const WorkPackageStatusSchema = z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE']);
+export type WorkPackageStatus = z.infer<typeof WorkPackageStatusSchema>;
+
 /**
  * TASK payload — preserves the SensorsInterceptor 4W guard (what/who/when/where
  * required non-empty; missing or '' -> 422 TASK_4W_INCOMPLETE) and adds typed
@@ -74,6 +80,10 @@ export const CreateTaskSchema = TaskPayload4WSchema.extend({
   assigneeId: z.string().min(1).optional(),
   assigneeName: z.string().min(1).optional(),
   departmentId: z.string().nullable().optional(),
+  projectId: z.string().min(1).optional(),
+  workPackageId: z.string().min(1).optional(),
+  assignmentMode: TaskAssignmentModeSchema.optional(),
+  progress: z.number().int().min(0).max(100).optional(),
 });
 export type CreateTaskInput = z.infer<typeof CreateTaskSchema>;
 
@@ -90,6 +100,10 @@ export const UpdateTaskSchema = z
     assigneeId: z.string().nullable().optional(),
     assigneeName: z.string().min(1).optional(),
     departmentId: z.string().nullable().optional(),
+    projectId: z.string().min(1).optional(),
+    workPackageId: z.string().min(1).nullable().optional(),
+    assignmentMode: TaskAssignmentModeSchema.optional(),
+    progress: z.number().int().min(0).max(100).optional(),
     flow: z.string().optional(),
     action: z.string().optional(),
   })
@@ -106,3 +120,28 @@ export const TaskQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 export type TaskQueryInput = z.infer<typeof TaskQuerySchema>;
+
+export const CreateWorkPackageSchema = z.object({
+  projectId: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  managerId: z.string().min(1),
+  dueDate: z.string().min(1).optional(),
+});
+export type CreateWorkPackageInput = z.infer<typeof CreateWorkPackageSchema>;
+
+export const CreateProjectSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+});
+export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
+
+export const UpdateWorkPackageSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  managerId: z.string().min(1).optional(),
+  dueDate: z.string().min(1).optional(),
+  status: WorkPackageStatusSchema.optional(),
+  progress: z.number().int().min(0).max(100).optional(),
+});
+export type UpdateWorkPackageInput = z.infer<typeof UpdateWorkPackageSchema>;

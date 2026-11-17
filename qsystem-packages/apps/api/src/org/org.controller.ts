@@ -1,8 +1,11 @@
 import { Body, Controller, Delete, Get, HttpException, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   CreateDepartmentSchema,
+  CreateProjectSchema,
+  CreateWorkPackageSchema,
   UpdateDepartmentSchema,
   UpdateUserSchema,
+  UpdateWorkPackageSchema,
 } from '@qsystem/contracts';
 import { CurrentUser } from '../iam/current-user.decorator';
 import type { RequestViewer } from '../iam/iam.service';
@@ -120,6 +123,44 @@ export class OrgController {
     @Body() body: Record<string, unknown>,
   ) {
     return this.org.updateTask(await this.viewer(user), id, body);
+  }
+
+  @Get('work-packages')
+  async listWorkPackages(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.org.listWorkPackages(await this.viewer(user), projectId);
+  }
+
+  @Get('projects')
+  async listProjects(@CurrentUser() user: RequestViewer | undefined) {
+    return this.org.listProjects(await this.viewer(user));
+  }
+
+  @Post('projects')
+  async createProject(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Body() body: unknown,
+  ) {
+    return this.org.createProject(await this.viewer(user), parseBody(CreateProjectSchema, body));
+  }
+
+  @Post('work-packages')
+  async createWorkPackage(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Body() body: unknown,
+  ) {
+    return this.org.createWorkPackage(await this.viewer(user), parseBody(CreateWorkPackageSchema, body));
+  }
+
+  @Patch('work-packages/:id')
+  async updateWorkPackage(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.updateWorkPackage(await this.viewer(user), id, parseBody(UpdateWorkPackageSchema, body));
   }
 
   // ---- QCRM customer endpoints ----
