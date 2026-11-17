@@ -4,17 +4,12 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowUp,
-  Building2,
-  Calendar,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
   MoreHorizontal,
   Plus,
   Search,
-  Users,
   X,
 } from 'lucide-react';
 import { StateRegion, toast, useFloatingLayer } from '@qsystem/ui';
@@ -22,40 +17,42 @@ import type { MeResponse } from '@qsystem/contracts';
 import { apiFetch, cachedApiFetch, invalidateApiCache } from '../../lib/api/client';
 import { getCachedEntry } from '../../lib/api/cache';
 import { formatRole } from '../../lib/adapters/notifications.adapter';
+import { getLocalDateIso } from '../../lib/date';
 import { CreateUserModal } from './CreateUserModal';
+import { QhrmAttendance } from './QhrmAttendance';
+import { QhrmLeave } from './QhrmLeave';
+import { QhrmOverview } from './QhrmOverview';
+import {
+  buildSeedAttendance,
+  buildSeedLeaves,
+  computeLeaveBalances,
+  computeWorkedHours,
+  createLeaveRequestEntry,
+  ensureAttendanceSyncedWithUsers,
+  enumerateIsoDates,
+  formatDateTimeLabel,
+  formatWorkedHours,
+  loadStoredAttendance,
+  loadStoredLeaves,
+  recordCheckIn,
+  recordCheckOut,
+  resolveEmployeeCode,
+  saveStoredAttendance,
+  saveStoredLeaves,
+  syncApprovedLeavesToAttendance,
+} from './qhrm.storage';
+import type {
+  AttendanceRecord,
+  AttendanceStatus,
+  AvatarTone,
+  Department,
+  DirectoryRow,
+  EmploymentStatus,
+  LeaveRequest,
+  LeaveType,
+  OrgUser,
+} from './qhrm.types';
 import './qhrm.css';
-
-interface Department {
-  id: string;
-  name: string;
-  sampleCount?: number;
-}
-
-interface OrgUser {
-  id: string;
-  email: string;
-  name: string;
-  role: MeResponse['role'];
-  departmentId: string | null;
-  reportsToId: string | null;
-  jobTitle?: string;
-  statusLabel?: 'Đang làm' | 'Nghỉ phép';
-  avatarTone?: AvatarTone;
-  reportsToName?: string;
-}
-
-type AvatarTone = 'plum' | 'indigo' | 'slate' | 'teal' | 'cyan';
-type EmploymentStatus = 'Đang làm' | 'Nghỉ phép' | 'Chưa có dữ liệu';
-
-interface DirectoryRow {
-  user: OrgUser;
-  initials: string;
-  avatarTone: AvatarTone;
-  jobTitle: string;
-  departmentName: string;
-  managerName: string;
-  statusLabel: EmploymentStatus;
-}
 
 const PAGE_SIZE = 6;
 const SAMPLE_TOTAL_USERS = 128;
@@ -382,6 +379,7 @@ function buildSyntheticSampleRow(
   };
   return {
     user: syntheticUser,
+    employeeCode: `NV-${String(codeNum + 200).padStart(4, '0')}`,
     initials: initialsOf(`${mid} ${first}`),
     avatarTone,
     jobTitle,
@@ -482,13 +480,13 @@ function EmployeeDetailDialog({
             aria-label="Đóng hồ sơ nhân sự"
             onClick={onClose}
           >
-            <X size={18} strokeWidth={1.6} aria-hidden="true" />
+            <X size={16} strokeWidth={1.5} aria-hidden="true" />
           </button>
         </div>
 
         <div className="hr-detail-body">
           <div className="hr-detail-hero">
-            <span className={`qx-avatar hr-avatar--${row.avatarTone}`} aria-hidden="true">
+            <span className="qx-avatar hr-avatar" aria-hidden="true">
               {row.initials}
             </span>
             <div className="hr-detail-hero__meta">
@@ -584,14 +582,21 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
   const [page, setPage] = React.useState(1);
   const [creating, setCreating] = React.useState(false);
   const [openRowMenuId, setOpenRowMenuId] = React.useState<string | null>(null);
+  const [rowMenuPos, setRowMenuPos] = React.useState<{ top: number; left: number }>({
+    top: 0,
+    left: 0,
+  });
   const [deptMenuOpen, setDeptMenuOpen] = React.useState(false);
   const [sortDeptDesc, setSortDeptDesc] = React.useState(false);
   const [addingDept, setAddingDept] = React.useState(false);
   const [newDeptName, setNewDeptName] = React.useState('');
   const [detailUserId, setDetailUserId] = React.useState<string | null>(null);
+  const [leavesState, setLeavesState] = React.useState<LeaveRequest[] | null>(null);
+  const [attendanceState, setAttendanceState] = React.useState<AttendanceRecord[] | null>(null);
 
   const canManage = me.role === 'DIRECTOR' || me.role === 'MANAGER';
   const menuContainerRef = React.useRef<HTMLDivElement>(null);
+  const rowMenuRef = React.useRef<HTMLDivElement>(null);
   const newDeptInputRef = React.useRef<HTMLInputElement>(null);
 
   const rawMuc = searchParams?.get('muc');
@@ -671,6 +676,52 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     return loadDirectory();
   }, [loadDirectory]);
 
+  const usersForStore = React.useMemo<OrgUser[]>(() => {
+    if (!users || users.length === 0) return [];
+    if (users.some((u) => u.id === me.id)) return users;
+    return [
+      ...users,
+      {
+        id: me.id,
+        email: me.email,
+        name: me.name,
+        role: me.role,
+        departmentId: me.departmentId,
+        reportsToId: null,
+      },
+    ];
+  }, [users, me.id, me.email, me.name, me.role, me.departmentId]);
+
+  React.useEffect(() => {
+    if (!departments || usersForStore.length === 0) return;
+    const storedLeaves = loadStoredLeaves();
+    const nextLeaves =
+      storedLeaves && storedLeaves.length > 0
+        ? storedLeaves
+        : buildSeedLeaves(usersForStore, departments, me.id, isSample);
+    if (!storedLeaves) {
+      saveStoredLeaves(nextLeaves);
+    }
+
+    const storedAttendance = loadStoredAttendance();
+    const baseAttendance =
+      storedAttendance && storedAttendance.length > 0
+        ? storedAttendance
+        : buildSeedAttendance(usersForStore, departments, nextLeaves, me.id);
+    const syncedAttendance = ensureAttendanceSyncedWithUsers(
+      baseAttendance,
+      usersForStore,
+      departments,
+      nextLeaves,
+    );
+    if (!storedAttendance || syncedAttendance.length !== storedAttendance.length) {
+      saveStoredAttendance(syncedAttendance);
+    }
+
+    setLeavesState(nextLeaves);
+    setAttendanceState(syncedAttendance);
+  }, [departments, usersForStore, me.id, isSample]);
+
   // Open CreateUserModal automatically when navigated via ?them-nhan-su=1
   const openParam = searchParams?.get('them-nhan-su') === '1';
   React.useEffect(() => {
@@ -679,11 +730,15 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     }
   }, [openParam, canManage]);
 
-  // Close row/dept action menus on outside click or Escape
+  // Close row/dept action menus on outside click, Escape, or scroll/resize
   React.useEffect(() => {
     if (!openRowMenuId && !deptMenuOpen) return;
     function onDocClick(event: MouseEvent) {
-      if (!menuContainerRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node | null;
+      if (
+        !menuContainerRef.current?.contains(target) &&
+        !rowMenuRef.current?.contains(target)
+      ) {
         setOpenRowMenuId(null);
         setDeptMenuOpen(false);
       }
@@ -694,11 +749,18 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
         setDeptMenuOpen(false);
       }
     }
+    function onScrollOrResize() {
+      setOpenRowMenuId(null);
+    }
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
     return () => {
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
     };
   }, [openRowMenuId, deptMenuOpen]);
 
@@ -747,6 +809,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     const resolvedStatus: EmploymentStatus = user.statusLabel ?? (isSample ? 'Đang làm' : 'Chưa có dữ liệu');
     return {
       user,
+      employeeCode: resolveEmployeeCode(user, index),
       initials: initialsOf(user.name),
       avatarTone: toneForIndex(user, index),
       jobTitle: resolvedTitle,
@@ -786,14 +849,14 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     : departments;
 
   const totalStaffStat = isSample ? Math.max(0, SAMPLE_TOTAL_USERS + extraCreatedCount) : users.length;
-  const totalDeptStat = String(departments.length + (isSample ? 1 : 0)).padStart(2, '0');
+  const totalDeptStat = departments.length + (isSample ? 1 : 0);
   const activeStaffStat = isSample
     ? Math.max(0, SAMPLE_ACTIVE_USERS + sampleActiveDelta)
     : users.filter((u) => u.statusLabel === 'Đang làm').length;
   const leaveCountNum = isSample
     ? Math.max(0, SAMPLE_LEAVE_USERS + sampleLeaveDelta)
     : users.filter((u) => u.statusLabel === 'Nghỉ phép').length;
-  const leaveStaffStat = String(leaveCountNum).padStart(2, '0');
+  const leaveStaffStat = leaveCountNum;
   const activePctLabel =
     totalStaffStat > 0
       ? `${((activeStaffStat / totalStaffStat) * 100).toFixed(1).replace('.', ',')}% tổng nhân sự`
@@ -1013,6 +1076,273 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
   }
 
   const managerOptions = users.map((u) => ({ id: u.id, name: u.name }));
+  const resolvedLeaves: LeaveRequest[] =
+    leavesState ??
+    (loadStoredLeaves() ?? buildSeedLeaves(usersForStore, departments, me.id, isSample));
+  const resolvedAttendance: AttendanceRecord[] =
+    attendanceState ??
+    ensureAttendanceSyncedWithUsers(
+      loadStoredAttendance() ??
+        buildSeedAttendance(usersForStore, departments, resolvedLeaves, me.id),
+      usersForStore,
+      departments,
+      resolvedLeaves,
+    );
+  const leaveBalances = computeLeaveBalances(usersForStore, departments, resolvedLeaves);
+
+  const currentMeIndex = Math.max(
+    0,
+    usersForStore.findIndex((u) => u.id === me.id),
+  );
+  const currentMeUser: OrgUser = usersForStore[currentMeIndex] ?? {
+    id: me.id,
+    email: me.email,
+    name: me.name,
+    role: me.role,
+    departmentId: me.departmentId,
+    reportsToId: null,
+  };
+
+  function handleCheckIn() {
+    const { nextRecords, updated } = recordCheckIn(
+      resolvedAttendance,
+      currentMeUser,
+      currentMeIndex,
+      departments ?? [],
+    );
+    setAttendanceState(nextRecords);
+    saveStoredAttendance(nextRecords);
+    toast.success(`Đã chấm công vào ca lúc ${updated.checkIn}`);
+  }
+
+  function handleCheckOut() {
+    const { nextRecords, updated } = recordCheckOut(
+      resolvedAttendance,
+      currentMeUser,
+      currentMeIndex,
+      departments ?? [],
+    );
+    setAttendanceState(nextRecords);
+    saveStoredAttendance(nextRecords);
+    toast.success(
+      `Đã chấm công ra ca lúc ${updated.checkOut} · Tổng ${formatWorkedHours(updated.workedHours)}`,
+    );
+  }
+
+  function handleUpdateAttendanceRecord(
+    recordId: string,
+    patch: {
+      checkIn: string | null;
+      checkOut: string | null;
+      status: AttendanceStatus;
+      note: string;
+    },
+  ) {
+    const nextRecords = resolvedAttendance.map((rec) => {
+      if (rec.id !== recordId) return rec;
+      const workedHours = computeWorkedHours(patch.checkIn, patch.checkOut);
+      return {
+        ...rec,
+        checkIn: patch.checkIn,
+        checkOut: patch.checkOut,
+        workedHours,
+        status: patch.status,
+        note: patch.note,
+        logs: [
+          ...rec.logs,
+          {
+            id: `log-adj-${Date.now()}`,
+            time: formatDateTimeLabel(),
+            action: canManage ? 'Điều chỉnh chấm công & ghi chú' : 'Cập nhật ghi chú',
+            actor: me.name,
+          },
+        ],
+      };
+    });
+    setAttendanceState(nextRecords);
+    saveStoredAttendance(nextRecords);
+  }
+
+  function handleCreateLeave(payload: {
+    type: LeaveType;
+    fromDate: string;
+    toDate: string;
+    days: number;
+    reason: string;
+    approverId: string | null;
+    approverName: string;
+  }) {
+    const created = createLeaveRequestEntry(resolvedLeaves, {
+      user: currentMeUser,
+      userIndex: currentMeIndex,
+      departments: departments ?? [],
+      ...payload,
+    });
+    const nextLeaves = [created, ...resolvedLeaves];
+    setLeavesState(nextLeaves);
+    saveStoredLeaves(nextLeaves);
+    toast.success(`Đã gửi đơn nghỉ phép ${created.code}`);
+  }
+
+  function handleApproveLeave(leaveId: string, reviewerName: string) {
+    const target = resolvedLeaves.find((item) => item.id === leaveId);
+    if (!target || target.status !== 'Chờ duyệt') return;
+    const reviewedAtLabel = formatDateTimeLabel();
+    const nextLeaves = resolvedLeaves.map((item) =>
+      item.id === leaveId
+        ? {
+            ...item,
+            status: 'Đã duyệt' as const,
+            reviewedByName: reviewerName,
+            reviewedAtLabel,
+          }
+        : item,
+    );
+    const nextAttendance = syncApprovedLeavesToAttendance(
+      nextLeaves,
+      resolvedAttendance,
+      usersForStore,
+      departments ?? [],
+    );
+    setLeavesState(nextLeaves);
+    saveStoredLeaves(nextLeaves);
+    setAttendanceState(nextAttendance);
+    saveStoredAttendance(nextAttendance);
+
+    const todayIso = getLocalDateIso();
+    const coversToday = enumerateIsoDates(target.fromDate, target.toDate).includes(todayIso);
+    if (isSample && coversToday && users) {
+      const targetUser = users.find((u) => u.id === target.employeeId);
+      if (targetUser && targetUser.statusLabel !== 'Nghỉ phép') {
+        const nextUsers = users.map((u) =>
+          u.id === target.employeeId ? { ...u, statusLabel: 'Nghỉ phép' as const } : u,
+        );
+        const nextActiveDelta = sampleActiveDelta - 1;
+        const nextLeaveDelta = sampleLeaveDelta + 1;
+        setUsers(nextUsers);
+        setSampleActiveDelta(nextActiveDelta);
+        setSampleLeaveDelta(nextLeaveDelta);
+        persistOrgLocalState(departments, nextUsers, {
+          extraCreatedCount,
+          sampleActiveDelta: nextActiveDelta,
+          sampleLeaveDelta: nextLeaveDelta,
+          extraDeptCounts,
+        });
+      }
+    }
+
+    toast.success(`Đã duyệt đơn ${target.code} và cập nhật bảng chấm công`);
+  }
+
+  function handleRejectLeave(leaveId: string, reviewerName: string, reason: string) {
+    const target = resolvedLeaves.find((item) => item.id === leaveId);
+    if (!target || target.status !== 'Chờ duyệt') return;
+    const reviewedAtLabel = formatDateTimeLabel();
+    const nextLeaves = resolvedLeaves.map((item) =>
+      item.id === leaveId
+        ? {
+            ...item,
+            status: 'Từ chối' as const,
+            reviewedByName: reviewerName,
+            reviewedAtLabel,
+            rejectionReason: reason,
+          }
+        : item,
+    );
+    setLeavesState(nextLeaves);
+    saveStoredLeaves(nextLeaves);
+    toast.info(`Đã từ chối đơn ${target.code}`);
+  }
+
+  const createUserModalNode = canManage ? (
+    <CreateUserModal
+      open={creating}
+      onOpenChange={handleModalOpenChange}
+      me={me}
+      departments={departments}
+      managers={managerOptions}
+      isSampleMode={isSample}
+      onCreated={(created) => {
+        const createdUser: OrgUser = {
+          ...created,
+          statusLabel: isSample ? 'Đang làm' : undefined,
+        };
+        const nextUsers = [createdUser, ...(users ?? []).filter((entry) => entry.id !== created.id)];
+        const nextExtraCount = isSample ? extraCreatedCount + 1 : extraCreatedCount;
+        const nextActiveDelta = isSample ? sampleActiveDelta + 1 : sampleActiveDelta;
+        const nextDeptCounts =
+          isSample && created.departmentId
+            ? {
+                ...extraDeptCounts,
+                [created.departmentId]: (extraDeptCounts[created.departmentId] ?? 0) + 1,
+              }
+            : extraDeptCounts;
+
+        invalidateApiCache('/api/org/users');
+        setUsers(nextUsers);
+        setExtraCreatedCount(nextExtraCount);
+        setSampleActiveDelta(nextActiveDelta);
+        setExtraDeptCounts(nextDeptCounts);
+        persistOrgLocalState(departments, nextUsers, {
+          extraCreatedCount: nextExtraCount,
+          sampleActiveDelta: nextActiveDelta,
+          sampleLeaveDelta,
+          extraDeptCounts: nextDeptCounts,
+        });
+        setPage(1);
+        toast.success(`Đã thêm nhân sự ${created.name}`);
+      }}
+    />
+  ) : null;
+
+  if (activeMuc === 'cham-cong') {
+    return (
+      <QhrmAttendance
+        me={me}
+        users={usersForStore}
+        departments={departments}
+        records={resolvedAttendance}
+        onCheckIn={handleCheckIn}
+        onCheckOut={handleCheckOut}
+        onUpdateRecord={handleUpdateAttendanceRecord}
+      />
+    );
+  }
+
+  if (activeMuc === 'nghi-phep') {
+    return (
+      <QhrmLeave
+        me={me}
+        users={usersForStore}
+        leaves={resolvedLeaves}
+        balances={leaveBalances}
+        isSampleMode={isSample}
+        onCreateLeave={handleCreateLeave}
+        onApproveLeave={handleApproveLeave}
+        onRejectLeave={handleRejectLeave}
+      />
+    );
+  }
+
+  if (activeMuc === 'tong-quan') {
+    return (
+      <>
+        <QhrmOverview
+          totalStaffStat={totalStaffStat}
+          departments={departments}
+          users={users}
+          attendance={resolvedAttendance}
+          leaves={resolvedLeaves}
+          canManage={canManage}
+          isSampleMode={isSample}
+          extraDeptCounts={extraDeptCounts}
+          onCreateUser={() => setCreating(true)}
+        />
+        {createUserModalNode}
+      </>
+    );
+  }
+
   const activeMeta = activeMuc ? MUC_META[activeMuc] : null;
   const pageTitle = activeMeta ? activeMeta.heading : 'Danh bạ nhân sự';
   const pageSub = activeMeta
@@ -1022,6 +1352,9 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     ? `${activeMeta.cardPrefix} · ${selectedName}`
     : `Nhân sự · ${selectedName}`;
   const detailRow = detailUserId ? (allRows.find((r) => r.user.id === detailUserId) ?? null) : null;
+  const activeMenuRow = openRowMenuId
+    ? (pageRows.find((r) => r.user.id === openRowMenuId) ?? null)
+    : null;
 
   return (
     <section className="qx-page" aria-label={pageTitle} ref={menuContainerRef}>
@@ -1032,7 +1365,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
         </div>
         <div className="qx-actions">
           <button type="button" className="qx-btn" onClick={handleExportCsv}>
-            <Download size={15} strokeWidth={1.6} aria-hidden="true" />
+            <Download size={16} strokeWidth={1.5} aria-hidden="true" />
             Xuất danh sách
           </button>
           {canManage ? (
@@ -1041,7 +1374,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
               className="qx-btn qx-btn--primary"
               onClick={() => setCreating(true)}
             >
-              <Plus size={15} strokeWidth={2} aria-hidden="true" />
+              <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
               Thêm nhân sự
             </button>
           ) : null}
@@ -1051,40 +1384,34 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
       <div className="qx-stats" aria-label="Thống kê nhân sự">
         <article className="qx-stat">
           <div className="qx-stat__label">Tổng nhân sự</div>
-          <Users className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">
-            <span>{totalStaffStat}</span>
-            <span className="qx-stat__delta">
-              <ArrowUp size={11} strokeWidth={2.4} aria-hidden="true" />
-              <span>3</span>
-            </span>
+            <span className="qs-numeric">{totalStaffStat}</span>
           </div>
-          <div className="qx-stat__note">+3 nhân sự trong tháng</div>
+          <div className="qx-stat__note qs-numeric">
+            Trên {totalDeptStat} phòng ban hoạt động
+          </div>
         </article>
 
         <article className="qx-stat">
           <div className="qx-stat__label">Phòng ban</div>
-          <Building2 className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">
-            <span>{totalDeptStat}</span>
+            <span className="qs-numeric">{totalDeptStat}</span>
           </div>
           <div className="qx-stat__note">Cơ cấu đang hoạt động</div>
         </article>
 
         <article className="qx-stat">
           <div className="qx-stat__label">Đang làm việc</div>
-          <CheckCircle2 className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">
-            <span>{activeStaffStat}</span>
+            <span className="qs-numeric">{activeStaffStat}</span>
           </div>
-          <div className="qx-stat__note">{activePctLabel}</div>
+          <div className="qx-stat__note qs-numeric">{activePctLabel}</div>
         </article>
 
         <article className="qx-stat">
           <div className="qx-stat__label">Đang nghỉ phép</div>
-          <Calendar className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">
-            <span>{leaveStaffStat}</span>
+            <span className="qs-numeric">{leaveStaffStat}</span>
           </div>
           <div className="qx-stat__note">Trong ngày hôm nay</div>
         </article>
@@ -1105,7 +1432,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                 setOpenRowMenuId(null);
               }}
             >
-              <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden="true" />
+              <MoreHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
             </button>
             {deptMenuOpen ? (
               <div
@@ -1157,7 +1484,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                 className="hr-dept-add__input"
                 value={newDeptName}
                 onChange={(e) => setNewDeptName(e.target.value)}
-                placeholder="Tên phòng ban mới..."
+                placeholder="Tên phòng ban mới"
                 aria-label="Tên phòng ban mới"
               />
               <div className="hr-dept-add__actions">
@@ -1224,7 +1551,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
               ) : null}
             </div>
             <label className="qx-field-search">
-              <Search size={14} strokeWidth={1.6} aria-hidden="true" />
+              <Search size={16} strokeWidth={1.5} aria-hidden="true" />
               <input
                 type="search"
                 value={search}
@@ -1232,7 +1559,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                   setSearch(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Tìm nhân sự..."
+                placeholder="Tìm nhân sự"
                 aria-label="Tìm nhân sự"
               />
             </label>
@@ -1240,7 +1567,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
 
           <div className="hr-table-wrap">
             {pageRows.length === 0 ? (
-              <div className="hr-empty">Không tìm thấy nhân sự phù hợp.</div>
+              <div className="hr-empty">Không tìm thấy nhân sự phù hợp</div>
             ) : (
               <table className="qx-table" aria-label={`Danh sách nhân sự — ${selectedName}`}>
                 <thead>
@@ -1258,10 +1585,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                     <tr key={row.user.id}>
                       <td>
                         <div className="hr-person">
-                          <span
-                            className={`qx-avatar hr-avatar--${row.avatarTone}`}
-                            aria-hidden="true"
-                          >
+                          <span className="qx-avatar hr-avatar" aria-hidden="true">
                             {row.initials}
                           </span>
                           <span className="hr-person__text">
@@ -1293,58 +1617,27 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                           aria-label={`Thao tác với ${row.user.name}`}
                           aria-expanded={openRowMenuId === row.user.id}
                           aria-haspopup="menu"
-                          onClick={() => {
+                          onClick={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            const vh = typeof window !== 'undefined' ? window.innerHeight || 768 : 768;
+                            const vw = typeof window !== 'undefined' ? window.innerWidth || 1024 : 1024;
+                            const menuW = 200;
+                            const menuH = canManage ? 156 : 84;
+                            const flipUp = vh - rect.bottom < menuH + 8 && rect.top > menuH + 8;
+                            const top = flipUp
+                              ? Math.max(8, Math.round(rect.top - menuH - 4))
+                              : Math.round(rect.bottom + 4);
+                            const left = Math.max(
+                              8,
+                              Math.min(Math.round(rect.right - menuW), vw - menuW - 8),
+                            );
+                            setRowMenuPos({ top, left });
                             setDeptMenuOpen(false);
                             setOpenRowMenuId((prev) => (prev === row.user.id ? null : row.user.id));
                           }}
                         >
-                          <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden="true" />
+                          <MoreHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
                         </button>
-                        {openRowMenuId === row.user.id ? (
-                          <div className="hr-row-menu" role="menu" aria-label={`Thao tác ${row.user.name}`}>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="hr-row-menu__item"
-                              onClick={() => {
-                                setOpenRowMenuId(null);
-                                setDetailUserId(row.user.id);
-                              }}
-                            >
-                              Xem hồ sơ chi tiết
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="hr-row-menu__item"
-                              onClick={() => handleCopyEmail(row.user.email)}
-                            >
-                              Sao chép email
-                            </button>
-                            {canManage ? (
-                              <>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="hr-row-menu__item"
-                                  onClick={() => handleToggleStatus(row.user.id)}
-                                >
-                                  {row.statusLabel === 'Đang làm'
-                                    ? 'Chuyển sang Nghỉ phép'
-                                    : 'Chuyển sang Đang làm'}
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="hr-row-menu__item hr-row-menu__item--danger"
-                                  onClick={() => handleDeleteUser(row.user.id)}
-                                >
-                                  Xóa khỏi danh sách
-                                </button>
-                              </>
-                            ) : null}
-                          </div>
-                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -1355,7 +1648,8 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
 
           <div className="qx-card__foot hr-foot">
             <span>
-              Hiển thị {pageRows.length} trên {footerTotalCount} nhân sự
+              Hiển thị <span className="qs-numeric">{pageRows.length}</span> trên{' '}
+              <span className="qs-numeric">{footerTotalCount}</span> nhân sự
             </span>
             <div className="hr-pager" aria-label="Phân trang danh bạ">
               {safePage > 1 ? (
@@ -1365,10 +1659,10 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                   aria-label="Trang trước"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
-                  <ChevronLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                  <ChevronLeft size={16} strokeWidth={1.5} aria-hidden="true" />
                 </button>
               ) : null}
-              <span>
+              <span className="qs-numeric">
                 {safePage} / {totalPages}
               </span>
               {safePage < totalPages ? (
@@ -1378,13 +1672,73 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
                   aria-label="Trang sau"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
-                  <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
+                  <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />
                 </button>
               ) : null}
             </div>
           </div>
         </div>
       </div>
+
+      {activeMenuRow && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={rowMenuRef}
+              className="hr-row-menu hr-row-menu--portal"
+              role="menu"
+              aria-label={`Thao tác ${activeMenuRow.user.name}`}
+              style={{
+                position: 'fixed',
+                top: rowMenuPos.top,
+                left: rowMenuPos.left,
+                zIndex: 140,
+              }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="hr-row-menu__item"
+                onClick={() => {
+                  setOpenRowMenuId(null);
+                  setDetailUserId(activeMenuRow.user.id);
+                }}
+              >
+                Xem hồ sơ chi tiết
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="hr-row-menu__item"
+                onClick={() => handleCopyEmail(activeMenuRow.user.email)}
+              >
+                Sao chép email
+              </button>
+              {canManage ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="hr-row-menu__item"
+                    onClick={() => handleToggleStatus(activeMenuRow.user.id)}
+                  >
+                    {activeMenuRow.statusLabel === 'Đang làm'
+                      ? 'Chuyển sang Nghỉ phép'
+                      : 'Chuyển sang Đang làm'}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="hr-row-menu__item hr-row-menu__item--danger"
+                    onClick={() => handleDeleteUser(activeMenuRow.user.id)}
+                  >
+                    Xóa khỏi danh sách
+                  </button>
+                </>
+              ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       {detailRow ? (
         <EmployeeDetailDialog
@@ -1396,46 +1750,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
         />
       ) : null}
 
-      {canManage ? (
-        <CreateUserModal
-          open={creating}
-          onOpenChange={handleModalOpenChange}
-          me={me}
-          departments={departments}
-          managers={managerOptions}
-          isSampleMode={isSample}
-          onCreated={(created) => {
-            const createdUser: OrgUser = {
-              ...created,
-              statusLabel: isSample ? 'Đang làm' : undefined,
-            };
-            const nextUsers = [createdUser, ...(users ?? []).filter((entry) => entry.id !== created.id)];
-            const nextExtraCount = isSample ? extraCreatedCount + 1 : extraCreatedCount;
-            const nextActiveDelta = isSample ? sampleActiveDelta + 1 : sampleActiveDelta;
-            const nextDeptCounts =
-              isSample && created.departmentId
-                ? {
-                    ...extraDeptCounts,
-                    [created.departmentId]: (extraDeptCounts[created.departmentId] ?? 0) + 1,
-                  }
-                : extraDeptCounts;
-
-            invalidateApiCache('/api/org/users');
-            setUsers(nextUsers);
-            setExtraCreatedCount(nextExtraCount);
-            setSampleActiveDelta(nextActiveDelta);
-            setExtraDeptCounts(nextDeptCounts);
-            persistOrgLocalState(departments, nextUsers, {
-              extraCreatedCount: nextExtraCount,
-              sampleActiveDelta: nextActiveDelta,
-              sampleLeaveDelta,
-              extraDeptCounts: nextDeptCounts,
-            });
-            setPage(1);
-            toast.success(`Đã thêm nhân sự ${created.name}`);
-          }}
-        />
-      ) : null}
+      {createUserModalNode}
     </section>
   );
 }

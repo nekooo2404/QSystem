@@ -3,18 +3,25 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import AccountPage from '../src/app/(workspace)/account/page';
 
-const { apiFetch, push, setAccessToken } = vi.hoisted(() => ({
+const { apiFetch, push, replace, setAccessToken } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
   push: vi.fn(),
+  replace: vi.fn(),
   setAccessToken: vi.fn(),
 }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+let searchParams = new URLSearchParams();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push, replace }),
+  useSearchParams: () => searchParams,
+}));
 vi.mock('../src/lib/api/client', () => ({ apiFetch, ApiError: class extends Error {}, setAccessToken }));
 
 beforeEach(() => {
   apiFetch.mockReset();
   push.mockReset();
+  replace.mockReset();
   setAccessToken.mockReset();
+  searchParams = new URLSearchParams();
 });
 
 it('settles a failed profile request and retries only the profile', async () => {
@@ -62,4 +69,24 @@ it('clears access token, sets logout cookie, and navigates to /login on logout',
   expect(setAccessToken).toHaveBeenCalledWith(null);
   expect(document.cookie).toContain('qsystem_logged_out=1');
   expect(push).toHaveBeenCalledWith('/login');
+});
+
+it('syncs ?muc= query params with account navigation sections without QTask references', async () => {
+  searchParams = new URLSearchParams('muc=bao-mat');
+  apiFetch.mockResolvedValueOnce({ name: 'Nguyễn Minh Tuấn', email: 'tuan@qsystem.vn', role: 'EMPLOYEE' });
+  const user = userEvent.setup();
+  const { rerender } = render(<AccountPage />);
+
+  expect(await screen.findByText('Nguyễn Minh Tuấn')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Bảo mật & đăng nhập' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Thông tin cá nhân' })).not.toHaveAttribute('aria-current');
+
+  await user.click(screen.getByRole('button', { name: 'Phiên làm việc' }));
+  expect(replace).toHaveBeenCalledWith('/account?muc=phien', { scroll: false });
+  expect(screen.getByRole('button', { name: 'Phiên làm việc' })).toHaveAttribute('aria-current', 'page');
+
+  searchParams = new URLSearchParams('muc=ho-so');
+  rerender(<AccountPage />);
+  expect(screen.getByRole('button', { name: 'Thông tin cá nhân' })).toHaveAttribute('aria-current', 'page');
+  expect(document.body.textContent ?? '').not.toContain('QTask');
 });

@@ -1,4 +1,13 @@
 import type { Task, TaskStatus } from '../../lib/adapters/tasks.adapter';
+export {
+  addLocalDaysIso,
+  diffCalendarDays,
+  formatDdMmYyyy,
+  formatRelativeViDate,
+  getLocalDateIso,
+  getUserTimeZone,
+  parseCalendarDateDdMmYyyy,
+} from '../../lib/date';
 
 export interface TaskComment {
   id: string;
@@ -119,34 +128,6 @@ export function isStrictProduction(): boolean {
  */
 export function canUseDevPersistence(): boolean {
   return !isTestEnvironment() && !isStrictProduction();
-}
-
-export function getLocalDateIso(date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-/** Strict `dd/mm/yyyy` validator that rejects calendar rollovers (e.g. `31/02/2026`). */
-export function parseCalendarDateDdMmYyyy(raw: string): string | null {
-  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw.trim());
-  if (!match) return null;
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
-    return null;
-  }
-  const probe = new Date(Date.UTC(year, month - 1, day));
-  if (
-    probe.getUTCFullYear() !== year ||
-    probe.getUTCMonth() + 1 !== month ||
-    probe.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return `${match[3]}-${match[2]}-${match[1]}`;
 }
 
 /** Neutralizes spreadsheet CSV formula prefixes before RFC-4180 quoting. */

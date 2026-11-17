@@ -83,6 +83,34 @@ describe('UnderlineTabs', () => {
     await user.keyboard('{Enter}');
     expect(onChange).toHaveBeenLastCalledWith('mine');
   });
+
+  it('supports Home/End keyboard navigation and renders count badges', async () => {
+    const user = userEvent.setup();
+    function CountHarness() {
+      const [active, setActive] = React.useState('mine');
+      return (
+        <UnderlineTabs
+          activeId={active}
+          onChange={setActive}
+          tabs={[
+            { id: 'all', label: 'Tất cả', count: 12 },
+            { id: 'mine', label: 'Của tôi', count: 4 },
+            { id: 'overdue', label: 'Quá hạn', count: 2 },
+          ]}
+        />
+      );
+    }
+    render(<CountHarness />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs[0].querySelector('.qs-tabs__count')).toHaveTextContent('12');
+    tabs[1].focus();
+    await user.keyboard('{End}');
+    expect(tabs[2]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs[2]).toHaveFocus();
+    await user.keyboard('{Home}');
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs[0]).toHaveFocus();
+  });
 });
 
 describe('ModuleSwitcher', () => {
@@ -283,5 +311,39 @@ describe('UnifiedShell', () => {
     setViewportWidth(1440);
     expect(screen.queryByRole('button', { name: 'Mở điều hướng' })).not.toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Điều hướng QTask' })).toBeInTheDocument();
+  });
+
+  it('renders Lucide icons with stroke-width="1.5" across ModuleSwitcher, FilterPopover, and UnifiedShell', async () => {
+    const user = userEvent.setup();
+    render(
+      <UnifiedShell
+        sidebarHeader={
+          <ModuleSwitcher
+            activeModuleId="qtask"
+            modules={[
+              { id: 'qtask', name: 'QTask', description: 'Công việc' },
+              { id: 'qhrm', name: 'QHRM', description: 'Nhân sự' },
+            ]}
+            onSelectModule={() => {}}
+          />
+        }
+        sidebarNav={<nav aria-label="Điều hướng" />}
+        breadcrumb={<span>QTask</span>}
+        onOpenCommandPalette={() => {}}
+        topActions={
+          <FilterPopover label="Bộ lọc">
+            <span>Lọc</span>
+          </FilterPopover>
+        }
+      >
+        <p>Nội dung</p>
+      </UnifiedShell>,
+    );
+    await user.click(screen.getByRole('button', { name: /QTask/ }));
+    const svgs = Array.from(document.querySelectorAll('svg'));
+    expect(svgs.length).toBeGreaterThan(0);
+    for (const svg of svgs) {
+      expect(svg).toHaveAttribute('stroke-width', '1.5');
+    }
   });
 });

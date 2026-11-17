@@ -19,7 +19,9 @@ describe('/login', () => {
     const { container } = renderPage();
     expect(screen.getByText('QSystem', { selector: '.lg-logo__word' })).toBeInTheDocument();
     expect(screen.getByText('Q', { selector: '.lg-logo__mark' })).toBeInTheDocument();
-    expect(screen.getByText('Chào mừng trở lại')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Đăng nhập' })).toBeInTheDocument();
+    expect(screen.queryByText('Chào mừng trở lại')).toBeNull();
+    expect(container.querySelector('.lg-mock')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
     expect(container.querySelectorAll('table')).toHaveLength(0);
   });

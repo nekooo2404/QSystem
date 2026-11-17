@@ -414,9 +414,9 @@ export default function NotificationsPage() {
                   justifyContent: 'space-between',
                   gap: '12px',
                   padding: '12px 20px',
-                  borderBottom: '1px solid var(--qx-border)',
-                  background: 'color-mix(in srgb, var(--qx-red) 10%, var(--qx-card))',
-                  color: 'var(--qx-fg)',
+                  borderBottom: '1px solid var(--qs-border)',
+                  background: 'color-mix(in srgb, var(--qs-error) 10%, var(--qs-surface-1))',
+                  color: 'var(--qs-fg)',
                   fontSize: '12.5px',
                 }}
               >
@@ -481,7 +481,7 @@ export default function NotificationsPage() {
                               style={{
                                 margin: '0 0 0 53px',
                                 fontSize: '12px',
-                                color: 'var(--qx-red)',
+                                color: 'var(--qs-error)',
                               }}
                             >
                               {rowErr}
@@ -496,9 +496,9 @@ export default function NotificationsPage() {
                               style={{
                                 fontSize: '11px',
                                 padding: '2px 8px',
-                                borderRadius: '999px',
-                                border: '1px solid var(--qx-border)',
-                                color: 'var(--qx-muted)',
+                                borderRadius: 'var(--qs-radius-sm)',
+                                border: '1px solid var(--qs-border)',
+                                color: 'var(--qs-fg-muted)',
                                 whiteSpace: 'nowrap',
                               }}
                             >
@@ -591,7 +591,7 @@ export default function NotificationsPage() {
           <div className="qx-card">
             <h2>Cần chú ý</h2>
             <Link href="/?view=overdue" className="qn-warn-link">
-              01 công việc quá hạn
+              Công việc quá hạn
             </Link>
             <p>Hoàn thành hoặc cập nhật thời hạn để không bỏ lỡ tiến độ.</p>
           </div>
@@ -600,3 +600,4 @@ export default function NotificationsPage() {
     </section>
   );
 }
+

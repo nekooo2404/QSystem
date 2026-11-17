@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
+  Activity,
   Bell,
   Bookmark,
   Building2,
@@ -26,6 +27,7 @@ import {
   Plus,
   Search,
   Settings,
+  ShieldCheck,
   SquareCheck,
   Sun,
   Target,
@@ -34,8 +36,9 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useFloatingLayer } from '@qsystem/ui';
+import { toast, useFloatingLayer } from '@qsystem/ui';
 import type { MeResponse } from '@qsystem/contracts';
+import { AppLauncher, APP_MODULES, canAccessModule, type ModuleId } from './AppLauncher';
 import { GlobalCommandHost } from '../search/GlobalCommandHost';
 import { CreateTaskModal, type AssigneeOption } from '../qtask/CreateTaskModal';
 import {
@@ -67,6 +70,10 @@ interface ModuleDef {
   nav: NavItem[];
 }
 
+interface BusinessModuleDef extends ModuleDef {
+  id: ModuleId;
+}
+
 interface WorkspaceProfile {
   id: string;
   name: string;
@@ -77,11 +84,8 @@ const WORKSPACES: WorkspaceProfile[] = [
   { id: 'qts', name: 'QTS Workspace', plan: 'Gói doanh nghiệp' },
 ];
 
-const MODULES: ModuleDef[] = [
-  {
-    id: 'qtask',
-    name: 'QTask',
-    home: '/tasks',
+const MODULE_NAV_BY_ID: Record<ModuleId, { navLabel: string; nav: NavItem[] }> = {
+  qtask: {
     navLabel: 'QTask / Điều hướng',
     nav: [
       { label: 'Tổng quan', href: '/?muc=tong-quan', icon: Home, match: '/?tong-quan' },
@@ -90,10 +94,7 @@ const MODULES: ModuleDef[] = [
       { label: 'Dự án', href: '/projects', icon: Folder, match: '/projects' },
     ],
   },
-  {
-    id: 'qhrm',
-    name: 'QHRM',
-    home: '/org',
+  qhrm: {
     navLabel: 'QHRM / Điều hướng',
     nav: [
       { label: 'Tổng quan', href: '/org?muc=tong-quan', icon: Home, match: '/org?tong-quan' },
@@ -103,10 +104,7 @@ const MODULES: ModuleDef[] = [
       { label: 'Nghỉ phép', href: '/org?muc=nghi-phep', icon: CalendarCheck, match: '/org?nghi-phep' },
     ],
   },
-  {
-    id: 'qcrm',
-    name: 'QCRM',
-    home: '/crm',
+  qcrm: {
     navLabel: 'QCRM / Điều hướng',
     nav: [
       { label: 'Tổng quan', href: '/crm?muc=tong-quan', icon: Home, match: '/crm?tong-quan' },
@@ -116,10 +114,7 @@ const MODULES: ModuleDef[] = [
       { label: 'Báo cáo', href: '/crm?muc=bao-cao', icon: LineChart, match: '/crm?bao-cao' },
     ],
   },
-  {
-    id: 'qsocial',
-    name: 'QSocial',
-    home: '/social',
+  qsocial: {
     navLabel: 'QSocial / Điều hướng',
     nav: [
       { label: 'Bảng tin', href: '/social', icon: Newspaper, match: '/social' },
@@ -128,7 +123,38 @@ const MODULES: ModuleDef[] = [
       { label: 'Đã lưu', href: '/social?muc=da-luu', icon: Bookmark, match: '/social?da-luu' },
     ],
   },
-];
+};
+
+const MODULES: BusinessModuleDef[] = APP_MODULES.map((entry) => ({
+  id: entry.id,
+  name: entry.name,
+  home: entry.home,
+  ...MODULE_NAV_BY_ID[entry.id],
+}));
+
+const ACCOUNT_NAV: ModuleDef = {
+  id: 'account',
+  name: 'Tài khoản & bảo mật',
+  home: '/account',
+  navLabel: 'Tài khoản / Điều hướng',
+  nav: [
+    { label: 'Thông tin cá nhân', href: '/account', icon: User, match: '/account' },
+    { label: 'Bảo mật & đăng nhập', href: '/account?muc=bao-mat', icon: ShieldCheck, match: '/account?bao-mat' },
+    { label: 'Phiên làm việc', href: '/account?muc=phien', icon: Activity, match: '/account?phien' },
+  ],
+};
+
+const SYSTEM_NAV: ModuleDef = {
+  id: 'system',
+  name: 'QSystem',
+  home: '/files',
+  navLabel: 'Hệ thống / Điều hướng',
+  nav: [
+    { label: 'Tài liệu', href: '/files', icon: FileText, match: '/files' },
+    { label: 'Thông báo', href: '/notifications', icon: Bell, match: '/notifications' },
+    { label: 'Tài khoản & bảo mật', href: '/account', icon: User, match: '/account' },
+  ],
+};
 
 const SHORTCUTS: NavItem[] = [
   { label: 'Tìm kiếm', href: '#search', icon: Search },
@@ -137,18 +163,45 @@ const SHORTCUTS: NavItem[] = [
 ];
 
 const PAGE_TITLES: Record<string, [string, string]> = {
-  '/files': ['QTask', 'Tài liệu'],
-  '/notifications': ['QTask', 'Thông báo'],
-  '/account': ['QTask', 'Tài khoản & bảo mật'],
+  '/files': ['QSystem', 'Tài liệu'],
+  '/notifications': ['QSystem', 'Thông báo'],
+  '/account': ['QSystem', 'Tài khoản & bảo mật'],
 };
 
-interface ToastEntry {
-  id: string;
-  message: string;
+function normalizePathname(pathname: string): string {
+  if (!pathname) return '/';
+  if (pathname !== '/' && pathname.endsWith('/')) return pathname.slice(0, -1);
+  return pathname;
 }
 
-function activeModule(pathname: string): ModuleDef {
-  return MODULES.find((entry) => entry.id !== 'qtask' && pathname.startsWith(entry.home)) ?? MODULES[0];
+function matchesRoute(pathname: string, base: string): boolean {
+  if (base === '/') return pathname === '/';
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+function activeModule(pathname: string): BusinessModuleDef | null {
+  const clean = normalizePathname(pathname);
+  if (
+    matchesRoute(clean, '/') ||
+    matchesRoute(clean, '/tasks') ||
+    matchesRoute(clean, '/projects')
+  ) {
+    return MODULES[0];
+  }
+  return MODULES.find((entry) => entry.id !== 'qtask' && matchesRoute(clean, entry.home)) ?? null;
+}
+
+function resolveContextualNav(pathname: string, module: BusinessModuleDef | null): ModuleDef {
+  if (module) return module;
+  if (matchesRoute(pathname, '/account')) return ACCOUNT_NAV;
+  return SYSTEM_NAV;
+}
+
+function resolvePageTitle(pathname: string): [string, string] | undefined {
+  for (const [route, title] of Object.entries(PAGE_TITLES)) {
+    if (matchesRoute(pathname, route)) return title;
+  }
+  return undefined;
 }
 
 function initials(name?: string): string {
@@ -162,9 +215,11 @@ export interface AppWorkspaceShellProps {
   children: React.ReactNode;
   /** Confirmed session from SessionGuard; the account menu shows its role. */
   me?: MeResponse;
+  /** Optional explicit module allowlist overriding role defaults. */
+  allowedModuleIds?: readonly string[];
 }
 
-export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
+export function AppWorkspaceShell({ children, me, allowedModuleIds }: AppWorkspaceShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -179,31 +234,47 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
     canUseDevPersistence() ? SAMPLE_PEOPLE : [],
   );
   const [navOpen, setNavOpen] = React.useState(false);
-  const [toasts, setToasts] = React.useState<ToastEntry[]>([]);
+  const [isMobileViewport, setIsMobileViewport] = React.useState(false);
+  const [logoError, setLogoError] = React.useState(false);
 
+  const navLayerRef = React.useRef<HTMLDivElement>(null);
+  const burgerRef = React.useRef<HTMLButtonElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const wsMenuRef = React.useRef<HTMLDivElement>(null);
   const accountTrigger = React.useRef<HTMLButtonElement>(null);
   const wsTrigger = React.useRef<HTMLButtonElement>(null);
 
-  const module = activeModule(pathname);
+  const cleanPathname = normalizePathname(pathname);
+  const module = activeModule(cleanPathname);
+  const contextualNav = resolveContextualNav(cleanPathname, module);
   const section = searchParams?.get('muc');
-  const matchKey = section ? `${pathname}?${section}` : pathname;
-
-  const pushToast = React.useCallback((message: string) => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    setToasts((prev) => [...prev.slice(-2), { id, message }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((item) => item.id !== id));
-    }, 3200);
-  }, []);
+  const normalizedSection = matchesRoute(cleanPathname, '/account') && section === 'ho-so' ? null : section;
+  const matchKey = normalizedSection ? `${cleanPathname}?${normalizedSection}` : cleanPathname;
+  const mobileNavOpen = navOpen && isMobileViewport;
 
   React.useEffect(() => startPolling(setItems), []);
   React.useEffect(() => setNavOpen(false), [pathname, section]);
 
   React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncViewport = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobileViewport(mobile);
+      if (!mobile) {
+        setNavOpen(false);
+      }
+    };
+    syncViewport();
+    window.addEventListener('resize', syncViewport);
+    return () => window.removeEventListener('resize', syncViewport);
+  }, []);
+
+  React.useEffect(() => {
     const idlePrefetch = () => {
-      const routes = ['/tasks', '/', '/org', '/crm', '/social', '/projects'];
+      const routes = ['/tasks', '/', '/projects'];
+      if (canAccessModule('qhrm', me?.role, allowedModuleIds)) routes.push('/org');
+      if (canAccessModule('qcrm', me?.role, allowedModuleIds)) routes.push('/crm');
+      if (canAccessModule('qsocial', me?.role, allowedModuleIds)) routes.push('/social');
       routes.forEach((route) => {
         try {
           router.prefetch(route);
@@ -229,7 +300,7 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
         return () => clearTimeout(timeout);
       }
     }
-  }, [router]);
+  }, [router, me?.role, allowedModuleIds]);
 
   React.useEffect(() => {
     const savedId = loadStoredWorkspaceId();
@@ -261,13 +332,17 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
     const onToast = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
       if (typeof detail === 'string' && detail.trim()) {
-        pushToast(detail);
+        toast.info(detail);
       }
     };
     window.addEventListener('qsystem:toast', onToast);
     return () => window.removeEventListener('qsystem:toast', onToast);
-  }, [pushToast]);
+  }, []);
 
+  useFloatingLayer(mobileNavOpen, () => setNavOpen(false), true, {
+    root: navLayerRef,
+    returnFocus: burgerRef,
+  });
   useFloatingLayer(menuOpen, () => { setMenuOpen(false); accountTrigger.current?.focus(); }, false, { root: menuRef });
   useFloatingLayer(wsMenuOpen, () => { setWsMenuOpen(false); wsTrigger.current?.focus(); }, false, { root: wsMenuRef });
 
@@ -311,8 +386,10 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
   }
 
   const unread = countUnread(items);
-  const current = module.nav.find((item) => item.match === matchKey);
-  const crumb = PAGE_TITLES[pathname] ?? [module.name, current?.label ?? module.nav[0].label];
+  const current = contextualNav.nav.find((item) => item.match === matchKey);
+  const crumb = resolvePageTitle(cleanPathname) ?? [contextualNav.name, current?.label ?? contextualNav.nav[0].label];
+  const contextualHrefs = new Set(contextualNav.nav.map((item) => item.href));
+  const visibleShortcuts = SHORTCUTS.filter((item) => !contextualHrefs.has(item.href));
   const userName = me?.name ?? 'Minh Khôi';
   const userRole = me ? formatRole(me.role) : 'Quản trị viên';
   const userInitials = initials(me?.name);
@@ -321,8 +398,16 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
     const Icon = item.icon;
     if (item.href === '#search') {
       return (
-        <button key={item.label} type="button" className="qx-nav__link qx-nav__link--button" onClick={() => setPaletteOpen(true)}>
-          <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
+        <button
+          key={item.label}
+          type="button"
+          className="qx-nav__link qx-nav__link--button"
+          onClick={() => {
+            setNavOpen(false);
+            setPaletteOpen(true);
+          }}
+        >
+          <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
           {item.label}
         </button>
       );
@@ -334,8 +419,9 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
         prefetch={true}
         className="qx-nav__link"
         aria-current={item.match === matchKey ? 'page' : undefined}
+        onClick={() => setNavOpen(false)}
       >
-        <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
+        <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
         {item.label}
         {item.count ? <span className="qx-nav__count">{item.count}</span> : null}
       </Link>
@@ -344,132 +430,152 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
 
   return (
     <div className="qx-shell" data-nav={navOpen ? 'open' : 'closed'}>
-      <div className="qx-backdrop" aria-hidden="true" onClick={() => setNavOpen(false)} />
-      <aside className="qx-sidebar" aria-label="Điều hướng chính">
-        <div className="qx-brand">
-          <span className="qx-brand__mark" aria-label="Logo QTS">
-            Q
-            <img src="/qts-logo.png" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
-          </span>
-          <span className="qx-brand__name">QSystem</span>
-          <span className="qx-brand__tag">WORKSPACE</span>
-        </div>
-
-        <div className="qx-ws-wrap" ref={wsMenuRef}>
-          <button
-            ref={wsTrigger}
-            type="button"
-            className="qx-ws"
-            aria-label={`Chọn không gian làm việc: ${workspace.name}`}
-            aria-haspopup="menu"
-            aria-expanded={wsMenuOpen ? 'true' : 'false'}
-            onClick={() => setWsMenuOpen((open) => !open)}
-          >
-            <Building2 className="qx-ws__icon" size={18} strokeWidth={1.5} aria-hidden="true" />
-            <span className="qx-ws__text">
-              <span className="qx-ws__name">{workspace.name}</span>
-              <span className="qx-ws__plan">{workspace.plan}</span>
+      <div ref={navLayerRef} className="qx-nav-layer">
+        <div className="qx-backdrop" aria-hidden="true" onClick={() => setNavOpen(false)} />
+        <aside
+          className="qx-sidebar"
+          aria-label="Điều hướng chính"
+          role={mobileNavOpen ? 'dialog' : undefined}
+          aria-modal={mobileNavOpen ? true : undefined}
+          tabIndex={mobileNavOpen ? -1 : undefined}
+        >
+          <div className="qx-brand">
+            <span className="qx-brand__mark" data-fallback={logoError ? 'true' : undefined} aria-label="Logo QTS">
+              {logoError ? 'Q' : <img src="/qts-logo.png" alt="" onError={() => setLogoError(true)} />}
             </span>
-            <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
-          </button>
+            <span className="qx-brand__name">QSystem</span>
+            <button
+              type="button"
+              className="qx-icon-btn qx-sidebar__close"
+              aria-label="Đóng điều hướng"
+              onClick={() => setNavOpen(false)}
+            >
+              <X size={18} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          </div>
 
-          {wsMenuOpen ? (
-            <div role="menu" aria-label="Không gian làm việc" className="qx-ws-popover">
-              <span className="qx-ws-popover__label">Không gian làm việc</span>
-              {WORKSPACES.map((item) => (
+          <div className="qx-ws-wrap" ref={wsMenuRef}>
+            <button
+              ref={wsTrigger}
+              type="button"
+              className="qx-ws"
+              aria-label={`Chọn không gian làm việc: ${workspace.name}`}
+              aria-haspopup="menu"
+              aria-expanded={wsMenuOpen ? 'true' : 'false'}
+              onClick={() => setWsMenuOpen((open) => !open)}
+            >
+              <Building2 className="qx-ws__icon" size={18} strokeWidth={1.5} aria-hidden="true" />
+              <span className="qx-ws__text">
+                <span className="qx-ws__name">{workspace.name}</span>
+                <span className="qx-ws__plan">{workspace.plan}</span>
+              </span>
+              <ChevronDown size={16} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+
+            {wsMenuOpen ? (
+              <div role="menu" aria-label="Không gian làm việc" className="qx-ws-popover">
+                <span className="qx-ws-popover__label">Không gian làm việc</span>
+                {WORKSPACES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={workspace.id === item.id}
+                    className="qx-menu__item"
+                    onClick={() => {
+                      setWorkspace(item);
+                      saveStoredWorkspaceId(item.id);
+                      setWsMenuOpen(false);
+                      toast.info(`Đã chuyển sang ${item.name}`);
+                    }}
+                  >
+                    <Building2 size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span>{item.name}</span>
+                    {workspace.id === item.id ? (
+                      <Check size={16} strokeWidth={1.5} className="qx-ws-popover__check" aria-hidden="true" />
+                    ) : null}
+                  </button>
+                ))}
+                <div className="qx-ws-popover__sep" aria-hidden="true" />
                 <button
-                  key={item.id}
                   type="button"
-                  role="menuitemradio"
-                  aria-checked={workspace.id === item.id}
+                  role="menuitem"
                   className="qx-menu__item"
                   onClick={() => {
-                    setWorkspace(item);
-                    saveStoredWorkspaceId(item.id);
                     setWsMenuOpen(false);
-                    pushToast(`Đã chuyển sang ${item.name}`);
+                    setNavOpen(false);
+                    setPaletteOpen(true);
                   }}
                 >
-                  <Building2 size={14} strokeWidth={1.6} aria-hidden="true" />
-                  <span>{item.name}</span>
-                  {workspace.id === item.id ? (
-                    <Check size={14} strokeWidth={2} className="qx-ws-popover__check" aria-hidden="true" />
-                  ) : null}
+                  <Search size={16} strokeWidth={1.5} aria-hidden="true" />
+                  Tìm nhanh (Ctrl K)
                 </button>
-              ))}
-              <div className="qx-ws-popover__sep" aria-hidden="true" />
-              <button
-                type="button"
-                role="menuitem"
-                className="qx-menu__item"
-                onClick={() => {
-                  setWsMenuOpen(false);
-                  setPaletteOpen(true);
-                }}
-              >
-                <Search size={14} strokeWidth={1.6} aria-hidden="true" />
-                Tìm nhanh (Ctrl K)
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="qx-menu__item"
-                onClick={() => {
-                  setWsMenuOpen(false);
-                  router.push('/account');
-                }}
-              >
-                <Settings size={14} strokeWidth={1.6} aria-hidden="true" />
-                Cài đặt không gian
-              </button>
-            </div>
-          ) : null}
-        </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="qx-menu__item"
+                  onClick={() => {
+                    setWsMenuOpen(false);
+                    setNavOpen(false);
+                    router.push('/account');
+                  }}
+                >
+                  <Settings size={16} strokeWidth={1.5} aria-hidden="true" />
+                  Cài đặt không gian
+                </button>
+              </div>
+            ) : null}
+          </div>
 
-        <p className="qx-label">Không gian làm việc</p>
-        <nav className="qx-modules" aria-label="Phân hệ">
-          {MODULES.map((entry) => (
+          <p className="qx-label">{contextualNav.navLabel}</p>
+          <nav className="qx-nav" aria-label={contextualNav.name}>
+            {contextualNav.nav.map(renderLink)}
+          </nav>
+
+          <div className="qx-sidebar__spacer" />
+
+          <p className="qx-label">Lối tắt</p>
+          <nav className="qx-nav" aria-label="Lối tắt">
+            {visibleShortcuts.map(renderLink)}
+          </nav>
+
+          <div className="qx-user">
+            <span className="qx-avatar" aria-hidden="true">{userInitials}</span>
+            <span className="qx-user__text">
+              <span className="qx-user__name">{userName}</span>
+              <span className="qx-user__role">{userRole}</span>
+            </span>
             <Link
-              key={entry.id}
-              href={entry.home}
+              href="/account"
               prefetch={true}
-              className="qx-chip"
-              aria-current={entry.id === module.id ? 'true' : undefined}
+              className="qx-icon-btn"
+              aria-label="Tài khoản của tôi"
+              onClick={() => setNavOpen(false)}
             >
-              {entry.name}
+              <MoreHorizontal size={18} strokeWidth={1.5} aria-hidden="true" />
             </Link>
-          ))}
-        </nav>
-
-        <p className="qx-label">{module.navLabel}</p>
-        <nav className="qx-nav" aria-label={module.name}>
-          {module.nav.map(renderLink)}
-        </nav>
-
-        <div className="qx-sidebar__spacer" />
-
-        <p className="qx-label">Lối tắt</p>
-        <nav className="qx-nav" aria-label="Lối tắt">
-          {SHORTCUTS.map(renderLink)}
-        </nav>
-
-        <div className="qx-user">
-          <span className="qx-avatar" aria-hidden="true">{userInitials}</span>
-          <span className="qx-user__text">
-            <span className="qx-user__name">{userName}</span>
-            <span className="qx-user__role">{userRole}</span>
-          </span>
-          <Link href="/account" prefetch={true} className="qx-icon-btn" aria-label="Tài khoản của tôi">
-            <MoreHorizontal size={17} strokeWidth={1.6} aria-hidden="true" />
-          </Link>
-        </div>
-      </aside>
+          </div>
+        </aside>
+      </div>
 
       <div className="qx-main">
         <header className="qx-topbar">
-          <button type="button" className="qx-icon-btn qx-burger" aria-label="Mở điều hướng" aria-expanded={navOpen} onClick={() => setNavOpen(true)}>
-            <Menu size={18} strokeWidth={1.6} aria-hidden="true" />
+          <button
+            ref={burgerRef}
+            type="button"
+            className="qx-icon-btn qx-burger"
+            aria-label="Mở điều hướng"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen(true)}
+          >
+            <Menu size={18} strokeWidth={1.5} aria-hidden="true" />
           </button>
+          <AppLauncher
+            activeModuleId={module?.id ?? null}
+            activeModuleName={module?.name ?? null}
+            role={me?.role}
+            allowedModuleIds={allowedModuleIds}
+          />
           <nav className="qx-crumb" aria-label="Breadcrumb">
             <span>{crumb[0]}</span>
             <span className="qx-crumb__sep" aria-hidden="true">/</span>
@@ -478,23 +584,23 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
 
           <div className="qx-topbar__right">
             <button type="button" className="qx-search" aria-label="Tìm mọi thứ trong QSystem" onClick={() => setPaletteOpen(true)}>
-              <Search size={15} strokeWidth={1.6} aria-hidden="true" />
-              <span className="qx-search__text">Tìm mọi thứ trong QSystem...</span>
+              <Search size={16} strokeWidth={1.5} aria-hidden="true" />
+              <span className="qx-search__text">Tìm trong QSystem</span>
               <kbd className="qx-kbd">Ctrl K</kbd>
             </button>
             <button
               type="button"
-              className="qx-icon-btn"
+              className="qx-icon-btn qx-topbar__quick-task"
               aria-label="Giao việc mới"
               onClick={() => setQuickTaskOpen(true)}
             >
-              <Plus size={18} strokeWidth={1.6} aria-hidden="true" />
+              <Plus size={18} strokeWidth={1.5} aria-hidden="true" />
             </button>
             <button type="button" className="qx-icon-btn" onClick={toggle} aria-label="Chuyển giao diện Sáng/Tối" aria-pressed={theme === 'dark'}>
-              {theme === 'dark' ? <Sun size={17} strokeWidth={1.6} aria-hidden="true" /> : <Moon size={17} strokeWidth={1.6} aria-hidden="true" />}
+              {theme === 'dark' ? <Sun size={18} strokeWidth={1.5} aria-hidden="true" /> : <Moon size={18} strokeWidth={1.5} aria-hidden="true" />}
             </button>
             <Link href="/notifications" prefetch={true} className="qx-icon-btn" aria-label={unread > 0 ? `Thông báo, ${unread} chưa đọc` : 'Thông báo'}>
-              <Bell size={17} strokeWidth={1.6} aria-hidden="true" />
+              <Bell size={18} strokeWidth={1.5} aria-hidden="true" />
               {unread > 0 ? <span className="qx-icon-btn__dot" aria-hidden="true" /> : null}
             </Link>
             <div className="qx-account" ref={menuRef}>
@@ -521,11 +627,11 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
                     <span className="qx-user__role">{userRole}</span>
                   </div>
                   <Link href="/account" prefetch={true} className="qx-menu__item" role="menuitem" tabIndex={-1} onClick={() => setMenuOpen(false)}>
-                    <User size={15} strokeWidth={1.6} aria-hidden="true" />
+                    <User size={16} strokeWidth={1.5} aria-hidden="true" />
                     Trang tài khoản
                   </Link>
                   <button type="button" className="qx-menu__item" role="menuitem" tabIndex={-1} onClick={handleLogout}>
-                    <LogOut size={15} strokeWidth={1.6} aria-hidden="true" />
+                    <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
                     Đăng xuất
                   </button>
                 </div>
@@ -536,7 +642,12 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
         <main tabIndex={-1} className="qx-content">{children}</main>
       </div>
 
-      <GlobalCommandHost open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <GlobalCommandHost
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        role={me?.role}
+        allowedModuleIds={allowedModuleIds}
+      />
 
       <CreateTaskModal
         open={quickTaskOpen}
@@ -545,27 +656,9 @@ export function AppWorkspaceShell({ children, me }: AppWorkspaceShellProps) {
         onCreated={(task) => {
           recordCreatedTaskInStorage(task, 'both');
           window.dispatchEvent(new CustomEvent('qsystem:task-created', { detail: task }));
-          pushToast(`Đã giao việc "${task.title}"`);
+          toast.success(`Đã giao việc "${task.title}"`);
         }}
       />
-
-      {toasts.length > 0 ? (
-        <div className="qx-toast-stack" role="region" aria-live="polite" aria-label="Thông báo hệ thống">
-          {toasts.map((item) => (
-            <div key={item.id} className="qx-toast-item">
-              <span>{item.message}</span>
-              <button
-                type="button"
-                className="qx-icon-btn"
-                aria-label="Đóng thông báo"
-                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== item.id))}
-              >
-                <X size={14} strokeWidth={1.6} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

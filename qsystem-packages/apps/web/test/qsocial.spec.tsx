@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -5,12 +7,14 @@ import type { MeResponse } from '@qsystem/contracts';
 import { QSocialWorkspace } from '../src/components/qsocial/QSocialWorkspace';
 import type { SocialPostItem } from '../src/lib/adapters/social.adapter';
 
+let currentSearchParams = new URLSearchParams();
+
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => currentSearchParams,
 }));
 
 const FORBIDDEN =
-  /\b(4W|WHO|PENDING|SENT|FAILED|DEAD|Presign|Audit trail|DIRECTOR|MANAGER|EMPLOYEE|ANNOUNCEMENT|SHARING|KUDOS|QUESTION)\b/;
+  /\b(4W|WHO|PENDING|SENT|FAILED|DEAD|Presign|Audit trail|DIRECTOR|MANAGER|EMPLOYEE|ANNOUNCEMENT|SHARING|KUDOS|QUESTION|QTS PEOPLE|Better together|12 online)\b/;
 
 const me = (role: MeResponse['role']): MeResponse => ({
   id: 'u-1',
@@ -76,6 +80,7 @@ let store: SocialPostItem[] = [];
 
 beforeEach(() => {
   fail = false;
+  currentSearchParams = new URLSearchParams();
   store = INITIAL_POSTS.map((post) => ({ ...post, comments: [...post.comments] }));
 
   vi.stubGlobal(
@@ -167,8 +172,8 @@ beforeEach(() => {
 });
 
 describe('QSocialWorkspace', () => {
-  it('hiển thị bảng tin tiếng Việt sạch và không rò rỉ nhãn kỹ thuật', async () => {
-    render(<QSocialWorkspace me={me('DIRECTOR')} />);
+  it('hiển thị bảng tin tiếng Việt sạch và không rò rỉ nhãn kỹ thuật hay khẩu hiệu tiếng Anh', async () => {
+    const { container } = render(<QSocialWorkspace me={me('DIRECTOR')} />);
     const articles = await screen.findAllByRole('article');
     expect(articles).toHaveLength(2);
     const feed = getFeedContainer();
@@ -178,7 +183,10 @@ describe('QSocialWorkspace', () => {
     expect(
       within(feed).getByText('Đã cập nhật bộ tài liệu hướng dẫn quy trình phát hành mới.'),
     ).toBeTruthy();
+    expect(within(feed).getByText('Thông báo vận hành đã ghim')).toBeTruthy();
     expect(FORBIDDEN.test(document.body.textContent ?? '')).toBe(false);
+    expect((document.body.textContent ?? '').includes('!')).toBe(false);
+    expect(container.querySelector('[class*="animate__"]')).toBeNull();
   });
 
   it('lọc bài viết theo kênh chủ đề, tab Đã lưu và chế độ xem', async () => {
@@ -227,10 +235,15 @@ describe('QSocialWorkspace', () => {
     await screen.findAllByRole('article');
     const feed = getFeedContainer();
 
+    // Empty submit sets aria-invalid without animate.css classes
+    await user.click(screen.getByRole('button', { name: /Đăng bài/ }));
+    expect(screen.getByLabelText('Nội dung bài viết').getAttribute('aria-invalid')).toBe('true');
+
     await user.type(
       screen.getByLabelText('Nội dung bài viết'),
       'Cảm ơn nhóm hạ tầng đã hỗ trợ nâng cấp hệ thống cuối tuần.',
     );
+    expect(screen.getByLabelText('Nội dung bài viết').getAttribute('aria-invalid')).toBeNull();
     await user.click(screen.getByRole('button', { name: /Đăng bài/ }));
 
     expect(
@@ -246,7 +259,7 @@ describe('QSocialWorkspace', () => {
     ).toBeTruthy();
 
     await user.click(within(targetPost).getByRole('button', { name: /0 bình luận/ }));
-    const commentInput = within(targetPost).getByPlaceholderText('Viết bình luận phản hồi...');
+    const commentInput = within(targetPost).getByPlaceholderText('Viết bình luận phản hồi');
     await user.type(commentInput, 'Phòng kỹ thuật đã nắm lịch họp ạ.');
     await user.click(within(targetPost).getByRole('button', { name: 'Gửi' }));
 
@@ -280,5 +293,30 @@ describe('QSocialWorkspace', () => {
 
     const articles = await screen.findAllByRole('article');
     expect(articles).toHaveLength(2);
+  });
+
+  it('hỗ trợ điều hướng qua tham số ?muc= và tuân thủ hệ token --qs-* trong qsocial.css', async () => {
+    currentSearchParams = new URLSearchParams('muc=thong-bao');
+    const { unmount } = render(<QSocialWorkspace me={me('DIRECTOR')} />);
+    await screen.findAllByRole('article');
+    expect(screen.getByRole('heading', { level: 1, name: /Thông báo chung/ })).toBeTruthy();
+    unmount();
+
+    currentSearchParams = new URLSearchParams('muc=da-luu');
+    render(<QSocialWorkspace me={me('DIRECTOR')} />);
+    await screen.findByText(/Chưa có bài viết nào được lưu/);
+    expect(screen.getByRole('tab', { name: 'Đã lưu' }).getAttribute('aria-selected')).toBe('true');
+
+    const cssPath = path.resolve(__dirname, '../src/components/qsocial/qsocial.css');
+    const css = fs.readFileSync(cssPath, 'utf8');
+    expect(css).not.toMatch(/--qx-/);
+    expect(css).not.toMatch(/--qso-/);
+    expect(css).not.toMatch(/linear-gradient/i);
+    expect(css).not.toMatch(/scale\(/i);
+    expect(css).not.toMatch(/font-weight:\s*[789]00/);
+    expect(css).toContain('var(--qs-surface-1)');
+    expect(css).toContain('var(--qs-brand)');
+    expect(css).toContain('var(--qs-focus)');
+    expect(css).toContain('translateY(1px)');
   });
 });

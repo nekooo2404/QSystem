@@ -1,10 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Calendar, ChevronDown, Paperclip, Plus, Users, X } from 'lucide-react';
-import { useFloatingLayer } from '@qsystem/ui';
+import { Calendar, Paperclip, Plus, Users, X } from 'lucide-react';
+import { Select, useFloatingLayer, type SelectOption } from '@qsystem/ui';
 import { createTask } from '../../lib/adapters/tasks.adapter';
 import { ApiError } from '../../lib/api/client';
+import { formatDdMmYyyy, getLocalDateIso } from '../../lib/date';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import {
   canUseDevPersistence,
@@ -12,11 +13,22 @@ import {
   type TaskViewItem,
 } from './qtask.storage';
 import {
-  getPriorityBadgeClass,
-  initials,
   SAMPLE_PEOPLE,
   SAMPLE_PROJECTS,
 } from './TaskDetailContent';
+
+type TaskPriorityOption = 'Ưu tiên cao' | 'Trung bình' | 'Thấp';
+
+const PROJECT_OPTIONS: readonly SelectOption<string>[] = SAMPLE_PROJECTS.map((proj) => ({
+  value: proj,
+  label: proj,
+}));
+
+const PRIORITY_OPTIONS: readonly SelectOption<TaskPriorityOption>[] = [
+  { value: 'Ưu tiên cao', label: 'Ưu tiên cao' },
+  { value: 'Trung bình', label: 'Trung bình' },
+  { value: 'Thấp', label: 'Thấp' },
+];
 
 export interface AssigneeOption {
   id: string;
@@ -31,8 +43,15 @@ interface CreateTaskModalProps {
   onCreated: (task: TaskViewItem) => void;
 }
 
-const DEFAULT_TITLE = 'Hoàn thiện báo cáo triển khai QSystem tháng 11';
-const DEFAULT_DUE = '20/11/2026';
+function getDefaultTitle(): string {
+  const month = Number(getLocalDateIso().split('-')[1]);
+  return `Hoàn thiện báo cáo triển khai QSystem tháng ${month}`;
+}
+
+function getDefaultDue(): string {
+  return formatDdMmYyyy(getLocalDateIso());
+}
+
 const VISIBILITY_OPTIONS = ['Hiển thị với nhóm', 'Công khai toàn công ty', 'Chỉ người phụ trách'] as const;
 
 export function CreateTaskModal({ open, onOpenChange, people, onCreated }: CreateTaskModalProps) {
@@ -43,11 +62,11 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
     [people],
   );
 
-  const [title, setTitle] = React.useState(DEFAULT_TITLE);
+  const [title, setTitle] = React.useState(() => getDefaultTitle());
   const [description, setDescription] = React.useState('');
   const [assigneeId, setAssigneeId] = React.useState(effectivePeople[0]?.id ?? 'la');
   const [project, setProject] = React.useState(SAMPLE_PROJECTS[0]);
-  const [dueDate, setDueDate] = React.useState(DEFAULT_DUE);
+  const [dueDate, setDueDate] = React.useState(() => getDefaultDue());
   const [priority, setPriority] = React.useState<'Ưu tiên cao' | 'Trung bình' | 'Thấp'>('Ưu tiên cao');
   const [attachmentName, setAttachmentName] = React.useState<string | null>(null);
   const [visibilityIdx, setVisibilityIdx] = React.useState(0);
@@ -58,13 +77,13 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
 
   React.useEffect(() => {
     if (!open) return;
-    setTitle(DEFAULT_TITLE);
+    setTitle(getDefaultTitle());
     setDescription('');
     const defaultPerson =
       effectivePeople.find((p) => p.name === 'Lan Anh') ?? effectivePeople[0];
     setAssigneeId(defaultPerson?.id ?? '');
     setProject(SAMPLE_PROJECTS[0]);
-    setDueDate(DEFAULT_DUE);
+    setDueDate(getDefaultDue());
     setPriority('Ưu tiên cao');
     setAttachmentName(null);
     setVisibilityIdx(0);
@@ -155,14 +174,14 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
 
   return (
     <div
-      className="qtk-overlay animate__animated animate__fadeIn animate__faster"
+      className="qtk-overlay"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close();
       }}
     >
       <div
         ref={modalRef}
-        className="qtk-modal animate__animated animate__fadeIn animate__faster"
+        className="qtk-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="qtk-create-title"
@@ -170,9 +189,9 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
       >
         <div className="qtk-modal__head">
           <h2 id="qtk-create-title">Giao việc mới</h2>
-          <p>Tạo và phân công công việc cho đúng người, đúng thời hạn.</p>
+          <p>Tạo và phân công công việc cho đúng người, đúng thời hạn</p>
           <button type="button" className="qtk-modal__close" aria-label="Đóng hộp thoại" onClick={close}>
-            <X size={18} strokeWidth={1.6} aria-hidden="true" />
+            <X size={16} strokeWidth={1.5} aria-hidden="true" />
           </button>
         </div>
 
@@ -181,7 +200,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
             {submitError ? (
               <p
                 key={`submit-err-${errorAttempt}`}
-                className="qtk-error qtk-field--full animate__animated animate__shakeX animate__faster"
+                className="qtk-error qtk-field--full"
                 role="alert"
               >
                 {submitError}
@@ -197,13 +216,13 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                 className="qtk-input"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Ví dụ: Hoàn thiện báo cáo triển khai QSystem tháng 11"
+                placeholder={`Ví dụ: ${getDefaultTitle()}`}
                 aria-invalid={Boolean(errors.title)}
               />
               {errors.title ? (
                 <p
                   key={`title-err-${errorAttempt}`}
-                  className="qtk-error animate__animated animate__shakeX animate__faster"
+                  className="qtk-error"
                   role="alert"
                 >
                   {errors.title}
@@ -228,35 +247,23 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
               <label htmlFor="qtk-create-assignee" className="qtk-field__label">
                 Người phụ trách <span className="qtk-field__req" aria-hidden="true">*</span>
               </label>
-              <div className="qtk-select-box">
-                <span className="qtk-select-box__value">
-                  <span className="qx-avatar qx-avatar--sm qtk-avatar-cell" aria-hidden="true">
-                    {initials(selectedPerson?.name ?? 'LA')}
-                  </span>
-                  <span className="qtk-select-box__name qtk-select-box__name--centered">
-                    {selectedPerson?.name ?? 'Chọn người phụ trách'}
-                  </span>
-                </span>
-                <ChevronDown size={15} strokeWidth={1.6} className="qtk-select-box__chevron" aria-hidden="true" />
-                <select
-                  id="qtk-create-assignee"
-                  className="qtk-select-box__native"
-                  aria-label="Người phụ trách"
-                  value={assigneeId}
-                  onChange={(event) => setAssigneeId(event.target.value)}
-                >
-                  <option value="">Chọn người phụ trách</option>
-                  {effectivePeople.map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                id="qtk-create-assignee"
+                aria-label="Người phụ trách"
+                value={assigneeId}
+                onValueChange={setAssigneeId}
+                options={effectivePeople.map((person) => ({
+                  value: person.id,
+                  label: person.name,
+                }))}
+                placeholder="Chọn người phụ trách"
+                controlSize="md"
+                error={Boolean(errors.assignee)}
+              />
               {errors.assignee ? (
                 <p
                   key={`assignee-err-${errorAttempt}`}
-                  className="qtk-error animate__animated animate__shakeX animate__faster"
+                  className="qtk-error"
                   role="alert"
                 >
                   {errors.assignee}
@@ -268,25 +275,14 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
               <label htmlFor="qtk-create-project" className="qtk-field__label">
                 Dự án
               </label>
-              <div className="qtk-select-box">
-                <span className="qtk-select-box__value">
-                  <span className="qtk-select-box__name">{project}</span>
-                </span>
-                <ChevronDown size={15} strokeWidth={1.6} className="qtk-select-box__chevron" aria-hidden="true" />
-                <select
-                  id="qtk-create-project"
-                  className="qtk-select-box__native"
-                  aria-label="Dự án"
-                  value={project}
-                  onChange={(event) => setProject(event.target.value)}
-                >
-                  {SAMPLE_PROJECTS.map((proj) => (
-                    <option key={proj} value={proj}>
-                      {proj}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                id="qtk-create-project"
+                aria-label="Dự án"
+                value={project}
+                onValueChange={setProject}
+                options={PROJECT_OPTIONS}
+                controlSize="md"
+              />
             </div>
 
             <div className="qtk-field">
@@ -303,12 +299,12 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                   placeholder="dd/mm/yyyy"
                   aria-invalid={Boolean(errors.due)}
                 />
-                <Calendar size={15} strokeWidth={1.6} aria-hidden="true" />
+                <Calendar size={16} strokeWidth={1.5} aria-hidden="true" />
               </div>
               {errors.due ? (
                 <p
                   key={`due-err-${errorAttempt}`}
-                  className="qtk-error animate__animated animate__shakeX animate__faster"
+                  className="qtk-error"
                   role="alert"
                 >
                   {errors.due}
@@ -320,25 +316,14 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
               <label htmlFor="qtk-create-priority" className="qtk-field__label">
                 Mức độ ưu tiên
               </label>
-              <div className="qtk-select-box">
-                <span className="qtk-select-box__value">
-                  <span className={getPriorityBadgeClass(priority)}>{priority}</span>
-                </span>
-                <ChevronDown size={15} strokeWidth={1.6} className="qtk-select-box__chevron" aria-hidden="true" />
-                <select
-                  id="qtk-create-priority"
-                  className="qtk-select-box__native"
-                  aria-label="Mức độ ưu tiên"
-                  value={priority}
-                  onChange={(event) =>
-                    setPriority(event.target.value as 'Ưu tiên cao' | 'Trung bình' | 'Thấp')
-                  }
-                >
-                  <option value="Ưu tiên cao">Ưu tiên cao</option>
-                  <option value="Trung bình">Trung bình</option>
-                  <option value="Thấp">Thấp</option>
-                </select>
-              </div>
+              <Select<TaskPriorityOption>
+                id="qtk-create-priority"
+                aria-label="Mức độ ưu tiên"
+                value={priority}
+                onValueChange={setPriority}
+                options={PRIORITY_OPTIONS}
+                controlSize="md"
+              />
             </div>
 
             <div className="qtk-modal__extras">
@@ -358,7 +343,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                 data-active={attachmentName ? 'true' : undefined}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Paperclip size={14} strokeWidth={1.6} aria-hidden="true" />
+                <Paperclip size={16} strokeWidth={1.5} aria-hidden="true" />
                 <span>{attachmentName ?? 'Thêm tệp đính kèm'}</span>
               </button>
               <button
@@ -367,7 +352,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                 data-active={visibilityIdx !== 0 ? 'true' : undefined}
                 onClick={() => setVisibilityIdx((current) => (current + 1) % VISIBILITY_OPTIONS.length)}
               >
-                <Users size={14} strokeWidth={1.6} aria-hidden="true" />
+                <Users size={16} strokeWidth={1.5} aria-hidden="true" />
                 <span>{VISIBILITY_OPTIONS[visibilityIdx]}</span>
               </button>
             </div>
@@ -378,7 +363,7 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
               Hủy
             </button>
             <button type="submit" className="qx-btn qx-btn--primary" disabled={saving} aria-busy={saving}>
-              <Plus size={15} strokeWidth={2} aria-hidden="true" />
+              <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
               {saving ? 'Đang tạo…' : 'Giao việc'}
             </button>
           </div>

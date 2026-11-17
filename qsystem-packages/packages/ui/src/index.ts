@@ -28,6 +28,8 @@ export { ModuleSwitcher } from './module-switcher';
 export type { AppModuleItem, ModuleSwitcherProps } from './module-switcher';
 export { ResponsiveDetailDrawer } from './responsive-detail-drawer';
 export type { ResponsiveDetailDrawerMode, ResponsiveDetailDrawerProps } from './responsive-detail-drawer';
+export { Select } from './select';
+export type { SelectOption, SelectProps } from './select';
 export { EmptyState, ErrorState, LoadingSkeleton, StateRegion } from './state-region';
 export type {
   EmptyStateProps,

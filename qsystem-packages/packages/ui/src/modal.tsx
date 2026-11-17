@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import { useFloatingLayer } from './layer';
 
 export interface ModalProps {
@@ -71,8 +72,14 @@ export function ModalContent({ children }: { children: React.ReactNode }) {
       }}
     >
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal={modal ? 'true' : 'false'} className="qs-modal__dialog">
-        <button type="button" data-qs-modal-close="" aria-label="Đóng hộp thoại" onClick={() => close?.()}>
-          ×
+        <button
+          type="button"
+          className="qs-modal__close"
+          data-qs-modal-close=""
+          aria-label="Đóng hộp thoại"
+          onClick={() => close?.()}
+        >
+          <X size={16} strokeWidth={1.5} aria-hidden="true" />
         </button>
         {children}
       </div>

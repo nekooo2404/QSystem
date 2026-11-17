@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Activity, ArrowRight, Bell, KeyRound, Settings, ShieldCheck, Sun, User } from 'lucide-react';
 import { StateRegion, toast } from '@qsystem/ui';
 import { ChangePasswordSchema, type MeResponse } from '@qsystem/contracts';
@@ -119,15 +119,37 @@ function formatAccountRole(role?: string): string {
   return 'Quản trị viên';
 }
 
-export default function AccountPage() {
+function useSafeSearchParams() {
+  try {
+    return useSearchParams();
+  } catch {
+    return null;
+  }
+}
+
+function navKeyFromMuc(muc: string | null | undefined): 'profile' | 'security' | 'session' {
+  if (muc === 'bao-mat') return 'security';
+  if (muc === 'phien') return 'session';
+  return 'profile';
+}
+
+function hrefForNavKey(key: 'profile' | 'security' | 'session'): string {
+  if (key === 'security') return '/account?muc=bao-mat';
+  if (key === 'session') return '/account?muc=phien';
+  return '/account';
+}
+
+function AccountPageContent() {
   const router = useRouter();
+  const searchParams = useSafeSearchParams();
+  const mucParam = searchParams?.get('muc');
   const { me: sessionMe, updateMe } = useSession();
   const [me, setMe] = React.useState<MeResponse | null>(sessionMe);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(!sessionMe);
   const [attempt, setAttempt] = React.useState(0);
 
-  const [activeNav, setActiveNav] = React.useState<NavKey>('profile');
+  const [activeNav, setActiveNav] = React.useState<NavKey>(() => navKeyFromMuc(mucParam));
   const [editingProfile, setEditingProfile] = React.useState(false);
   const [displayName, setDisplayName] = React.useState(sessionMe?.name ?? 'Minh Khôi');
   const [savedDepartment, setSavedDepartment] = React.useState('Ban Giám đốc');
@@ -274,6 +296,24 @@ export default function AccountPage() {
     toast.success('Đã đăng xuất thiết bị khỏi tài khoản.');
   }
 
+  const hasMe = Boolean(me);
+  React.useEffect(() => {
+    const nextKey = navKeyFromMuc(mucParam);
+    setActiveNav(nextKey);
+    if (!hasMe) return;
+    const target =
+      nextKey === 'security'
+        ? securityRef.current
+        : nextKey === 'session'
+          ? sessionRef.current
+          : mucParam === 'ho-so'
+            ? profileRef.current
+            : null;
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [mucParam, hasMe]);
+
   function handleNavClick(key: NavKey) {
     if (key === 'notifications') {
       router.push('/notifications');
@@ -294,8 +334,13 @@ export default function AccountPage() {
       return;
     }
     setActiveNav(key);
+    if (typeof (router as { replace?: unknown }).replace === 'function') {
+      router.replace(hrefForNavKey(key), { scroll: false });
+    }
     const target = key === 'profile' ? profileRef.current : key === 'security' ? securityRef.current : sessionRef.current;
-    target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   function handleSaveProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -590,7 +635,7 @@ export default function AccountPage() {
                   </div>
                   <button
                     type="button"
-                    className="qa-sec-toggle"
+                    className="qa-sec-toggle qs-switch"
                     disabled
                     aria-disabled="true"
                     aria-pressed={twoFactorEnabled}
@@ -648,5 +693,13 @@ export default function AccountPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+export default function AccountPage() {
+  return (
+    <React.Suspense fallback={<StateRegion state="loading" rows={3} />}>
+      <AccountPageContent />
+    </React.Suspense>
   );
 }

@@ -2,8 +2,8 @@
 
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Eye, EyeOff, Plus, ShieldCheck, X } from 'lucide-react';
-import { useFloatingLayer } from '@qsystem/ui';
+import { Eye, EyeOff, Plus, ShieldCheck, X } from 'lucide-react';
+import { Select, useFloatingLayer, type SelectOption } from '@qsystem/ui';
 import type { MeResponse, Role } from '@qsystem/contracts';
 import { ApiError, apiFetch } from '../../lib/api/client';
 
@@ -66,6 +66,40 @@ function CreateUserDialog({
   const defaultManager = React.useMemo(() => {
     const quocHuy = managers.find((m) => /quốc huy/i.test(m.name));
     return quocHuy?.id ?? '';
+  }, [managers]);
+
+  const deptSelectOptions = React.useMemo<SelectOption<string>[]>(() => {
+    const base: SelectOption<string>[] = !isManagerOnly
+      ? [{ value: '', label: 'Chưa xếp phòng ban' }]
+      : [];
+    return [
+      ...base,
+      ...availableDepts.map((dept) => ({
+        value: dept.id,
+        label: formatDepartmentOption(dept.name),
+      })),
+    ];
+  }, [availableDepts, isManagerOnly]);
+
+  const roleSelectOptions = React.useMemo<SelectOption<Role>[]>(() => {
+    const items: SelectOption<Role>[] = [{ value: 'EMPLOYEE', label: 'Nhân viên' }];
+    if (!isManagerOnly) {
+      items.push(
+        { value: 'MANAGER', label: 'Quản lý' },
+        { value: 'DIRECTOR', label: 'Giám đốc' },
+      );
+    }
+    return items;
+  }, [isManagerOnly]);
+
+  const managerSelectOptions = React.useMemo<SelectOption<string>[]>(() => {
+    return [
+      { value: '', label: 'Chưa chỉ định' },
+      ...managers.map((manager) => ({
+        value: manager.id,
+        label: manager.name,
+      })),
+    ];
   }, [managers]);
 
   const [name, setName] = React.useState('');
@@ -185,14 +219,14 @@ function CreateUserDialog({
 
   const content = (
     <div
-      className="hr-overlay animate__animated animate__fadeIn animate__faster"
+      className="hr-overlay"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close();
       }}
     >
       <div
         ref={modalRef}
-        className="hr-modal animate__animated animate__fadeIn animate__faster"
+        className="hr-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -201,7 +235,7 @@ function CreateUserDialog({
       >
         <div className="hr-modal__head">
           <h2 id={titleId}>Thêm nhân sự mới</h2>
-          <p id={descId}>Tạo hồ sơ và tài khoản làm việc cho thành viên mới.</p>
+          <p id={descId}>Tạo hồ sơ và tài khoản làm việc cho thành viên mới</p>
           <button
             type="button"
             className="hr-modal__close"
@@ -209,7 +243,7 @@ function CreateUserDialog({
             onClick={close}
             disabled={saving}
           >
-            <X size={18} strokeWidth={1.6} aria-hidden="true" />
+            <X size={16} strokeWidth={1.5} aria-hidden="true" />
           </button>
         </div>
 
@@ -228,7 +262,7 @@ function CreateUserDialog({
                 disabled={saving}
               />
               {errors.name ? (
-                <p key={`name-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
+                <p key={`name-err-${errorAttempt}`} className="hr-error" role="alert">
                   {errors.name}
                 </p>
               ) : null}
@@ -247,34 +281,28 @@ function CreateUserDialog({
                 disabled={saving}
               />
               {errors.email ? (
-                <p key={`email-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
+                <p key={`email-err-${errorAttempt}`} className="hr-error" role="alert">
                   {errors.email}
                 </p>
               ) : null}
             </div>
 
             <div className="hr-field">
-              <label htmlFor="hr-user-dept">Phòng ban</label>
-              <div className="hr-input-wrap">
-                <select
-                  id="hr-user-dept"
-                  className="hr-input"
-                  value={departmentId}
-                  onChange={(event) => setDepartmentId(event.target.value)}
-                  aria-invalid={Boolean(errors.departmentId)}
-                  disabled={saving}
-                >
-                  {!isManagerOnly ? <option value="">Chưa xếp phòng ban</option> : null}
-                  {availableDepts.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {formatDepartmentOption(dept.name)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
-              </div>
+              <label id="hr-user-dept-label" htmlFor="hr-user-dept">
+                Phòng ban
+              </label>
+              <Select
+                id="hr-user-dept"
+                aria-labelledby="hr-user-dept-label"
+                value={departmentId}
+                onValueChange={setDepartmentId}
+                options={deptSelectOptions}
+                error={Boolean(errors.departmentId)}
+                disabled={saving}
+                controlSize="md"
+              />
               {errors.departmentId ? (
-                <p key={`dept-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
+                <p key={`dept-err-${errorAttempt}`} className="hr-error" role="alert">
                   {errors.departmentId}
                 </p>
               ) : null}
@@ -294,42 +322,33 @@ function CreateUserDialog({
             </div>
 
             <div className="hr-field hr-field--gap">
-              <label htmlFor="hr-user-role">Vai trò truy cập</label>
-              <div className="hr-input-wrap">
-                <select
-                  id="hr-user-role"
-                  className="hr-input"
-                  value={isManagerOnly ? 'EMPLOYEE' : role}
-                  onChange={(event) => setRole(event.target.value as Role)}
-                  disabled={saving || isManagerOnly}
-                >
-                  <option value="EMPLOYEE">Nhân viên</option>
-                  {!isManagerOnly ? <option value="MANAGER">Quản lý</option> : null}
-                  {!isManagerOnly ? <option value="DIRECTOR">Giám đốc</option> : null}
-                </select>
-                <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
-              </div>
+              <label id="hr-user-role-label" htmlFor="hr-user-role">
+                Vai trò truy cập
+              </label>
+              <Select
+                id="hr-user-role"
+                aria-labelledby="hr-user-role-label"
+                value={isManagerOnly ? 'EMPLOYEE' : role}
+                onValueChange={(nextRole) => setRole(nextRole as Role)}
+                options={roleSelectOptions}
+                disabled={saving || isManagerOnly}
+                controlSize="md"
+              />
             </div>
 
             <div className="hr-field hr-field--gap">
-              <label htmlFor="hr-user-manager">Quản lý trực tiếp</label>
-              <div className="hr-input-wrap">
-                <select
-                  id="hr-user-manager"
-                  className="hr-input"
-                  value={reportsToId}
-                  onChange={(event) => setReportsToId(event.target.value)}
-                  disabled={saving}
-                >
-                  <option value="">Chưa chỉ định</option>
-                  {managers.map((manager) => (
-                    <option key={manager.id} value={manager.id}>
-                      {manager.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
-              </div>
+              <label id="hr-user-manager-label" htmlFor="hr-user-manager">
+                Quản lý trực tiếp
+              </label>
+              <Select
+                id="hr-user-manager"
+                aria-labelledby="hr-user-manager-label"
+                value={reportsToId}
+                onValueChange={setReportsToId}
+                options={managerSelectOptions}
+                disabled={saving}
+                controlSize="md"
+              />
             </div>
 
             <div className="hr-field hr-field--full hr-field--gap">
@@ -354,9 +373,9 @@ function CreateUserDialog({
                   disabled={saving}
                 >
                   {showPassword ? (
-                    <EyeOff size={16} strokeWidth={1.6} aria-hidden="true" />
+                    <EyeOff size={16} strokeWidth={1.5} aria-hidden="true" />
                   ) : (
-                    <Eye size={16} strokeWidth={1.6} aria-hidden="true" />
+                    <Eye size={16} strokeWidth={1.5} aria-hidden="true" />
                   )}
                 </button>
               </div>
@@ -364,19 +383,19 @@ function CreateUserDialog({
                 Người dùng sẽ được yêu cầu đổi mật khẩu ở lần đăng nhập đầu tiên.
               </p>
               {errors.password ? (
-                <p key={`pwd-err-${errorAttempt}`} className="hr-error animate__animated animate__shakeX animate__faster" role="alert">
+                <p key={`pwd-err-${errorAttempt}`} className="hr-error" role="alert">
                   {errors.password}
                 </p>
               ) : null}
             </div>
 
             <div className="hr-note">
-              <ShieldCheck size={16} strokeWidth={1.6} aria-hidden="true" />
+              <ShieldCheck size={16} strokeWidth={1.5} aria-hidden="true" />
               <span>Tài khoản sẽ chỉ được cấp quyền theo vai trò và phòng ban được lựa chọn.</span>
             </div>
 
             {errors.form ? (
-              <p key={`form-err-${errorAttempt}`} className="hr-error hr-field--full animate__animated animate__shakeX animate__faster" role="alert">
+              <p key={`form-err-${errorAttempt}`} className="hr-error hr-field--full" role="alert">
                 {errors.form}
               </p>
             ) : null}
@@ -387,7 +406,7 @@ function CreateUserDialog({
               Hủy
             </button>
             <button type="submit" className="qx-btn qx-btn--primary" disabled={saving}>
-              <Plus size={15} strokeWidth={2} aria-hidden="true" />
+              <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
               {saving ? 'Đang lưu…' : 'Tạo nhân sự'}
             </button>
           </div>

@@ -1,5 +1,10 @@
-import { CrmCustomers } from '../../../components/qcrm/CrmCustomers';
+import { Suspense } from 'react';
+import { CrmWorkspace } from '../../../components/qcrm/CrmCustomers';
 
 export default function CrmPage() {
-  return <CrmCustomers />;
+  return (
+    <Suspense fallback={null}>
+      <CrmWorkspace />
+    </Suspense>
+  );
 }

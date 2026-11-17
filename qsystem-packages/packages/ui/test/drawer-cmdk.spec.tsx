@@ -215,6 +215,26 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Soạn thảo' }), { key: 'k', ctrlKey: true });
     expect(onOpenChange).not.toHaveBeenCalled();
   });
+
+  it('renders errorText recovery UI with role="alert" and triggers onRetry', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <CommandPalette
+        open
+        onOpenChange={() => {}}
+        query="bao cao"
+        onQueryChange={() => {}}
+        groups={[]}
+        errorText="Không thể tìm kiếm lúc này."
+        onRetry={onRetry}
+      />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Không thể tìm kiếm lúc này.');
+    await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ResponsiveDetailDrawer', () => {

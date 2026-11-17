@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -59,5 +61,17 @@ describe('Button', () => {
     btn.focus();
     await user.keyboard(' ');
     expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders spinner only while loading and avoids scale() transforms in CSS', () => {
+    const { rerender } = render(<Button>Lưu</Button>);
+    expect(document.querySelector('.qs-btn__spinner')).toBeNull();
+    rerender(<Button loading>Lưu</Button>);
+    const spinner = document.querySelector('.qs-btn__spinner');
+    expect(spinner).not.toBeNull();
+    expect(spinner).toHaveAttribute('aria-hidden', 'true');
+
+    const css = readFileSync(join(__dirname, '..', 'src', 'styles.css'), 'utf8');
+    expect(css).not.toMatch(/scale\(/i);
   });
 });

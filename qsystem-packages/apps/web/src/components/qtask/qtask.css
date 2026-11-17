@@ -6,7 +6,7 @@
   --qtk-modal-shadow: 0 16px 32px rgb(0 0 0 / 0.44);
   --qtk-drawer-backdrop: rgb(6 8 12 / 0.56);
   --qtk-drawer-shadow: -12px 0 28px rgb(0 0 0 / 0.38);
-  --qtk-highlight-shadow: 0 0 0 2px rgb(97 141 201 / 0.28);
+  --qs-highlight-top: 0 0 0 2px rgb(97 141 201 / 0.28);
 }
 
 [data-theme='light'] {
@@ -14,7 +14,7 @@
   --qtk-modal-shadow: 0 14px 28px rgb(24 24 27 / 0.14);
   --qtk-drawer-backdrop: rgb(24 24 27 / 0.3);
   --qtk-drawer-shadow: -10px 0 24px rgb(24 24 27 / 0.12);
-  --qtk-highlight-shadow: 0 0 0 2px rgb(44 86 143 / 0.22);
+  --qs-highlight-top: 0 0 0 2px rgb(44 86 143 / 0.22);
 }
 
 @keyframes qtk-modal-in {
@@ -76,11 +76,11 @@
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 9px;
-  background: var(--qx-card);
-  box-shadow: var(--qx-menu-shadow);
-  animation: qtk-pop-in 150ms var(--qx-ease-out);
+  background: var(--qs-surface-1);
+  box-shadow: var(--qs-shadow-floating);
+  animation: qtk-pop-in 150ms var(--qs-ease);
 }
 
 .qtk-popover__field {
@@ -91,7 +91,7 @@
 .qtk-popover__label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-popover__actions {
@@ -105,19 +105,19 @@
   width: 100%;
   height: 36px;
   padding: 0 28px 0 10px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 6px;
-  background: var(--qx-bg);
-  color: var(--qx-fg);
+  background: var(--qs-bg);
+  color: var(--qs-fg);
   font: inherit;
   font-size: 12.5px;
   outline: none;
   cursor: pointer;
-  transition: border-color 140ms var(--qx-ease-out);
+  transition: border-color 140ms var(--qs-ease);
 }
 
 .qtk-select:focus-visible {
-  border-color: var(--qx-amber);
+  border-color: var(--qs-brand);
 }
 
 /* --- Screen 03: Tất cả công việc (/) ------------------------------------ */
@@ -144,7 +144,7 @@
   gap: 16px;
   flex-wrap: wrap;
   padding: 14px 20px 0;
-  border-bottom: 1px solid var(--qx-border);
+  border-bottom: 1px solid var(--qs-border);
 }
 
 .qtk-table-toolbar .qx-tabs {
@@ -185,7 +185,7 @@
 }
 
 .qtk-table tbody tr {
-  transition: background-color 140ms var(--qx-ease-out);
+  transition: background-color 140ms var(--qs-ease);
 }
 
 .qtk-table tbody td {
@@ -193,26 +193,26 @@
 }
 
 .qtk-table tbody tr.is-selected {
-  background: var(--qx-active);
+  background: var(--qs-state-selected);
 }
 
 .qtk-code {
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .qtk-task-title {
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   font-weight: 600;
   font-size: 13px;
 }
 
 .qtk-avatar-cell {
-  border: 1px solid color-mix(in srgb, var(--qx-purple) 22%, var(--qx-border));
-  background: color-mix(in srgb, var(--qx-purple) 10%, var(--qx-card-2));
-  color: var(--qx-fg);
+  border: 1px solid color-mix(in srgb, var(--qs-brand) 22%, var(--qs-border));
+  background: color-mix(in srgb, var(--qs-brand) 10%, var(--qs-surface-2));
+  color: var(--qs-fg);
 }
 
 .qtk-row-actions {
@@ -229,9 +229,9 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   cursor: pointer;
-  transition: background-color 140ms var(--qx-ease-out), color 140ms var(--qx-ease-out), transform 120ms var(--qx-ease-out);
+  transition: background-color 140ms var(--qs-ease), color 140ms var(--qs-ease), transform 120ms var(--qs-ease);
 }
 
 .qtk-row-more:active {
@@ -247,11 +247,11 @@
   display: grid;
   gap: 2px;
   padding: 6px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 9px;
-  background: var(--qx-card);
-  box-shadow: var(--qx-menu-shadow);
-  animation: qtk-pop-in 140ms var(--qx-ease-out);
+  background: var(--qs-surface-1);
+  box-shadow: var(--qs-shadow-floating);
+  animation: qtk-pop-in 140ms var(--qs-ease);
 }
 
 .qtk-row-menu--up {
@@ -268,14 +268,14 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
   font: inherit;
   font-size: 12.5px;
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 120ms var(--qx-ease-out), color 120ms var(--qx-ease-out), transform 110ms var(--qx-ease-out);
+  transition: background-color 120ms var(--qs-ease), color 120ms var(--qs-ease), transform 110ms var(--qs-ease);
 }
 
 .qtk-row-menu__item:active {
@@ -283,7 +283,7 @@
 }
 
 .qtk-row-menu__item--danger {
-  color: var(--qx-red);
+  color: var(--qs-error);
 }
 
 /* Card view grid (Chế độ thẻ on /) */
@@ -298,16 +298,16 @@
   display: grid;
   gap: 10px;
   padding: 15px 16px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 9px;
-  background: var(--qx-card-2);
+  background: var(--qs-surface-2);
   cursor: pointer;
-  transition: border-color 150ms var(--qx-ease-out), background-color 150ms var(--qx-ease-out), transform 140ms var(--qx-ease-out);
+  transition: border-color 150ms var(--qs-ease), background-color 150ms var(--qs-ease), transform 140ms var(--qs-ease);
 }
 
 .qtk-task-card.is-selected {
-  border-color: var(--qx-amber);
-  background: var(--qx-active);
+  border-color: var(--qs-brand);
+  background: var(--qs-state-selected);
 }
 
 .qtk-task-card:active {
@@ -326,7 +326,7 @@
   font-size: 13.5px;
   font-weight: 600;
   line-height: 19px;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   overflow-wrap: anywhere;
   min-width: 0;
 }
@@ -338,7 +338,7 @@
   gap: 10px;
   flex-wrap: wrap;
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-task-card__foot {
@@ -347,7 +347,7 @@
   justify-content: space-between;
   gap: 10px;
   padding-top: 8px;
-  border-top: 1px solid var(--qx-border-soft);
+  border-top: 1px solid var(--qs-border);
 }
 
 .qtk-card-foot {
@@ -370,9 +370,9 @@
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
   cursor: pointer;
-  transition: background-color 140ms var(--qx-ease-out), color 140ms var(--qx-ease-out), transform 120ms var(--qx-ease-out);
+  transition: background-color 140ms var(--qs-ease), color 140ms var(--qs-ease), transform 120ms var(--qs-ease);
 }
 
 .qtk-pager__btn:active:not(:disabled) {
@@ -402,18 +402,19 @@
 /* --- Screen 02: Công việc của tôi (/tasks) ------------------------------ */
 .qtk-mine-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 15px;
+  grid-template-columns: minmax(0, 1fr) 304px;
+  gap: 20px;
   align-items: start;
 }
 
 .qtk-mine-card .qx-card__head {
-  padding: 18px 20px 0;
+  padding: 20px 24px 0;
+  border-bottom: 1px solid var(--qs-border);
 }
 
 .qtk-mine-tabs {
   padding: 14px 20px 8px;
-  border-bottom: 1px solid var(--qx-border);
+  border-bottom: 1px solid var(--qs-border);
 }
 
 .qtk-mine-tabs .qx-tabs {
@@ -437,11 +438,11 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 68px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--qx-border);
+  min-height: 72px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--qs-border);
   cursor: pointer;
-  transition: background-color 150ms var(--qx-ease-out);
+  transition: background-color 150ms var(--qs-ease);
 }
 
 .qtk-mine-check {
@@ -456,9 +457,9 @@
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   cursor: pointer;
-  transition: color 140ms var(--qx-ease-out), transform 120ms var(--qx-ease-out);
+  transition: color 140ms var(--qs-ease), transform 120ms var(--qs-ease);
 }
 
 .qtk-mine-check:active {
@@ -466,11 +467,11 @@
 }
 
 .qtk-mine-check[data-priority='high'] {
-  color: var(--qx-amber-text);
+  color: var(--qs-on-brand);
 }
 
 .qtk-mine-check[data-done='true'] {
-  color: var(--qx-green);
+  color: var(--qs-success);
 }
 
 .qtk-mine-main {
@@ -490,7 +491,7 @@
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   line-height: 19px;
   text-align: left;
   white-space: nowrap;
@@ -510,13 +511,13 @@
 
 .qtk-mine-title[data-done='true'] {
   text-decoration: line-through;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-mine-meta {
   margin: 0;
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -531,7 +532,7 @@
   min-width: 74px;
   text-align: right;
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -548,13 +549,13 @@
   border: 0;
   padding: 0;
   background: none;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font: inherit;
   font-size: 12px;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 140ms var(--qx-ease-out), transform 120ms var(--qx-ease-out);
+  transition: color 140ms var(--qs-ease), transform 120ms var(--qs-ease);
 }
 
 .qtk-mine-more:active {
@@ -567,13 +568,14 @@
 }
 
 .qtk-side-card {
-  padding: 18px;
-  transition: border-color 200ms var(--qx-ease-out), box-shadow 200ms var(--qx-ease-out);
+  padding: 20px;
+  border-color: var(--qs-border-strong);
+  transition: border-color 200ms var(--qs-ease), box-shadow 200ms var(--qs-ease);
 }
 
 .qtk-side-card[data-highlight='true'] {
-  border-color: var(--qx-amber);
-  box-shadow: var(--qtk-highlight-shadow);
+  border-color: var(--qs-brand);
+  box-shadow: var(--qs-highlight-top);
 }
 
 .qtk-side-card__head {
@@ -587,14 +589,14 @@
   margin: 0;
   font-size: 14.5px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   overflow-wrap: anywhere;
   min-width: 0;
 }
 
 .qtk-side-card__range {
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -616,7 +618,7 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
-  transition: transform 120ms var(--qx-ease-out);
+  transition: transform 120ms var(--qs-ease);
 }
 
 .qtk-cal-day:active {
@@ -625,11 +627,11 @@
 
 .qtk-cal-day__label {
   font-size: 11px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-cal-day[aria-pressed='true'] .qtk-cal-day__label {
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   font-weight: 600;
 }
 
@@ -639,39 +641,40 @@
   width: 100%;
   height: 30px;
   border-radius: 6px;
-  background: var(--qx-card-2);
-  border: 1px solid var(--qx-border-soft);
-  color: var(--qx-fg-2);
+  background: var(--qs-surface-2);
+  border: 1px solid var(--qs-border);
+  color: var(--qs-fg-secondary);
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  transition: background-color 140ms var(--qx-ease-out), border-color 140ms var(--qx-ease-out), color 140ms var(--qx-ease-out);
+  transition: background-color 180ms var(--qs-ease), border-color 180ms var(--qs-ease), color 180ms var(--qs-ease), transform 180ms var(--qs-ease);
 }
 
 .qtk-cal-day[aria-pressed='true'] .qtk-cal-day__num {
-  background: var(--qx-amber);
-  border-color: var(--qx-amber);
-  color: var(--qx-on-amber);
+  background: var(--qs-brand);
+  border-color: var(--qs-brand);
+  color: var(--qs-on-brand);
+  transform: translateY(-1px);
 }
 
 .qtk-cal-event {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid var(--qx-border);
+  border-top: 1px solid var(--qs-border);
 }
 
 .qtk-cal-event__title {
   margin: 0;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   font-variant-numeric: tabular-nums;
 }
 
 .qtk-cal-event__sub {
   margin: 4px 0 0;
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-progress-badge {
@@ -685,7 +688,7 @@
 .qtk-progress-track {
   height: 6px;
   border-radius: 999px;
-  background: var(--qx-active);
+  background: var(--qs-state-selected);
   overflow: hidden;
   margin-top: 14px;
 }
@@ -693,13 +696,13 @@
 .qtk-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--qx-amber);
+  background: var(--qs-brand);
 }
 
 .qtk-progress-caption {
   margin: 10px 0 0;
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -709,14 +712,14 @@
   gap: 8px;
   margin: 14px 0 0;
   padding-top: 12px;
-  border-top: 1px solid var(--qx-border-soft);
+  border-top: 1px solid var(--qs-border);
   font-size: 12px;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
 }
 
 .qtk-progress-tip svg {
   flex: 0 0 auto;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 @media (max-width: 1023px) {
@@ -758,7 +761,7 @@
   gap: 14px;
   padding: 20px;
   cursor: pointer;
-  transition: border-color 150ms var(--qx-ease-out), transform 140ms var(--qx-ease-out);
+  transition: border-color 150ms var(--qs-ease), transform 140ms var(--qs-ease);
 }
 
 .qtk-proj-card:active {
@@ -778,32 +781,32 @@
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  border: 1px solid var(--qx-border);
-  background: var(--qx-card-2);
+  border: 1px solid var(--qs-border);
+  background: var(--qs-surface-2);
 }
 
 .qtk-proj-icon--amber {
-  color: var(--qx-amber-text);
-  background: color-mix(in srgb, var(--qx-amber) 12%, var(--qx-card-2));
-  border-color: color-mix(in srgb, var(--qx-amber) 32%, var(--qx-border));
+  color: var(--qs-on-brand);
+  background: color-mix(in srgb, var(--qs-brand) 12%, var(--qs-surface-2));
+  border-color: color-mix(in srgb, var(--qs-brand) 32%, var(--qs-border));
 }
 
 .qtk-proj-icon--blue {
-  color: var(--qx-blue);
-  background: color-mix(in srgb, var(--qx-blue) 12%, var(--qx-card-2));
-  border-color: color-mix(in srgb, var(--qx-blue) 32%, var(--qx-border));
+  color: var(--qs-brand);
+  background: color-mix(in srgb, var(--qs-brand) 12%, var(--qs-surface-2));
+  border-color: color-mix(in srgb, var(--qs-brand) 32%, var(--qs-border));
 }
 
 .qtk-proj-icon--green {
-  color: var(--qx-green);
-  background: color-mix(in srgb, var(--qx-green) 12%, var(--qx-card-2));
-  border-color: color-mix(in srgb, var(--qx-green) 32%, var(--qx-border));
+  color: var(--qs-success);
+  background: color-mix(in srgb, var(--qs-success) 12%, var(--qs-surface-2));
+  border-color: color-mix(in srgb, var(--qs-success) 32%, var(--qs-border));
 }
 
 .qtk-proj-icon--purple {
-  color: var(--qx-purple);
-  background: color-mix(in srgb, var(--qx-purple) 12%, var(--qx-card-2));
-  border-color: color-mix(in srgb, var(--qx-purple) 32%, var(--qx-border));
+  color: var(--qs-brand);
+  background: color-mix(in srgb, var(--qs-brand) 12%, var(--qs-surface-2));
+  border-color: color-mix(in srgb, var(--qs-brand) 32%, var(--qs-border));
 }
 
 .qtk-proj-title-btn {
@@ -830,7 +833,7 @@
   margin: 0;
   font-size: 15.5px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   line-height: 22px;
   overflow-wrap: anywhere;
   min-width: 0;
@@ -839,7 +842,7 @@
 .qtk-proj-desc {
   margin: 3px 0 0;
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-proj-progress__head {
@@ -850,19 +853,19 @@
 }
 
 .qtk-proj-progress__label {
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-proj-progress__pct {
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   font-variant-numeric: tabular-nums;
 }
 
 .qtk-proj-progress__track {
   height: 6px;
   border-radius: 999px;
-  background: var(--qx-active);
+  background: var(--qs-state-selected);
   overflow: hidden;
   margin-top: 8px;
 }
@@ -872,10 +875,10 @@
   border-radius: 999px;
 }
 
-.qtk-proj-progress__bar--amber { background: var(--qx-amber); }
-.qtk-proj-progress__bar--blue { background: var(--qx-blue); }
-.qtk-proj-progress__bar--green { background: var(--qx-green); }
-.qtk-proj-progress__bar--purple { background: var(--qx-purple); }
+.qtk-proj-progress__bar--amber { background: var(--qs-brand); }
+.qtk-proj-progress__bar--blue { background: var(--qs-brand); }
+.qtk-proj-progress__bar--green { background: var(--qs-success); }
+.qtk-proj-progress__bar--purple { background: var(--qs-brand); }
 
 .qtk-proj-foot {
   display: flex;
@@ -898,7 +901,7 @@
 
 .qtk-proj-tasks {
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -924,9 +927,9 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 7px;
-  background: var(--qx-bg);
+  background: var(--qs-bg);
 }
 
 .qtk-milestone-toggle {
@@ -936,7 +939,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -945,7 +948,7 @@
 }
 
 .qtk-milestone-toggle[data-done='true'] {
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   text-decoration: line-through;
 }
 
@@ -991,13 +994,13 @@
   overflow: auto;
   border: 0;
   border-radius: 10px;
-  background: var(--qx-card);
-  color: var(--qx-fg);
+  background: var(--qs-surface-1);
+  color: var(--qs-fg);
   box-shadow: var(--qtk-modal-shadow);
 }
 
 .qtk-modal:not(.animate__animated) {
-  animation: qtk-modal-in 180ms var(--qx-ease-out);
+  animation: qtk-modal-in 180ms var(--qs-ease);
 }
 
 .qtk-modal__head {
@@ -1017,7 +1020,7 @@
 .qtk-modal__head p {
   margin: 6px 0 0;
   font-size: 12.5px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-modal__close {
@@ -1031,9 +1034,9 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   cursor: pointer;
-  transition: background-color 140ms var(--qx-ease-out), color 140ms var(--qx-ease-out), transform 120ms var(--qx-ease-out);
+  transition: background-color 140ms var(--qs-ease), color 140ms var(--qs-ease), transform 120ms var(--qs-ease);
 }
 
 .qtk-modal__close:active {
@@ -1060,52 +1063,52 @@
 .qtk-field__label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
 }
 
 .qtk-field__req {
-  color: var(--qx-red);
+  color: var(--qs-error);
 }
 
 .qtk-input {
   width: 100%;
   height: 40px;
   padding: 0 13px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 7px;
-  background: var(--qx-bg);
-  color: var(--qx-fg);
+  background: var(--qs-bg);
+  color: var(--qs-fg);
   font: inherit;
   font-size: 13px;
   outline: none;
-  transition: border-color 140ms var(--qx-ease-out);
+  transition: border-color 140ms var(--qs-ease);
 }
 
 .qtk-input::placeholder,
 .qtk-textarea::placeholder {
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-input:focus,
 .qtk-textarea:focus,
 .qtk-select-box:has(select:focus-visible) {
-  border-color: var(--qx-amber);
+  border-color: var(--qs-brand);
 }
 
 .qtk-textarea {
   width: 100%;
   min-height: 84px;
   padding: 11px 13px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 7px;
-  background: var(--qx-bg);
-  color: var(--qx-fg);
+  background: var(--qs-bg);
+  color: var(--qs-fg);
   font: inherit;
   font-size: 13px;
   line-height: 20px;
   resize: vertical;
   outline: none;
-  transition: border-color 140ms var(--qx-ease-out);
+  transition: border-color 140ms var(--qs-ease);
 }
 
 .qtk-input-icon-wrap {
@@ -1121,7 +1124,7 @@
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   pointer-events: none;
 }
 
@@ -1134,12 +1137,12 @@
   gap: 10px;
   height: 40px;
   padding: 0 12px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 7px;
-  background: var(--qx-bg);
-  color: var(--qx-fg);
+  background: var(--qs-bg);
+  color: var(--qs-fg);
   font-size: 13px;
-  transition: border-color 140ms var(--qx-ease-out);
+  transition: border-color 140ms var(--qs-ease);
 }
 
 .qtk-select-box__value {
@@ -1166,7 +1169,7 @@
 
 .qtk-select-box__chevron {
   flex: 0 0 auto;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   pointer-events: none;
 }
 
@@ -1177,8 +1180,8 @@
   height: 100%;
   opacity: 0;
   cursor: pointer;
-  background: var(--qx-card);
-  color: var(--qx-fg);
+  background: var(--qs-surface-1);
+  color: var(--qs-fg);
   font: inherit;
 }
 
@@ -1198,12 +1201,12 @@
   padding: 2px 0;
   border: 0;
   background: transparent;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font: inherit;
   font-size: 12.5px;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 140ms var(--qx-ease-out), transform 120ms var(--qx-ease-out);
+  transition: color 140ms var(--qs-ease), transform 120ms var(--qs-ease);
 }
 
 .qtk-extra-btn:active {
@@ -1211,13 +1214,13 @@
 }
 
 .qtk-extra-btn[data-active='true'] {
-  color: var(--qx-fg);
+  color: var(--qs-fg);
 }
 
 .qtk-error {
   margin: 0;
   font-size: 12px;
-  color: var(--qx-red);
+  color: var(--qs-error);
 }
 
 .qtk-modal__foot {
@@ -1225,7 +1228,7 @@
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 26px;
-  border-top: 1px solid var(--qx-border);
+  border-top: 1px solid var(--qs-border);
 }
 
 @media (max-width: 600px) {
@@ -1252,19 +1255,19 @@
   max-width: 100vw;
   display: flex;
   flex-direction: column;
-  background: var(--qx-card);
-  border-left: 1px solid var(--qx-border);
-  color: var(--qx-fg);
+  background: var(--qs-surface-1);
+  border-left: 1px solid var(--qs-border);
+  color: var(--qs-fg);
   box-shadow: var(--qtk-drawer-shadow);
 }
 
 .qtk-drawer:not(.animate__animated) {
-  animation: qtk-drawer-in 210ms var(--qx-ease-drawer);
+  animation: qtk-drawer-in 210ms var(--qs-ease);
 }
 
 .qtk-drawer__head {
   padding: 20px 24px 18px;
-  border-bottom: 1px solid var(--qx-border);
+  border-bottom: 1px solid var(--qs-border);
 }
 
 .qtk-drawer__top {
@@ -1276,7 +1279,7 @@
 
 .qtk-drawer__crumb {
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1286,7 +1289,7 @@
   font-weight: 600;
   line-height: 27px;
   letter-spacing: -0.015em;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   overflow-wrap: anywhere;
   min-width: 0;
 }
@@ -1311,8 +1314,8 @@
   height: 100%;
   opacity: 0;
   cursor: pointer;
-  background: var(--qx-card);
-  color: var(--qx-fg);
+  background: var(--qs-surface-1);
+  color: var(--qs-fg);
 }
 
 .qtk-drawer__body {
@@ -1329,7 +1332,7 @@
   margin: 0 0 12px;
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
 }
 
 .qtk-info-list {
@@ -1347,20 +1350,20 @@
 }
 
 .qtk-info-row dt {
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-info-row dd {
   margin: 0;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .qtk-drawer__divider {
   border: 0;
-  border-top: 1px solid var(--qx-border);
+  border-top: 1px solid var(--qs-border);
   margin: 0;
 }
 
@@ -1368,7 +1371,7 @@
   margin: 0;
   font-size: 13px;
   line-height: 20px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-drawer__tabs {
@@ -1409,12 +1412,12 @@
 
 .qtk-comment__author {
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
 }
 
 .qtk-comment__time {
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1422,7 +1425,7 @@
   margin: 0;
   font-size: 12.5px;
   line-height: 19px;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
 }
 
 .qtk-comment-form {
@@ -1441,9 +1444,9 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--qx-amber-text);
+  color: var(--qs-on-brand);
   cursor: pointer;
-  transition: background-color 140ms var(--qx-ease-out), transform 120ms var(--qx-ease-out);
+  transition: background-color 140ms var(--qs-ease), transform 120ms var(--qs-ease);
 }
 
 .qtk-comment-send:active:not(:disabled) {
@@ -1458,7 +1461,7 @@
 .qtk-drawer__empty {
   margin: 0;
   font-size: 12.5px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   line-height: 19px;
 }
 
@@ -1486,11 +1489,11 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 7px;
-  background: var(--qx-bg);
+  background: var(--qs-bg);
   font-size: 12.5px;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
 }
 
 .qtk-drawer__foot {
@@ -1499,13 +1502,13 @@
   justify-content: space-between;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid var(--qx-border);
-  background: var(--qx-card);
+  border-top: 1px solid var(--qs-border);
+  background: var(--qs-surface-1);
 }
 
 .qtk-drawer__updated {
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-modal:focus,
@@ -1515,64 +1518,64 @@
 
 @media (hover: hover) and (pointer: fine) {
   .qtk-row-more:hover {
-    background: var(--qx-hover);
-    color: var(--qx-fg);
+    background: var(--qs-state-hover);
+    color: var(--qs-fg);
   }
 
   .qtk-row-menu__item:hover {
-    background: var(--qx-hover);
-    color: var(--qx-fg);
+    background: var(--qs-state-hover);
+    color: var(--qs-fg);
   }
 
   .qtk-row-menu__item--danger:hover {
-    color: var(--qx-red);
+    color: var(--qs-error);
   }
 
   .qtk-task-card:hover {
-    border-color: var(--qx-fg-2);
+    border-color: var(--qs-fg-secondary);
   }
 
   .qtk-pager__btn:hover:not(:disabled) {
-    background: var(--qx-hover);
-    color: var(--qx-fg);
+    background: var(--qs-state-hover);
+    color: var(--qs-fg);
   }
 
   .qtk-mine-row:hover {
-    background: var(--qx-hover);
+    background: var(--qs-state-hover);
   }
 
   .qtk-mine-check:hover {
-    color: var(--qx-fg);
+    color: var(--qs-fg);
   }
 
   .qtk-mine-more:hover {
-    color: var(--qx-fg);
+    color: var(--qs-fg);
   }
 
   .qtk-cal-day:not([aria-pressed='true']):hover .qtk-cal-day__num {
-    background: var(--qx-hover);
+    background: var(--qs-state-hover);
   }
   .qtk-cal-day[aria-pressed='true']:hover .qtk-cal-day__num {
-    background: var(--qx-amber-hover);
-    border-color: var(--qx-amber-hover);
-    color: var(--qx-on-amber);
+    background: var(--qs-brand-hover);
+    border-color: var(--qs-brand-hover);
+    color: var(--qs-on-brand);
   }
 
   .qtk-proj-card:hover {
-    border-color: var(--qx-amber);
+    border-color: var(--qs-brand);
   }
 
   .qtk-modal__close:hover {
-    background: var(--qx-hover);
-    color: var(--qx-fg);
+    background: var(--qs-state-hover);
+    color: var(--qs-fg);
   }
 
   .qtk-extra-btn:hover {
-    color: var(--qx-fg);
+    color: var(--qs-fg);
   }
 
   .qtk-comment-send:hover:not(:disabled) {
-    background: var(--qx-hover);
+    background: var(--qs-state-hover);
   }
 }
 
@@ -1591,7 +1594,7 @@
   .qtk-comment-send,
   .qtk-pager__btn
 ):focus-visible {
-  outline: 2px solid var(--qx-amber);
+  outline: 2px solid var(--qs-brand);
   outline-offset: 2px;
 }
 
@@ -1673,13 +1676,13 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
 }
 
 .qtk-overview-card__head p {
   margin: 4px 0 0;
   font-size: 12.5px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qtk-overview-link {
@@ -1688,7 +1691,7 @@
   gap: 6px;
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--qx-amber-text);
+  color: var(--qs-on-brand);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -1713,20 +1716,20 @@
   justify-content: space-between;
   gap: 8px;
   font-size: 13px;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 .qtk-overview-fill {
   height: 100%;
   border-radius: inherit;
-  transition: width 200ms var(--qx-ease-out);
+  transition: width 200ms var(--qs-ease);
 }
 
-.qtk-overview-fill--blue { background: var(--qx-amber); }
+.qtk-overview-fill--blue { background: var(--qs-brand); }
 .qtk-overview-fill--amber { background: #d99b26; }
-.qtk-overview-fill--green { background: var(--qx-green); }
-.qtk-overview-fill--red { background: var(--qx-red); }
+.qtk-overview-fill--green { background: var(--qs-success); }
+.qtk-overview-fill--red { background: var(--qs-error); }
 
 .qtk-overview-list,
 .qtk-overview-load {
@@ -1744,19 +1747,19 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--qx-border-soft);
+  border: 1px solid var(--qs-border);
   border-radius: 6px;
-  background: var(--qx-card-2);
+  background: var(--qs-surface-2);
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 150ms var(--qx-ease-out), border-color 150ms var(--qx-ease-out);
+  transition: background-color 150ms var(--qs-ease), border-color 150ms var(--qs-ease);
 }
 
 .qtk-overview-item:hover {
-  background: var(--qx-hover);
-  border-color: var(--qx-border);
+  background: var(--qs-state-hover);
+  border-color: var(--qs-border);
 }
 
 .qtk-overview-item__main {
@@ -1768,7 +1771,7 @@
 .qtk-overview-item__title {
   font-size: 13.5px;
   font-weight: 500;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1776,7 +1779,7 @@
 
 .qtk-overview-item__sub {
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1793,13 +1796,13 @@
   gap: 10px;
   padding: 8px 10px;
   border-radius: 6px;
-  background: var(--qx-card-2);
+  background: var(--qs-surface-2);
 }
 
 .qtk-overview-load-name {
   font-size: 13.5px;
   font-weight: 500;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1809,7 +1812,7 @@
 
 .qtk-overview-load-count {
   font-size: 12.5px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1817,7 +1820,7 @@
 .qtk-overview-empty {
   margin: 0;
   font-size: 13px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1826,3 +1829,4 @@
     transition: none;
   }
 }
+

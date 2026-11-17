@@ -96,7 +96,7 @@ describe('Global Ctrl+K', () => {
     const labelTexts = Array.from(palette().querySelectorAll('.qp-group__label')).map(
       (node) => node.textContent,
     );
-    expect(labelTexts.slice(0, 3)).toEqual(['GẦN ĐÂY', 'CHUYỂN ỨNG DỤNG', 'THAO TÁC NHANH']);
+    expect(labelTexts.slice(0, 3)).toEqual(['Đi tới', 'Chuyển ứng dụng', 'Thao tác nhanh']);
 
     const options = within(palette()).getAllByRole('option');
     for (const option of options) {
@@ -105,7 +105,7 @@ describe('Global Ctrl+K', () => {
     expect(palette().textContent ?? '').not.toMatch(/4W|WHO|PENDING|Presign|Audit trail|DIRECTOR/);
   });
 
-  it('navigates with an entry from GẦN ĐÂY', async () => {
+  it('navigates with an entry from Đi tới', async () => {
     const user = userEvent.setup();
     renderShell();
     await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
@@ -157,5 +157,79 @@ describe('Global Ctrl+K', () => {
     await user.click(within(palette()).getByRole('button', { name: 'Thử lại' }));
     expect(await within(palette()).findByRole('option', { name: /Báo cáo quý IV/ })).toBeInTheDocument();
     expect(searchCalls).toBe(2);
+  });
+
+  it('filters Chuyển ứng dụng in Ctrl+K according to EMPLOYEE module permissions', async () => {
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider>
+        <AppWorkspaceShell
+          me={{
+            id: 'u-emp',
+            name: 'Nhân viên A',
+            email: 'emp@qsystem.vn',
+            role: 'EMPLOYEE',
+            departmentId: null,
+            managedDepartmentIds: [],
+          }}
+        >
+          <p>Nội dung công việc</p>
+        </AppWorkspaceShell>
+      </ThemeProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
+    const appsGroup = within(palette()).getByRole('group', { name: 'Chuyển ứng dụng' });
+    expect(within(appsGroup).getByRole('option', { name: /QTask/ })).toBeInTheDocument();
+    expect(within(appsGroup).getByRole('option', { name: /QHRM/ })).toBeInTheDocument();
+    expect(within(appsGroup).getByRole('option', { name: /QSocial/ })).toBeInTheDocument();
+    expect(within(appsGroup).queryByRole('option', { name: /QCRM/ })).toBeNull();
+  });
+
+  it('supports ArrowDown/ArrowUp/Enter navigation and ignores IME composing inside the palette input', async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
+
+    const input = within(palette()).getByRole('combobox');
+    const options = within(palette()).getAllByRole('option');
+    expect(options[0]).toHaveAttribute('aria-selected', 'true');
+
+    // IME composing Enter/ArrowDown must be ignored.
+    const composingArrowDown = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true });
+    Object.defineProperty(composingArrowDown, 'isComposing', { value: true });
+    input.dispatchEvent(composingArrowDown);
+    await Promise.resolve();
+    expect(options[0]).toHaveAttribute('aria-selected', 'true');
+
+    const composingEnter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    Object.defineProperty(composingEnter, 'isComposing', { value: true });
+    input.dispatchEvent(composingEnter);
+    await Promise.resolve();
+    expect(push).not.toHaveBeenCalled();
+
+    await user.keyboard('{ArrowDown}');
+    expect(options[1]).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowUp}');
+    expect(options[0]).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(push).toHaveBeenCalledWith('/');
+  });
+
+  it('uses Lucide module icons, Esc keycap, and clean copy without slop badges or animate classes', async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await user.click(screen.getByRole('button', { name: /Tìm mọi thứ trong QSystem/ }));
+
+    const dialog = palette();
+    expect(dialog.querySelector('.qp-app-badge')).toBeNull();
+    expect(dialog.querySelector('.animate__animated')).toBeNull();
+    expect(dialog.textContent ?? '').not.toContain('QSystem Command');
+    expect(dialog.querySelector('kbd.qp-esc')).toHaveTextContent('Esc');
+    expect(dialog).toHaveTextContent('Esc để đóng');
+
+    const appsGroup = within(dialog).getByRole('group', { name: 'Chuyển ứng dụng' });
+    const qtaskOption = within(appsGroup).getByRole('option', { name: /QTask/ });
+    expect(qtaskOption.querySelector('svg')).not.toBeNull();
   });
 });

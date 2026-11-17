@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -192,5 +194,40 @@ describe('DataTable', () => {
     expect(onRowClick).toHaveBeenCalledWith(rows[0], 0);
     fireEvent.keyDown(firstRow, { key: ' ' });
     expect(onRowClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders Lucide sort icons reflecting sort direction and keeps sentence-case headers in CSS', async () => {
+    const user = userEvent.setup();
+    render(<DataTable data={rows} columns={columns} sortable />);
+    const sortButton = screen.getByRole('button', { name: /sắp xếp theo name/i });
+    const iconBefore = sortButton.querySelector('svg.qs-table__sort-icon');
+    expect(iconBefore).not.toBeNull();
+    expect(iconBefore).toHaveAttribute('aria-hidden', 'true');
+    expect(iconBefore).toHaveAttribute('stroke-width', '1.5');
+    const beforeHtml = iconBefore?.innerHTML;
+
+    await user.click(sortButton);
+    const iconAsc = sortButton.querySelector('svg.qs-table__sort-icon');
+    expect(iconAsc?.innerHTML).not.toBe(beforeHtml);
+
+    await user.click(sortButton);
+    const iconDesc = sortButton.querySelector('svg.qs-table__sort-icon');
+    expect(iconDesc?.innerHTML).not.toBe(iconAsc?.innerHTML);
+
+    const css = readFileSync(join(__dirname, '..', 'src', 'styles.css'), 'utf8');
+    expect(css).toMatch(/\.qs-table th\s*\{[^}]*text-transform:\s*none/);
+  });
+
+  it('disables J/K navigation when enableJKNavigation is false while preserving Arrow keys', () => {
+    render(<DataTable data={rows} columns={columns} enableJKNavigation={false} />);
+    const firstRow = screen.getByText('John Doe').closest('tr')!;
+    const secondRow = screen.getByText('Jane Smith').closest('tr')!;
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: 'j' });
+    expect(firstRow).toHaveFocus();
+    fireEvent.keyDown(firstRow, { key: 'ArrowDown' });
+    expect(secondRow).toHaveFocus();
+    fireEvent.keyDown(secondRow, { key: 'k' });
+    expect(secondRow).toHaveFocus();
   });
 });

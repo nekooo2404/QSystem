@@ -3,10 +3,22 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, FileText, Folder, Plus, Search, SquareCheck, Sun, Users } from 'lucide-react';
+import {
+  Briefcase,
+  ChevronRight,
+  FileText,
+  Folder,
+  MessageSquare,
+  Plus,
+  Search,
+  SquareCheck,
+  Sun,
+  Users,
+} from 'lucide-react';
 import { toast, useCommandPaletteHotkey, useFloatingLayer } from '@qsystem/ui';
-import { SearchResultSchema } from '@qsystem/contracts';
+import { SearchResultSchema, type Role } from '@qsystem/contracts';
 import { apiFetch } from '../../lib/api/client';
+import { canAccessModule } from '../shell/AppLauncher';
 import './palette.css';
 
 const DEBOUNCE_MS = 250;
@@ -63,17 +75,18 @@ interface LocalStoreConfig {
   hint: string;
   href: (label: string) => string;
   kind: 'task' | 'folder' | 'user' | 'doc';
+  moduleId?: string;
 }
 
 const LOCAL_STORE_CONFIGS: readonly LocalStoreConfig[] = [
-  { key: 'qsystem:tasks:v1', hint: 'QTask', href: (q) => `/?q=${encodeURIComponent(q)}`, kind: 'task' },
-  { key: 'qsystem:projects:v1', hint: 'Dự án', href: (q) => `/projects?q=${encodeURIComponent(q)}`, kind: 'folder' },
-  { key: 'qsystem:org:users:v1', hint: 'Nhân sự', href: (q) => `/org?q=${encodeURIComponent(q)}`, kind: 'user' },
-  { key: 'qsystem:org:depts:v1', hint: 'Phòng ban', href: (q) => `/org?q=${encodeURIComponent(q)}`, kind: 'folder' },
-  { key: 'qsystem:crm:customers:v1', hint: 'QCRM', href: (q) => `/crm?q=${encodeURIComponent(q)}`, kind: 'user' },
+  { key: 'qsystem:tasks:v1', hint: 'QTask', href: (q) => `/?q=${encodeURIComponent(q)}`, kind: 'task', moduleId: 'qtask' },
+  { key: 'qsystem:projects:v1', hint: 'Dự án', href: (q) => `/projects?q=${encodeURIComponent(q)}`, kind: 'folder', moduleId: 'qtask' },
+  { key: 'qsystem:org:users:v1', hint: 'Nhân sự', href: (q) => `/org?q=${encodeURIComponent(q)}`, kind: 'user', moduleId: 'qhrm' },
+  { key: 'qsystem:org:depts:v1', hint: 'Phòng ban', href: (q) => `/org?q=${encodeURIComponent(q)}`, kind: 'folder', moduleId: 'qhrm' },
+  { key: 'qsystem:crm:customers:v1', hint: 'QCRM', href: (q) => `/crm?q=${encodeURIComponent(q)}`, kind: 'user', moduleId: 'qcrm' },
   { key: 'qsystem:files:list:v1', hint: 'Tài liệu', href: (q) => `/files?q=${encodeURIComponent(q)}`, kind: 'doc' },
   { key: 'qsystem:files:folders:v1', hint: 'Thư mục', href: (q) => `/files?q=${encodeURIComponent(q)}`, kind: 'folder' },
-  { key: 'qsystem:social:posts:v1', hint: 'QSocial', href: (q) => `/social?q=${encodeURIComponent(q)}`, kind: 'doc' },
+  { key: 'qsystem:social:posts:v1', hint: 'QSocial', href: (q) => `/social?q=${encodeURIComponent(q)}`, kind: 'doc', moduleId: 'qsocial' },
 ];
 
 function extractRecordItems(raw: unknown): Array<Record<string, unknown>> {
@@ -88,7 +101,12 @@ function extractRecordItems(raw: unknown): Array<Record<string, unknown>> {
   return [];
 }
 
-function searchWorkspaceRecords(query: string, go: (href: string) => void): PaletteItem[] {
+function searchWorkspaceRecords(
+  query: string,
+  go: (href: string) => void,
+  role?: Role,
+  allowedModuleIds?: readonly string[],
+): PaletteItem[] {
   const needle = query.trim();
   const demoMode = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
   if (!needle || typeof window === 'undefined' || process.env.NODE_ENV === 'test' || !demoMode) return [];
@@ -96,6 +114,7 @@ function searchWorkspaceRecords(query: string, go: (href: string) => void): Pale
   const seen = new Set<string>();
 
   for (const cfg of LOCAL_STORE_CONFIGS) {
+    if (cfg.moduleId && !canAccessModule(cfg.moduleId, role, allowedModuleIds)) continue;
     let parsed: unknown;
     try {
       const raw = window.localStorage.getItem(cfg.key);
@@ -124,20 +143,20 @@ function searchWorkspaceRecords(query: string, go: (href: string) => void): Pale
 
       const iconNode =
         cfg.kind === 'task' ? (
-          <SquareCheck size={16} strokeWidth={1.7} aria-hidden="true" />
+          <SquareCheck size={16} strokeWidth={1.5} aria-hidden="true" />
         ) : cfg.kind === 'folder' ? (
-          <Folder size={16} strokeWidth={1.7} aria-hidden="true" />
+          <Folder size={16} strokeWidth={1.5} aria-hidden="true" />
         ) : cfg.kind === 'user' ? (
-          <Users size={16} strokeWidth={1.7} aria-hidden="true" />
+          <Users size={16} strokeWidth={1.5} aria-hidden="true" />
         ) : (
-          <FileText size={16} strokeWidth={1.7} aria-hidden="true" />
+          <FileText size={16} strokeWidth={1.5} aria-hidden="true" />
         );
 
       matchesList.push({
         id: itemId,
         label,
         hint: cfg.hint,
-        icon: <span className="qp-row__icon qp-row__icon--amber">{iconNode}</span>,
+        icon: <span className="qp-row__icon">{iconNode}</span>,
         onSelect: () => go(cfg.href(baseTitle)),
       });
 
@@ -151,9 +170,11 @@ export interface GlobalCommandHostProps {
   /** Palette visibility is shared with the shell's top bar search button. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  role?: Role;
+  allowedModuleIds?: readonly string[];
 }
 
-export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps) {
+export function GlobalCommandHost({ open, onOpenChange, role, allowedModuleIds }: GlobalCommandHostProps) {
   const router = useRouter();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -249,96 +270,102 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
     const base: PaletteGroup[] = [
       {
         id: 'recent',
-        label: 'GẦN ĐÂY',
+        label: 'Đi tới',
         items: [
           {
             id: 'recent-org',
             label: 'Danh bạ nhân sự',
             hint: 'QHRM',
-            icon: <span className="qp-row__icon qp-row__icon--amber"><Users size={16} strokeWidth={1.7} aria-hidden="true" /></span>,
+            icon: <span className="qp-row__icon"><Users size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/org'),
           },
           {
             id: 'recent-tasks',
             label: 'Tất cả công việc',
             hint: 'QTask',
-            icon: <span className="qp-row__icon qp-row__icon--amber"><SquareCheck size={16} strokeWidth={1.7} aria-hidden="true" /></span>,
+            icon: <span className="qp-row__icon"><SquareCheck size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/'),
           },
           {
             id: 'recent-project',
             label: 'Dự án QSystem Core',
             hint: 'Dự án',
-            icon: <span className="qp-row__icon qp-row__icon--amber"><Folder size={16} strokeWidth={1.7} aria-hidden="true" /></span>,
+            icon: <span className="qp-row__icon"><Folder size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/projects'),
           },
         ],
       },
       {
         id: 'apps',
-        label: 'CHUYỂN ỨNG DỤNG',
+        label: 'Chuyển ứng dụng',
         items: [
           {
+            moduleId: 'qtask',
             id: 'app-qtask',
             label: 'QTask',
             hint: 'Công việc & dự án',
             boldLabel: true,
             hasChevron: true,
-            icon: <span className="qp-app-badge">k</span>,
+            icon: <span className="qp-row__icon"><SquareCheck size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/'),
           },
           {
+            moduleId: 'qhrm',
             id: 'app-qhrm',
             label: 'QHRM',
             hint: 'Nhân sự & tổ chức',
             boldLabel: true,
             hasChevron: true,
-            icon: <span className="qp-app-badge">M</span>,
+            icon: <span className="qp-row__icon"><Users size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/org'),
           },
           {
+            moduleId: 'qcrm',
             id: 'app-qcrm',
             label: 'QCRM',
             hint: 'Khách hàng & bán hàng',
             boldLabel: true,
             hasChevron: true,
-            icon: <span className="qp-app-badge">M</span>,
+            icon: <span className="qp-row__icon"><Briefcase size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/crm'),
           },
           {
+            moduleId: 'qsocial',
             id: 'app-qsocial',
             label: 'QSocial',
             hint: 'Giao tiếp nội bộ',
             boldLabel: true,
             hasChevron: true,
-            icon: <span className="qp-app-badge">I</span>,
+            icon: <span className="qp-row__icon"><MessageSquare size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/social'),
           },
-        ],
+        ]
+          .filter((entry) => canAccessModule(entry.moduleId, role, allowedModuleIds))
+          .map(({ moduleId: _moduleId, ...item }) => item),
       },
       {
         id: 'actions',
-        label: 'THAO TÁC NHANH',
+        label: 'Thao tác nhanh',
         items: [
           {
             id: 'action-add-task',
             label: 'Tạo công việc mới',
             keywords: 'giao việc mới tạo công việc',
-            icon: <span className="qp-row__icon"><Plus size={16} strokeWidth={1.7} aria-hidden="true" /></span>,
+            icon: <span className="qp-row__icon"><Plus size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/?giao-viec=1'),
           },
           {
             id: 'action-add-person',
             label: 'Thêm nhân sự',
             keywords: 'thêm nhân sự mới nhân viên',
-            icon: <span className="qp-row__icon"><Users size={16} strokeWidth={1.7} aria-hidden="true" /></span>,
+            icon: <span className="qp-row__icon"><Users size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/org?them-nhan-su=1'),
           },
           {
             id: 'action-toggle-theme',
             label: 'Chuyển giao diện Sáng / Tối',
             keywords: 'theme dark light sáng tối giao diện',
-            icon: <span className="qp-row__icon qp-row__icon--amber"><Sun size={16} strokeWidth={1.7} aria-hidden="true" /></span>,
+            icon: <span className="qp-row__icon"><Sun size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: toggleTheme,
           },
         ],
@@ -348,22 +375,22 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
     if (hits.length > 0) {
       base.unshift({
         id: 'documents',
-        label: 'TÀI LIỆU',
+        label: 'Tài liệu',
         items: hits.map((hit) => ({
           id: `hit-${hit.id}`,
           label: hit.title,
           hint: 'Tài liệu',
-          icon: <span className="qp-row__icon qp-row__icon--amber"><FileText size={16} strokeWidth={1.7} aria-hidden="true" /></span>,
+          icon: <span className="qp-row__icon"><FileText size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
           onSelect: () => go(`/files?q=${encodeURIComponent(hit.title)}`),
         })),
       });
     }
 
-    const localHits = searchWorkspaceRecords(query, go);
+    const localHits = searchWorkspaceRecords(query, go, role, allowedModuleIds);
     if (localHits.length > 0) {
       base.unshift({
         id: 'workspace-local',
-        label: 'DỮ LIỆU WORKSPACE',
+        label: 'Dữ liệu workspace',
         items: localHits,
       });
     }
@@ -377,7 +404,7 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
             : group.items.filter((item) => matches(item, query)),
       }))
       .filter((group) => group.items.length > 0);
-  }, [go, hits, query, toggleTheme]);
+  }, [allowedModuleIds, go, hits, query, role, toggleTheme]);
 
   const flat = React.useMemo(() => groups.flatMap((group) => group.items), [groups]);
   const currentIndex = Math.min(activeIndex, Math.max(0, flat.length - 1));
@@ -409,7 +436,7 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
 
   return createPortal(
     <div
-      className="qp-overlay animate__animated animate__fadeIn animate__faster"
+      className="qp-overlay"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close(false);
       }}
@@ -420,37 +447,37 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
-        className="qp-modal animate__animated animate__fadeIn animate__faster"
+        className="qp-modal"
       >
         <h2 id={headingId} className="qp-visually-hidden">
           Tìm nhanh
         </h2>
 
         <div className="qp-search">
-          <Search className="qp-search__icon" size={17} strokeWidth={1.7} aria-hidden="true" />
+          <Search className="qp-search__icon" size={18} strokeWidth={1.5} aria-hidden="true" />
           <input
             ref={inputRef}
             role="combobox"
             aria-expanded="true"
             aria-controls="qp-cmdk-list"
             aria-autocomplete="list"
-            aria-label="Tìm công việc, nhân sự, tài liệu hoặc ứng dụng"
+            aria-label="Tìm công việc, nhân sự, tài liệu"
             aria-activedescendant={flat[currentIndex] ? `qp-cmdk-option-${flat[currentIndex].id}` : undefined}
             className="qp-input"
-            placeholder="Tìm công việc, nhân sự, tài liệu hoặc ứng dụng..."
+            placeholder="Tìm công việc, nhân sự, tài liệu"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleInputKeyDown}
           />
-          <span className="qp-esc" aria-hidden="true">ESC</span>
+          <kbd className="qp-esc" aria-hidden="true">Esc</kbd>
         </div>
 
         {error ? (
-          <div className="qp-recovery animate__animated animate__shakeX animate__faster">
+          <div className="qp-recovery">
             <p role="alert">{error}</p>
             <button
               type="button"
-              className="qx-btn qx-btn--sm"
+              className="qs-btn qs-btn--secondary qs-btn--sm"
               disabled={loading}
               onClick={() => { if (!loading) setAttempt((value) => value + 1); }}
             >
@@ -460,7 +487,7 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
         ) : null}
 
         <div id="qp-cmdk-list" role="listbox" aria-label="Kết quả tìm nhanh" className="qp-results">
-          {loading ? <p className="qp-status">Đang tìm kiếm…</p> : null}
+          {loading ? <p className="qp-status">Đang tìm kiếm</p> : null}
           {!loading && !error && flat.length === 0 ? (
             <p className="qp-status">Không tìm thấy kết quả</p>
           ) : null}
@@ -489,7 +516,7 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
                     {item.hint || item.hasChevron ? (
                       <span className="qp-row__hint">
                         {item.hint}
-                        {item.hasChevron ? <ChevronRight size={14} strokeWidth={1.6} aria-hidden="true" /> : null}
+                        {item.hasChevron ? <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" /> : null}
                       </span>
                     ) : null}
                   </div>
@@ -503,9 +530,8 @@ export function GlobalCommandHost({ open, onOpenChange }: GlobalCommandHostProps
           <div className="qp-footer__hints">
             <span>↑ ↓ Di chuyển</span>
             <span>Enter để mở</span>
-            <span>ESC để đóng</span>
+            <span>Esc để đóng</span>
           </div>
-          <span className="qp-footer__brand">QSystem Command</span>
         </div>
       </div>
     </div>,

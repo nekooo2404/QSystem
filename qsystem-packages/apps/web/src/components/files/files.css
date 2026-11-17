@@ -1,40 +1,12 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 · app: web console · genre: modern-minimal · theme: console · macrostructure: workbench · states: 8 · contrast: pass (40–41) · mobile: pass (34, 49, 50–57) */
 /* Files workspace (/files, ref 08). Prefix: qfl */
 
-:root,
-[data-theme='dark'] {
-  --qfl-pop-shadow: 0 8px 16px rgb(0 0 0 / 0.34);
-  --qfl-modal-shadow: 0 16px 32px rgb(0 0 0 / 0.42);
-  --qfl-overlay-bg: rgb(6 8 12 / 0.72);
-  --qfl-json-fg: var(--qx-amber);
-  --qfl-amber-link: var(--qx-amber-text, #7ba2d6);
-}
-
-[data-theme='light'] {
-  --qfl-pop-shadow: 0 8px 16px rgb(24 24 27 / 0.12);
-  --qfl-modal-shadow: 0 14px 28px rgb(24 24 27 / 0.14);
-  --qfl-overlay-bg: rgb(24 24 27 / 0.36);
-  --qfl-json-fg: #854d0e;
-  --qfl-amber-link: var(--qx-amber-text, #264c80);
-}
-
-@keyframes qfl-pop-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 .qfl__btn-sec {
-  background: var(--qx-card);
+  background: var(--qs-surface-1);
 }
 
 label.qx-btn:focus-within {
-  outline: 2px solid var(--qfl-amber-link);
+  outline: 2px solid var(--qs-focus);
   outline-offset: 2px;
 }
 
@@ -58,7 +30,7 @@ label.qx-btn:focus-within {
 
 .qfl__search {
   width: 215px;
-  background: var(--qx-card);
+  background: var(--qs-surface-1);
 }
 
 /* --- Recent folders ------------------------------------------------------ */
@@ -72,7 +44,7 @@ label.qx-btn:focus-within {
   font-size: 13.5px;
   font-weight: 600;
   line-height: 1.4;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   overflow-wrap: anywhere;
   min-width: 0;
 }
@@ -80,7 +52,7 @@ label.qx-btn:focus-within {
 .qfl__folders {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
 .qfl__folder {
@@ -88,18 +60,18 @@ label.qx-btn:focus-within {
   align-items: center;
   gap: 14px;
   width: 100%;
-  padding: 17px 18px;
+  padding: 20px;
   font: inherit;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   text-align: left;
   cursor: pointer;
-  transition: background-color 150ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    border-color 150ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 120ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: background-color 150ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    border-color 150ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 120ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .qfl__folder:not(:disabled):active {
-  transform: scale(0.985);
+  transform: translateY(1px);
 }
 
 .qfl__folder:disabled {
@@ -108,13 +80,13 @@ label.qx-btn:focus-within {
 }
 
 .qfl__folder[aria-pressed='true'] {
-  border-color: var(--qx-amber);
-  background: var(--qx-card-2);
+  border-color: var(--qs-brand);
+  background: var(--qs-surface-2);
 }
 
 .qfl__folder-icon {
   flex: 0 0 auto;
-  color: var(--qfl-amber-link);
+  color: var(--qs-focus);
 }
 
 .qfl__folder-meta {
@@ -128,7 +100,7 @@ label.qx-btn:focus-within {
   font-size: 13.5px;
   font-weight: 600;
   line-height: 1.3;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -137,18 +109,19 @@ label.qx-btn:focus-within {
 .qfl__folder-meta span {
   font-size: 11.5px;
   line-height: 1.3;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .qfl__folder-chev {
   flex: 0 0 auto;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 /* --- File list card ------------------------------------------------------ */
 .qfl__card .qx-card__head {
-  padding: 15px 19px 14px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--qs-border);
 }
 
 .qfl__card-actions {
@@ -159,17 +132,17 @@ label.qx-btn:focus-within {
 }
 
 .qfl__tool-btn {
-  background: var(--qx-card-2);
+  background: var(--qs-surface-2);
   font-size: 12px;
   font-weight: 500;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
   white-space: nowrap;
 }
 
 .qfl__tool-btn[aria-expanded='true'],
 .qfl__tool-btn[aria-pressed='true'] {
-  border-color: var(--qx-amber);
-  color: var(--qx-fg);
+  border-color: var(--qs-brand);
+  color: var(--qs-fg);
 }
 
 .qfl__filter-pop {
@@ -181,11 +154,11 @@ label.qx-btn:focus-within {
   display: grid;
   gap: 2px;
   padding: 6px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 8px;
-  background: var(--qx-card);
-  box-shadow: var(--qfl-pop-shadow);
-  animation: qfl-pop-in 150ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  background: var(--qs-surface-1);
+  box-shadow: var(--qs-shadow-floating);
+  animation: none;
 }
 
 .qfl__filter-opt,
@@ -199,15 +172,15 @@ label.qx-btn:focus-within {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
   font: inherit;
   font-size: 12px;
   white-space: nowrap;
   text-align: left;
   cursor: pointer;
-  transition: background-color 120ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    color 120ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 110ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: background-color 120ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    color 120ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 110ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .qfl__row-opt {
@@ -216,17 +189,17 @@ label.qx-btn:focus-within {
 
 .qfl__filter-opt:not(:disabled):active,
 .qfl__row-opt:not(:disabled):active {
-  transform: scale(0.97);
+  transform: translateY(1px);
 }
 
 .qfl__filter-opt[aria-checked='true'] {
-  background: var(--qx-active);
-  color: var(--qx-fg);
+  background: var(--qs-state-selected);
+  color: var(--qs-fg);
   font-weight: 600;
 }
 
 .qfl__row-opt--danger {
-  color: var(--qx-red);
+  color: var(--qs-error);
 }
 
 /* --- Table --------------------------------------------------------------- */
@@ -242,7 +215,7 @@ label.qx-btn:focus-within {
 
 .qfl__table.qx-table thead th {
   height: 39px;
-  border-top: 1px solid var(--qx-border);
+  border-top: 1px solid var(--qs-border);
   white-space: nowrap;
 }
 
@@ -321,33 +294,33 @@ label.qx-btn:focus-within {
 }
 
 .qfl__type-icon[data-kind='PDF'] {
-  color: var(--qx-red);
-  background: color-mix(in srgb, var(--qx-red) 13%, transparent);
-  border-color: color-mix(in srgb, var(--qx-red) 28%, transparent);
+  color: var(--qs-error);
+  background: color-mix(in srgb, var(--qs-error) 13%, transparent);
+  border-color: color-mix(in srgb, var(--qs-error) 28%, transparent);
 }
 
 .qfl__type-icon[data-kind='XLSX'] {
-  color: var(--qx-green);
-  background: color-mix(in srgb, var(--qx-green) 13%, transparent);
-  border-color: color-mix(in srgb, var(--qx-green) 28%, transparent);
+  color: var(--qs-success);
+  background: color-mix(in srgb, var(--qs-success) 13%, transparent);
+  border-color: color-mix(in srgb, var(--qs-success) 28%, transparent);
 }
 
 .qfl__type-icon[data-kind='DOCX'] {
-  color: var(--qx-blue);
-  background: color-mix(in srgb, var(--qx-blue) 13%, transparent);
-  border-color: color-mix(in srgb, var(--qx-blue) 28%, transparent);
+  color: var(--qs-info);
+  background: color-mix(in srgb, var(--qs-info) 13%, transparent);
+  border-color: color-mix(in srgb, var(--qs-info) 28%, transparent);
 }
 
 .qfl__type-icon[data-kind='JSON'] {
-  color: var(--qfl-json-fg);
-  background: color-mix(in srgb, var(--qx-amber) 13%, transparent);
-  border-color: color-mix(in srgb, var(--qfl-json-fg) 28%, transparent);
+  color: var(--qs-brand);
+  background: color-mix(in srgb, var(--qs-brand) 13%, transparent);
+  border-color: color-mix(in srgb, var(--qs-brand) 28%, transparent);
 }
 
 .qfl__type-icon[data-kind='OTHER'] {
-  color: var(--qx-fg-2);
-  background: var(--qx-card-2);
-  border-color: var(--qx-border);
+  color: var(--qs-fg-secondary);
+  background: var(--qs-surface-2);
+  border-color: var(--qs-border);
 }
 
 .qfl__file-name {
@@ -357,23 +330,23 @@ label.qx-btn:focus-within {
   white-space: nowrap;
   font-size: 13px;
   font-weight: 600;
-  color: var(--qx-fg);
+  color: var(--qs-fg);
 }
 
 .qfl__star-tag {
   flex: 0 0 auto;
-  color: var(--qfl-amber-link);
+  color: var(--qs-focus);
 }
 
 .qfl__muted {
   font-size: 12px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .qfl__uploader {
   font-size: 12.5px;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
 }
 
 .qfl__row-wrap {
@@ -390,15 +363,15 @@ label.qx-btn:focus-within {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
   cursor: pointer;
-  transition: background-color 150ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    color 150ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 120ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: background-color 150ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    color 150ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 120ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .qfl__more:not(:disabled):active {
-  transform: scale(0.95);
+  transform: translateY(1px);
 }
 
 .qfl__more:disabled {
@@ -415,11 +388,11 @@ label.qx-btn:focus-within {
   display: grid;
   gap: 2px;
   padding: 5px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 8px;
-  background: var(--qx-card);
-  box-shadow: var(--qfl-pop-shadow);
-  animation: qfl-pop-in 150ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  background: var(--qs-surface-1);
+  box-shadow: var(--qs-shadow-floating);
+  animation: none;
 }
 
 .qfl__row-menu[data-up='true'] {
@@ -431,7 +404,7 @@ label.qx-btn:focus-within {
   padding: 28px 19px;
   text-align: center;
   font-size: 13px;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 /* --- Grid view (when toggled from Danh sách) ------------------------------ */
@@ -440,8 +413,8 @@ label.qx-btn:focus-within {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   padding: 16px 19px;
-  border-top: 1px solid var(--qx-border);
-  border-bottom: 1px solid var(--qx-border);
+  border-top: 1px solid var(--qs-border);
+  border-bottom: 1px solid var(--qs-border);
 }
 
 .qfl__grid-item {
@@ -449,19 +422,19 @@ label.qx-btn:focus-within {
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 8px;
-  background: var(--qx-card-2);
-  color: var(--qx-fg);
+  background: var(--qs-surface-2);
+  color: var(--qs-fg);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 140ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 120ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: background-color 140ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 120ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .qfl__grid-item:not(:disabled):active {
-  transform: scale(0.98);
+  transform: translateY(1px);
 }
 
 .qfl__grid-meta {
@@ -487,12 +460,12 @@ label.qx-btn:focus-within {
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: filter 140ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 120ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: filter 140ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 120ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .qfl__quota-btn:not(:disabled):active {
-  transform: scale(0.97);
+  transform: translateY(1px);
 }
 
 /* --- Modals -------------------------------------------------------------- */
@@ -503,7 +476,7 @@ label.qx-btn:focus-within {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: var(--qfl-overlay-bg);
+  background: var(--qs-scrim);
 }
 
 .qfl__modal {
@@ -512,10 +485,10 @@ label.qx-btn:focus-within {
   padding: 22px;
   border: 0;
   border-radius: 10px;
-  background: var(--qx-card);
-  color: var(--qx-fg);
-  box-shadow: var(--qfl-modal-shadow);
-  animation: qfl-pop-in 160ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  background: var(--qs-surface-1);
+  color: var(--qs-fg);
+  box-shadow: var(--qs-shadow-floating);
+  animation: none;
 }
 
 .qfl__modal h2 {
@@ -530,36 +503,36 @@ label.qx-btn:focus-within {
   margin: 6px 0 16px;
   font-size: 12.5px;
   line-height: 1.5;
-  color: var(--qx-muted);
+  color: var(--qs-fg-muted);
 }
 
 .qfl__modal-input {
   width: 100%;
   height: 40px;
   padding: 0 12px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 7px;
-  background: var(--qx-bg);
-  color: var(--qx-fg);
+  background: var(--qs-bg);
+  color: var(--qs-fg);
   font: inherit;
   font-size: 13px;
   outline: none;
-  transition: border-color 150ms var(--qx-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: border-color 150ms var(--qs-ease, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .qfl__modal-input:focus {
-  border-color: var(--qx-amber);
+  border-color: var(--qs-brand);
 }
 
 .qfl__quota-summary {
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border: 1px solid var(--qx-border);
+  border: 1px solid var(--qs-border);
   border-radius: 8px;
-  background: var(--qx-card-2);
+  background: var(--qs-surface-2);
   font-size: 12.5px;
-  color: var(--qx-fg-2);
+  color: var(--qs-fg-secondary);
 }
 
 .qfl__quota-row {
@@ -570,7 +543,7 @@ label.qx-btn:focus-within {
 }
 
 .qfl__quota-row strong {
-  color: var(--qx-fg);
+  color: var(--qs-fg);
 }
 
 .qfl__modal-foot {
@@ -584,25 +557,25 @@ label.qx-btn:focus-within {
 /* --- Hover & precision pointers ------------------------------------------ */
 @media (hover: hover) and (pointer: fine) {
   .qfl__btn-sec:not(:disabled):hover {
-    background: var(--qx-hover);
+    background: var(--qs-state-hover);
   }
   .qfl__folder:not(:disabled):hover {
-    background: var(--qx-hover);
+    background: var(--qs-state-hover);
   }
   .qfl__filter-opt:not(:disabled):hover,
   .qfl__row-opt:not(:disabled):hover {
-    background: var(--qx-hover);
-    color: var(--qx-fg);
+    background: var(--qs-state-hover);
+    color: var(--qs-fg);
   }
   .qfl__row-opt--danger:not(:disabled):hover {
-    color: var(--qx-red);
+    color: var(--qs-error);
   }
   .qfl__more:not(:disabled):hover {
-    background: var(--qx-hover);
-    color: var(--qx-fg);
+    background: var(--qs-state-hover);
+    color: var(--qs-fg);
   }
   .qfl__grid-item:not(:disabled):hover {
-    background: var(--qx-hover);
+    background: var(--qs-state-hover);
   }
   .qfl__quota-btn:not(:disabled):hover {
     filter: brightness(1.08);
@@ -620,7 +593,7 @@ label.qx-btn:focus-within {
   .qfl__quota-btn,
   .qfl__table tbody tr.is-clickable
 ):focus-visible {
-  outline: 2px solid var(--qfl-amber-link);
+  outline: 2px solid var(--qs-focus);
   outline-offset: 2px;
 }
 
@@ -669,3 +642,4 @@ label.qx-btn:focus-within {
     gap: 14px;
   }
 }
+

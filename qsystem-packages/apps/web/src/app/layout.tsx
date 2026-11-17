@@ -6,14 +6,14 @@ import './globals.css';
 
 const ibmPlexSans = IBM_Plex_Sans({
   subsets: ['latin', 'vietnamese'],
-  weight: ['400', '500', '600', '700'],
+  weight: ['400', '500', '600'],
   display: 'swap',
   variable: '--qs-font-sans',
 });
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ['latin', 'vietnamese'],
-  weight: ['500', '600', '700'],
+  weight: ['400', '500', '600'],
   display: 'swap',
   variable: '--qs-font-display',
 });

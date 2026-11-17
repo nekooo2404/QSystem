@@ -116,8 +116,8 @@ const SAMPLE_POSTS: FeedPost[] = [
     authorId: 'u-hr-01',
     author: 'Lan Anh',
     meta: 'Phòng Nhân sự · 2 giờ trước · Toàn công ty',
-    title: 'Chào mừng các thành viên mới đến với QSystem!',
-    body: 'Tháng này chúng ta đón thêm 3 đồng nghiệp vào đại gia đình QTS. Cùng gửi lời chào và chia sẻ những kinh nghiệm hữu ích nhé.',
+    title: 'Thông báo tiếp nhận nhân sự mới tháng 11',
+    body: 'Tháng này khối Kỹ thuật và Vận hành tiếp nhận thêm 3 nhân sự mới. Các bộ phận liên quan phối hợp bàn giao tài khoản, thiết bị và tài liệu hội nhập trong tuần đầu làm việc.',
     category: 'ANNOUNCEMENT',
     departmentId: null,
     pinned: true,
@@ -130,13 +130,13 @@ const SAMPLE_POSTS: FeedPost[] = [
         id: 'sc-1',
         author: 'Đức Anh',
         time: '1 giờ trước',
-        content: 'Chào mừng các bạn mới gia nhập đội ngũ kỹ thuật và vận hành QTS!',
+        content: 'Phòng Kỹ thuật đã chuẩn bị xong tài khoản hệ thống và lịch hướng dẫn quy trình cho nhân sự mới.',
       },
       {
         id: 'sc-2',
         author: 'Hà My',
         time: '45 phút trước',
-        content: 'Hẹn mọi người buổi trà chiều làm quen vào thứ Sáu tuần này nhé.',
+        content: 'Buổi gặp mặt giới thiệu nhân sự mới diễn ra vào 15:00 thứ Sáu tuần này tại phòng họp tầng 3.',
       },
     ],
     createdAtMs: Date.now() - 2 * 3_600_000,
@@ -147,7 +147,7 @@ const SAMPLE_POSTS: FeedPost[] = [
     authorId: 'u-director-01',
     author: 'Minh Khôi',
     meta: 'Ban Giám đốc · Hôm qua',
-    body: 'Tổng kết sprint: chúc mừng đội dự án đã hoàn thành những cột mốc quan trọng trong tuần vừa qua.',
+    body: 'Tổng kết sprint: các nhóm dự án đã hoàn thành đầy đủ những cột mốc bàn giao theo kế hoạch tuần qua.',
     category: 'SHARING',
     departmentId: null,
     pinned: false,
@@ -198,6 +198,7 @@ function toFeed(post: SocialPostItem): FeedPost {
     category: post.category,
     departmentId: post.departmentId,
     pinned: post.pinned,
+    hero: Boolean(post.pinned && post.category === 'ANNOUNCEMENT'),
     likes: post.likeCount,
     comments: post.commentCount,
     liked: post.likedByMe,
@@ -265,6 +266,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   const [draft, setDraft] = React.useState('');
   const [attachment, setAttachment] = React.useState<{ name: string; sizeLabel: string } | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [composerError, setComposerError] = React.useState(false);
 
   const [likeOverrides, setLikeOverrides] = React.useState<Record<string, { liked: boolean; likes: number }>>({});
   const [pinnedOverrides, setPinnedOverrides] = React.useState<Record<string, boolean>>({});
@@ -282,18 +284,10 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [authorFilter, setAuthorFilter] = React.useState<string | null>(null);
   const [activeNoticeId, setActiveNoticeId] = React.useState<string | null>(null);
-  const [composerShaking, setComposerShaking] = React.useState(false);
 
   const composerRef = React.useRef<HTMLInputElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const menuHostRef = React.useRef<HTMLDivElement>(null);
-  const shakeTimerRef = React.useRef<number | null>(null);
-
-  React.useEffect(() => {
-    return () => {
-      if (shakeTimerRef.current !== null) window.clearTimeout(shakeTimerRef.current);
-    };
-  }, []);
 
   React.useEffect(() => {
     if (muc === 'thong-bao') {
@@ -426,12 +420,11 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
     const content = draft.trim();
     if (!content) {
       toast.error('Vui lòng nhập nội dung trước khi đăng bài');
-      setComposerShaking(false);
-      if (shakeTimerRef.current !== null) window.clearTimeout(shakeTimerRef.current);
-      shakeTimerRef.current = window.setTimeout(() => setComposerShaking(true), 0);
+      setComposerError(true);
       composerRef.current?.focus();
       return;
     }
+    setComposerError(false);
     setSubmitting(true);
     const category: SocialCategory = channel === 'all' ? 'SHARING' : (channel as SocialCategory);
     try {
@@ -638,10 +631,10 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
       <header className="qx-page-head">
         <div>
           <h1>Bảng tin · {activeChannelLabel}</h1>
-          <p>Chia sẻ thông tin, kết nối và xây dựng văn hóa nội bộ</p>
+          <p>Chia sẻ thông tin, điều phối vận hành và trao đổi nội bộ</p>
         </div>
-        <button type="button" className="qx-btn qx-btn--primary" onClick={focusComposer}>
-          <Plus size={16} aria-hidden="true" /> Tạo bài viết
+        <button type="button" className="qx-btn" onClick={focusComposer}>
+          <Plus size={16} strokeWidth={1.5} aria-hidden="true" /> Tạo bài viết
         </button>
       </header>
 
@@ -661,9 +654,9 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                     setActiveNoticeId(null);
                   }}
                 >
-                  <Icon size={14} aria-hidden="true" />
+                  <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
                   <span>{label}</span>
-                  <em>{String(count).padStart(2, '0')}</em>
+                  <em>{count}</em>
                 </button>
               </li>
             ))}
@@ -671,11 +664,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
         </nav>
 
         <section className="qso__feed" aria-label="Bảng tin">
-          <form
-            className={`qx-card qso__composer${composerShaking ? ' animate__animated animate__shakeX animate__faster' : ''}`}
-            onAnimationEnd={() => setComposerShaking(false)}
-            onSubmit={handlePublish}
-          >
+          <form className="qx-card qso__composer" onSubmit={handlePublish}>
             <div className="qso__compose-row">
               <span className="qx-avatar qso__av" aria-hidden="true">{initialsOf(me.name)}</span>
               <label className="qso__sr" htmlFor="qso-draft">Nội dung bài viết</label>
@@ -683,18 +672,20 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                 id="qso-draft"
                 ref={composerRef}
                 className="qso__input"
-                placeholder="Chia sẻ tin tức, kiến thức hoặc một ý tưởng..."
+                placeholder="Chia sẻ thông tin, tài liệu hoặc câu hỏi công việc"
+                data-error={composerError ? 'true' : undefined}
+                aria-invalid={composerError ? 'true' : undefined}
                 value={draft}
                 onChange={(e) => {
                   setDraft(e.target.value);
-                  if (composerShaking) setComposerShaking(false);
+                  if (composerError) setComposerError(false);
                 }}
               />
             </div>
 
             {attachment ? (
-              <div className="qso__attach-chip animate__animated animate__fadeInUp animate__faster">
-                <Paperclip size={12} aria-hidden="true" />
+              <div className="qso__attach-chip">
+                <Paperclip size={16} strokeWidth={1.5} aria-hidden="true" />
                 <span className="qso__attach-name">
                   {attachment.name} · {attachment.sizeLabel}
                 </span>
@@ -704,7 +695,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                   aria-label="Xóa tệp đính kèm"
                   onClick={() => setAttachment(null)}
                 >
-                  <X size={12} aria-hidden="true" />
+                  <X size={16} strokeWidth={1.5} aria-hidden="true" />
                 </button>
               </div>
             ) : null}
@@ -729,7 +720,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                 className="qso__link"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Paperclip size={13} aria-hidden="true" /> Hình ảnh / Tệp
+                <Paperclip size={16} strokeWidth={1.5} aria-hidden="true" /> Hình ảnh / Tệp
               </button>
               <button
                 type="button"
@@ -737,10 +728,10 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                 aria-label={`Đối tượng xem: ${audience}`}
                 onClick={() => setAudienceIdx((idx) => (idx + 1) % AUDIENCES.length)}
               >
-                <Users size={13} aria-hidden="true" /> {audience}
+                <Users size={16} strokeWidth={1.5} aria-hidden="true" /> {audience}
               </button>
               <button type="submit" className="qx-btn qx-btn--primary qso__post" disabled={submitting}>
-                <Send size={15} aria-hidden="true" /> {submitting ? 'Đang đăng…' : 'Đăng bài'}
+                <Send size={16} strokeWidth={1.5} aria-hidden="true" /> {submitting ? 'Đang đăng' : 'Đăng bài'}
               </button>
             </div>
           </form>
@@ -765,32 +756,33 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
               className="qso__sort"
               onClick={() => setSortBy((s) => (s === 'newest' ? 'popular' : 'newest'))}
             >
-              {sortBy === 'newest' ? 'Mới nhất' : 'Phổ biến nhất'} <ChevronDown size={13} aria-hidden="true" />
+              {sortBy === 'newest' ? 'Mới nhất' : 'Phổ biến nhất'}{' '}
+              <ChevronDown size={16} strokeWidth={1.5} aria-hidden="true" />
             </button>
           </div>
 
           {authorFilter ? (
-            <div className="qso__filter-bar animate__animated animate__fadeIn animate__faster">
+            <div className="qso__filter-bar">
               <span>Đang lọc bài viết của <strong>{authorFilter}</strong></span>
               <button
                 type="button"
                 className="qso__filter-clear"
                 onClick={() => setAuthorFilter(null)}
               >
-                <X size={12} aria-hidden="true" /> Bỏ lọc
+                <X size={16} strokeWidth={1.5} aria-hidden="true" /> Bỏ lọc
               </button>
             </div>
           ) : null}
 
           {feedError ? (
-            <div role="alert" className="qx-card qso__empty-feed animate__animated animate__shakeX animate__faster">
+            <div role="alert" className="qx-card qso__empty-feed">
               <span>Không thể tải bảng tin lúc này.</span>
               <button type="button" className="qx-btn qx-btn--sm" onClick={loadFeed}>
                 Thử lại
               </button>
             </div>
           ) : visible.length === 0 ? (
-            <div className="qx-card qso__empty-feed animate__animated animate__fadeIn animate__faster">
+            <div className="qx-card qso__empty-feed">
               <span>
                 {tab === 'saved'
                   ? 'Chưa có bài viết nào được lưu. Bấm biểu tượng tùy chọn trên bài viết để lưu lại.'
@@ -819,7 +811,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
               const allowDelete = canDeletePost(post);
 
               return (
-                <article key={post.id} id={post.id} className="qx-card qso__post-card animate__animated animate__fadeIn">
+                <article key={post.id} id={post.id} className="qx-card qso__post-card">
                   <header className="qso__post-head">
                     <span className="qx-avatar qso__av" aria-hidden="true">{initialsOf(post.author)}</span>
                     <div className="qso__who">
@@ -835,10 +827,10 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                         aria-expanded={isMenuOpen}
                         onClick={() => setOpenMenuId(isMenuOpen ? null : post.id)}
                       >
-                        <MoreHorizontal size={18} aria-hidden="true" />
+                        <MoreHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
                       </button>
                       {isMenuOpen ? (
-                        <div className="qso__menu animate__animated animate__fadeIn animate__faster" role="menu" aria-label="Thao tác bài viết">
+                        <div className="qso__menu" role="menu" aria-label="Thao tác bài viết">
                           {allowPin ? (
                             <button
                               type="button"
@@ -846,7 +838,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                               className="qso__menu-item"
                               onClick={() => void handleTogglePin(post)}
                             >
-                              <Pin size={14} aria-hidden="true" />
+                              <Pin size={16} strokeWidth={1.5} aria-hidden="true" />
                               {post.pinned ? 'Bỏ ghim bài viết' : 'Ghim bài viết'}
                             </button>
                           ) : null}
@@ -856,7 +848,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                             className="qso__menu-item"
                             onClick={() => toggleSave(post.id)}
                           >
-                            <Bookmark size={14} aria-hidden="true" />
+                            <Bookmark size={16} strokeWidth={1.5} aria-hidden="true" />
                             {isSaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết'}
                           </button>
                           <button
@@ -868,7 +860,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                               handleShare(post.id);
                             }}
                           >
-                            <Link2 size={14} aria-hidden="true" />
+                            <Link2 size={16} strokeWidth={1.5} aria-hidden="true" />
                             Sao chép liên kết
                           </button>
                           <button
@@ -877,7 +869,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                             className="qso__menu-item"
                             onClick={() => hidePost(post.id)}
                           >
-                            <EyeOff size={14} aria-hidden="true" />
+                            <EyeOff size={16} strokeWidth={1.5} aria-hidden="true" />
                             Ẩn bài viết
                           </button>
                           {allowDelete ? (
@@ -887,7 +879,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                               className="qso__menu-item"
                               onClick={() => void handleDeletePost(post)}
                             >
-                              <Trash2 size={14} aria-hidden="true" />
+                              <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
                               Xóa bài viết
                             </button>
                           ) : null}
@@ -901,16 +893,24 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
 
                   {post.attachmentName ? (
                     <div className="qso__post-attachment">
-                      <Paperclip size={13} aria-hidden="true" />
+                      <Paperclip size={16} strokeWidth={1.5} aria-hidden="true" />
                       <span>{post.attachmentName}</span>
                     </div>
                   ) : null}
 
-                  {post.hero ? (
+                  {post.hero || post.pinned ? (
                     <div className="qso__hero">
-                      <span className="qx-badge qx-badge--amber">QTS PEOPLE</span>
-                      <strong>Better together.</strong>
-                      <span>Kết nối, học hỏi và phát triển cùng nhau</span>
+                      <div className="qso__hero-head">
+                        <span className="qso__hero-kicker">
+                          <Pin size={16} strokeWidth={1.5} aria-hidden="true" />
+                          Thông báo vận hành đã ghim
+                        </span>
+                        <span className="qso__hero-code">TB-Q4</span>
+                      </div>
+                      <strong>Lịch giao ban điều hành và rà soát chỉ tiêu tuần</strong>
+                      <span className="qso__hero-desc">
+                        Trưởng các bộ phận hoàn tất cập nhật tiến độ công việc trên QTask và danh sách trực ca trên QHRM trước 17:00 thứ Năm hằng tuần
+                      </span>
                     </div>
                   ) : null}
 
@@ -922,7 +922,8 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                         aria-pressed={post.liked}
                         onClick={() => void handleLike(post)}
                       >
-                        <Heart size={12} aria-hidden="true" fill={post.liked ? 'currentColor' : 'none'} /> {post.likes} lượt thích
+                        <Heart size={16} strokeWidth={1.5} aria-hidden="true" fill={post.liked ? 'currentColor' : 'none'} />{' '}
+                        {post.likes} lượt thích
                       </button>
                       <button
                         type="button"
@@ -930,7 +931,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                         aria-expanded={isCommentsOpen}
                         onClick={() => toggleComments(post.id)}
                       >
-                        <MessageCircle size={12} aria-hidden="true" /> {post.comments} bình luận
+                        <MessageCircle size={16} strokeWidth={1.5} aria-hidden="true" /> {post.comments} bình luận
                       </button>
                       <button
                         type="button"
@@ -943,11 +944,11 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                   ) : null}
 
                   {isCommentsOpen ? (
-                    <div className="qso__comments animate__animated animate__fadeIn animate__faster">
+                    <div className="qso__comments">
                       {post.commentItems.length > 0 ? (
                         <ul className="qso__comment-list">
                           {post.commentItems.map((cmt) => (
-                            <li key={cmt.id} className="qso__comment-item animate__animated animate__fadeIn animate__faster">
+                            <li key={cmt.id} className="qso__comment-item">
                               <span className="qx-avatar qso__comment-av" aria-hidden="true">
                                 {initialsOf(cmt.author)}
                               </span>
@@ -966,7 +967,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                         <input
                           type="text"
                           className="qso__comment-input"
-                          placeholder="Viết bình luận phản hồi..."
+                          placeholder="Viết bình luận phản hồi"
                           aria-label={`Bình luận bài viết của ${post.author}`}
                           value={commentDrafts[post.id] ?? ''}
                           onChange={(e) =>
@@ -975,7 +976,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                         />
                         <button
                           type="submit"
-                          className="qx-btn qx-btn--sm qx-btn--primary"
+                          className="qx-btn qx-btn--sm"
                           disabled={!(commentDrafts[post.id] ?? '').trim()}
                         >
                           Gửi
@@ -993,7 +994,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
           <section className="qx-card qso__box">
             <div className="qso__box-head">
               <h2 className="qso__h">Thông báo nổi bật</h2>
-              <Pin size={14} aria-hidden="true" className="qso__pin" />
+              <span className="qso__meta-count">{NOTICES.length} mục</span>
             </div>
             <ul className="qso__notes">
               {NOTICES.map((notice) => {
@@ -1006,7 +1007,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                       aria-pressed={activeNoticeId === notice.id}
                       onClick={() => handleSelectNotice(notice)}
                     >
-                      <Icon size={14} aria-hidden="true" />
+                      <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
                       <span className="qso__side-text">
                         <strong>{notice.title}</strong>
                         <span>{notice.sub}</span>
@@ -1019,8 +1020,8 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
           </section>
           <section className="qx-card qso__box">
             <div className="qso__box-head">
-              <h2 className="qso__h">Đồng nghiệp trực tuyến</h2>
-              <span className="qso__online"><i aria-hidden="true" />12 online</span>
+              <h2 className="qso__h">Đầu mối phòng ban</h2>
+              <span className="qso__meta-count">{COLLEAGUES.length} người</span>
             </div>
             <ul className="qso__people">
               {COLLEAGUES.map((c) => (

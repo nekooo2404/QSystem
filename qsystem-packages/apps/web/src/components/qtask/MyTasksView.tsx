@@ -3,274 +3,337 @@
 import * as React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  Activity,
   ArrowRight,
-  ArrowUp,
   Calendar,
   CheckCircle2,
   ChevronUp,
-  Clock,
   ListFilter,
   Plus,
-  SquareCheck,
-  Zap,
 } from 'lucide-react';
-import { toast } from '@qsystem/ui';
+import { Select, toast, type SelectOption } from '@qsystem/ui';
 import { listTasks, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
 import { apiFetch, ApiError } from '../../lib/api/client';
 import { useSession } from '../../lib/auth/session-context';
+import {
+  addLocalDaysIso,
+  diffCalendarDays,
+  formatRelativeViDate,
+  getLocalDateIso,
+  getLocalIsoWeekday,
+} from '../../lib/date';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import { CreateTaskModal, type AssigneeOption } from './CreateTaskModal';
 import {
   applyStatusPatch,
   canUseDevPersistence,
-  getLocalDateIso,
   loadStoredTasks,
   recordCreatedTaskInStorage,
   saveStoredTasks,
   type StoredTasksState,
 } from './qtask.storage';
 import {
-  formatDueDate,
   getStatusBadgeClass,
   TaskDetailDrawer,
   type TaskViewItem,
 } from './TaskDetailContent';
 import './qtask.css';
 
-const SAMPLE_MY_TASKS: TaskViewItem[] = [
-  {
-    id: 'my-1005',
-    code: '#1005',
-    title: 'Duyệt yêu cầu nghỉ phép tháng 11',
-    project: 'QHRM',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-18',
-    dueLabel: 'Hôm nay',
-    status: 'Đang làm',
-    displayStatus: 'Ưu tiên cao',
-    priority: 'Ưu tiên cao',
-    bucket: 'today',
-    departmentName: 'Nhân sự',
-    description: 'Kiểm tra hồ sơ nghỉ phép tháng 11 và phê duyệt cho nhân sự phòng Kinh doanh.',
-    updatedLabel: 'Cập nhật 1 giờ trước',
-    isSample: true,
-  },
-  {
-    id: 'my-1006',
-    code: '#1006',
-    title: 'Hoàn thiện giao diện báo cáo quý IV',
-    project: 'QTask',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-18',
-    dueLabel: 'Hôm nay',
-    status: 'Đang làm',
-    displayStatus: 'Đang làm',
-    priority: 'Trung bình',
-    bucket: 'today',
-    departmentName: 'Sản phẩm',
-    description: 'Hoàn tất biểu đồ tổng hợp số liệu và kiểm tra hiển thị trên cả chế độ Sáng và Tối.',
-    updatedLabel: 'Cập nhật 2 giờ trước',
-    isSample: true,
-  },
-  {
-    id: 'my-1007',
-    code: '#1007',
-    title: 'Kiểm tra phân quyền phòng ban',
-    project: 'QSystem',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-19',
-    dueLabel: 'Ngày mai',
-    status: 'Đang làm',
-    displayStatus: 'Đang làm',
-    priority: 'Trung bình',
-    bucket: 'upcoming',
-    departmentName: 'Kỹ thuật',
-    description: 'Đối chiếu phân quyền truy cập tài liệu và công việc theo từng phòng ban.',
-    updatedLabel: 'Cập nhật 3 giờ trước',
-    isSample: true,
-  },
-  {
-    id: 'my-1008',
-    code: '#1008',
-    title: 'Rà soát dữ liệu khách hàng',
-    project: 'QCRM',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-18',
-    dueLabel: '18/11/2026',
-    status: 'Quá hạn',
-    displayStatus: 'Cần xử lý',
-    priority: 'Ưu tiên cao',
-    bucket: 'today',
-    departmentName: 'Kinh doanh',
-    description: 'Làm sạch dữ liệu khách hàng doanh nghiệp và cập nhật người phụ trách chăm sóc.',
-    updatedLabel: 'Cập nhật hôm qua',
-    isSample: true,
-  },
-  {
-    id: 'my-1009',
-    code: '#1009',
-    title: 'Chuẩn bị tài liệu họp phòng',
-    project: 'Nội bộ',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-20',
-    dueLabel: '20/11/2026',
-    status: 'Chờ duyệt',
-    displayStatus: 'Chờ duyệt',
-    priority: 'Thấp',
-    bucket: 'upcoming',
-    departmentName: 'Vận hành',
-    description: 'Tổng hợp biên bản cuộc họp tuần trước và lịch trình công việc tuần tới.',
-    updatedLabel: 'Cập nhật 5 giờ trước',
-    isSample: true,
-  },
+const MY_STATUS_FILTER_OPTIONS: readonly SelectOption<string>[] = [
+  { value: '', label: 'Tất cả trạng thái' },
+  { value: 'Ưu tiên cao', label: 'Ưu tiên cao' },
+  { value: 'Đang làm', label: 'Đang làm' },
+  { value: 'Cần xử lý', label: 'Cần xử lý' },
+  { value: 'Chờ duyệt', label: 'Chờ duyệt' },
+  { value: 'Hoàn thành', label: 'Hoàn thành' },
 ];
 
-const EXTRA_MY_TASKS: TaskViewItem[] = [
-  {
-    id: 'my-1010',
-    code: '#1010',
-    title: 'Cập nhật biểu mẫu đánh giá nhân sự Q4',
-    project: 'QHRM',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-21',
-    dueLabel: '21/11/2026',
-    status: 'Đang làm',
-    displayStatus: 'Đang làm',
-    priority: 'Trung bình',
-    bucket: 'upcoming',
-    departmentName: 'Nhân sự',
-    description: 'Điều chỉnh tiêu chí đánh giá định kỳ theo khung năng lực mới.',
-    updatedLabel: 'Cập nhật 6 giờ trước',
-    isSample: true,
-  },
-  {
-    id: 'my-1011',
-    code: '#1011',
-    title: 'Đối soát báo cáo chi phí vận hành',
-    project: 'QSystem',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-21',
-    dueLabel: '21/11/2026',
-    status: 'Chờ duyệt',
-    displayStatus: 'Chờ duyệt',
-    priority: 'Trung bình',
-    bucket: 'upcoming',
-    departmentName: 'Tài chính',
-    description: 'Kiểm tra bảng kê chi phí hạ tầng và phần mềm tháng 11.',
-    updatedLabel: 'Cập nhật hôm qua',
-    isSample: true,
-  },
-  {
-    id: 'my-1012',
-    code: '#1012',
-    title: 'Tổng hợp phản hồi người dùng QSocial',
-    project: 'QSocial',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-22',
-    dueLabel: '22/11/2026',
-    status: 'Đang làm',
-    displayStatus: 'Đang làm',
-    priority: 'Thấp',
-    bucket: 'upcoming',
-    departmentName: 'Sản phẩm',
-    description: 'Phân loại góp ý từ nhóm vận hành và gắn nhãn ưu tiên xử lý.',
-    updatedLabel: 'Cập nhật hôm qua',
-    isSample: true,
-  },
-  {
-    id: 'my-1013',
-    code: '#1013',
-    title: 'Kiểm tra tài liệu API tích hợp CRM',
-    project: 'QCRM',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-22',
-    dueLabel: '22/11/2026',
-    status: 'Đang làm',
-    displayStatus: 'Đang làm',
-    priority: 'Trung bình',
-    bucket: 'upcoming',
-    departmentName: 'Kỹ thuật',
-    description: 'Xác minh schema webhook đồng bộ khách hàng mới giữa QCRM và QTask.',
-    updatedLabel: 'Cập nhật 2 ngày trước',
-    isSample: true,
-  },
-  {
-    id: 'my-1014',
-    code: '#1014',
-    title: 'Lên lịch đào tạo quy trình bảo mật',
-    project: 'Nội bộ',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-23',
-    dueLabel: '23/11/2026',
-    status: 'Đang làm',
-    displayStatus: 'Đang làm',
-    priority: 'Thấp',
-    bucket: 'upcoming',
-    departmentName: 'Vận hành',
-    description: 'Mời đại diện các phòng ban tham gia buổi hướng dẫn định kỳ.',
-    updatedLabel: 'Cập nhật 2 ngày trước',
-    isSample: true,
-  },
-  {
-    id: 'my-1015',
-    code: '#1015',
-    title: 'Chốt danh sách thiết bị làm việc mới',
-    project: 'Nội bộ',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-16',
-    dueLabel: '16/11/2026',
-    status: 'Hoàn thành',
-    displayStatus: 'Hoàn thành',
-    priority: 'Trung bình',
-    bucket: 'done',
-    departmentName: 'Hành chính',
-    description: 'Hoàn tất duyệt đề xuất cấp phát màn hình cho nhân sự mới.',
-    updatedLabel: 'Hoàn thành tuần này',
-    isSample: true,
-  },
-  {
-    id: 'my-1016',
-    code: '#1016',
-    title: 'Rà soát ghi chú phát hành phiên bản 2.4',
-    project: 'QSystem',
-    assigneeId: 'mk',
-    assigneeName: 'Minh Khôi',
-    dueDate: '2026-11-15',
-    dueLabel: '15/11/2026',
-    status: 'Hoàn thành',
-    displayStatus: 'Hoàn thành',
-    priority: 'Thấp',
-    bucket: 'done',
-    departmentName: 'Sản phẩm',
-    description: 'Kiểm tra danh sách thay đổi và phát hành thông báo nội bộ.',
-    updatedLabel: 'Hoàn thành tuần này',
-    isSample: true,
-  },
-];
+function getSampleMyTasks(): TaskViewItem[] {
+  const todayIso = addLocalDaysIso(0);
+  const tomorrowIso = addLocalDaysIso(1);
+  const yesterdayIso = addLocalDaysIso(-1);
+  const plus2Iso = addLocalDaysIso(2);
+  return [
+    {
+      id: 'my-1005',
+      code: '#1005',
+      title: 'Duyệt yêu cầu nghỉ phép tháng 11',
+      project: 'QHRM',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: todayIso,
+      dueLabel: formatRelativeViDate(todayIso),
+      status: 'Đang làm',
+      displayStatus: 'Ưu tiên cao',
+      priority: 'Ưu tiên cao',
+      bucket: 'today',
+      departmentName: 'Nhân sự',
+      description: 'Kiểm tra hồ sơ nghỉ phép tháng 11 và phê duyệt cho nhân sự phòng Kinh doanh.',
+      updatedLabel: 'Cập nhật 1 giờ trước',
+      isSample: true,
+    },
+    {
+      id: 'my-1006',
+      code: '#1006',
+      title: 'Hoàn thiện giao diện báo cáo quý IV',
+      project: 'QTask',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: todayIso,
+      dueLabel: formatRelativeViDate(todayIso),
+      status: 'Đang làm',
+      displayStatus: 'Đang làm',
+      priority: 'Trung bình',
+      bucket: 'today',
+      departmentName: 'Sản phẩm',
+      description: 'Hoàn tất biểu đồ tổng hợp số liệu và kiểm tra hiển thị trên cả chế độ Sáng và Tối.',
+      updatedLabel: 'Cập nhật 2 giờ trước',
+      isSample: true,
+    },
+    {
+      id: 'my-1007',
+      code: '#1007',
+      title: 'Kiểm tra phân quyền phòng ban',
+      project: 'QSystem',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: tomorrowIso,
+      dueLabel: formatRelativeViDate(tomorrowIso),
+      status: 'Đang làm',
+      displayStatus: 'Đang làm',
+      priority: 'Trung bình',
+      bucket: 'upcoming',
+      departmentName: 'Kỹ thuật',
+      description: 'Đối chiếu phân quyền truy cập tài liệu và công việc theo từng phòng ban.',
+      updatedLabel: 'Cập nhật 3 giờ trước',
+      isSample: true,
+    },
+    {
+      id: 'my-1008',
+      code: '#1008',
+      title: 'Rà soát dữ liệu khách hàng',
+      project: 'QCRM',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: yesterdayIso,
+      dueLabel: formatRelativeViDate(yesterdayIso),
+      status: 'Quá hạn',
+      displayStatus: 'Cần xử lý',
+      priority: 'Ưu tiên cao',
+      departmentName: 'Kinh doanh',
+      description: 'Làm sạch dữ liệu khách hàng doanh nghiệp và cập nhật người phụ trách chăm sóc.',
+      updatedLabel: 'Cập nhật hôm qua',
+      isSample: true,
+    },
+    {
+      id: 'my-1009',
+      code: '#1009',
+      title: 'Chuẩn bị tài liệu họp phòng',
+      project: 'Nội bộ',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: plus2Iso,
+      dueLabel: formatRelativeViDate(plus2Iso),
+      status: 'Chờ duyệt',
+      displayStatus: 'Chờ duyệt',
+      priority: 'Thấp',
+      bucket: 'upcoming',
+      departmentName: 'Vận hành',
+      description: 'Tổng hợp biên bản cuộc họp tuần trước và lịch trình công việc tuần tới.',
+      updatedLabel: 'Cập nhật 5 giờ trước',
+      isSample: true,
+    },
+  ];
+}
 
-const EXTRA_MY_TASK_IDS = new Set(EXTRA_MY_TASKS.map((item) => item.id));
+function getExtraMyTasks(): TaskViewItem[] {
+  const todayIso = addLocalDaysIso(0);
+  const plus3Iso = addLocalDaysIso(3);
+  const plus4Iso = addLocalDaysIso(4);
+  const plus5Iso = addLocalDaysIso(5);
+  const minus1Iso = addLocalDaysIso(-1);
+  const minus2Iso = addLocalDaysIso(-2);
+  return [
+    {
+      id: 'my-1010',
+      code: '#1010',
+      title: 'Cập nhật biểu mẫu đánh giá nhân sự Q4',
+      project: 'QHRM',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: todayIso,
+      dueLabel: formatRelativeViDate(todayIso),
+      status: 'Đang làm',
+      displayStatus: 'Đang làm',
+      priority: 'Trung bình',
+      bucket: 'today',
+      departmentName: 'Nhân sự',
+      description: 'Điều chỉnh tiêu chí đánh giá định kỳ theo khung năng lực mới.',
+      updatedLabel: 'Cập nhật 6 giờ trước',
+      isSample: true,
+    },
+    {
+      id: 'my-1011',
+      code: '#1011',
+      title: 'Đối soát báo cáo chi phí vận hành',
+      project: 'QSystem',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: plus3Iso,
+      dueLabel: formatRelativeViDate(plus3Iso),
+      status: 'Chờ duyệt',
+      displayStatus: 'Chờ duyệt',
+      priority: 'Trung bình',
+      bucket: 'upcoming',
+      departmentName: 'Tài chính',
+      description: 'Kiểm tra bảng kê chi phí hạ tầng và phần mềm trong tháng.',
+      updatedLabel: 'Cập nhật hôm qua',
+      isSample: true,
+    },
+    {
+      id: 'my-1012',
+      code: '#1012',
+      title: 'Tổng hợp phản hồi người dùng QSocial',
+      project: 'QSocial',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: plus4Iso,
+      dueLabel: formatRelativeViDate(plus4Iso),
+      status: 'Đang làm',
+      displayStatus: 'Đang làm',
+      priority: 'Thấp',
+      bucket: 'upcoming',
+      departmentName: 'Sản phẩm',
+      description: 'Phân loại góp ý từ nhóm vận hành và gắn nhãn ưu tiên xử lý.',
+      updatedLabel: 'Cập nhật hôm qua',
+      isSample: true,
+    },
+    {
+      id: 'my-1013',
+      code: '#1013',
+      title: 'Kiểm tra tài liệu API tích hợp CRM',
+      project: 'QCRM',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: plus4Iso,
+      dueLabel: formatRelativeViDate(plus4Iso),
+      status: 'Đang làm',
+      displayStatus: 'Đang làm',
+      priority: 'Trung bình',
+      bucket: 'upcoming',
+      departmentName: 'Kỹ thuật',
+      description: 'Xác minh schema webhook đồng bộ khách hàng mới giữa QCRM và QTask.',
+      updatedLabel: 'Cập nhật 2 ngày trước',
+      isSample: true,
+    },
+    {
+      id: 'my-1014',
+      code: '#1014',
+      title: 'Lên lịch đào tạo quy trình bảo mật',
+      project: 'Nội bộ',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: plus5Iso,
+      dueLabel: formatRelativeViDate(plus5Iso),
+      status: 'Đang làm',
+      displayStatus: 'Đang làm',
+      priority: 'Thấp',
+      bucket: 'upcoming',
+      departmentName: 'Vận hành',
+      description: 'Mời đại diện các phòng ban tham gia buổi hướng dẫn định kỳ.',
+      updatedLabel: 'Cập nhật 2 ngày trước',
+      isSample: true,
+    },
+    {
+      id: 'my-1015',
+      code: '#1015',
+      title: 'Chốt danh sách thiết bị làm việc mới',
+      project: 'Nội bộ',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: minus1Iso,
+      dueLabel: formatRelativeViDate(minus1Iso),
+      status: 'Hoàn thành',
+      displayStatus: 'Hoàn thành',
+      priority: 'Trung bình',
+      bucket: 'done',
+      departmentName: 'Hành chính',
+      description: 'Hoàn tất duyệt đề xuất cấp phát màn hình cho nhân sự mới.',
+      updatedLabel: 'Hoàn thành tuần này',
+      isSample: true,
+    },
+    {
+      id: 'my-1016',
+      code: '#1016',
+      title: 'Rà soát ghi chú phát hành phiên bản 2.4',
+      project: 'QSystem',
+      assigneeId: 'mk',
+      assigneeName: 'Minh Khôi',
+      dueDate: minus2Iso,
+      dueLabel: formatRelativeViDate(minus2Iso),
+      status: 'Hoàn thành',
+      displayStatus: 'Hoàn thành',
+      priority: 'Thấp',
+      bucket: 'done',
+      departmentName: 'Sản phẩm',
+      description: 'Kiểm tra danh sách thay đổi và phát hành thông báo nội bộ.',
+      updatedLabel: 'Hoàn thành tuần này',
+      isSample: true,
+    },
+  ];
+}
 
-const WEEK_DAYS = [
-  { label: 'T2', day: 16, title: '09:30 · Họp giao ban đầu tuần', sub: 'Phòng họp B · 6 thành viên' },
-  { label: 'T3', day: 17, title: '10:00 · Rà soát thiết kế QHRM', sub: 'Trực tuyến · 3 thành viên' },
-  { label: 'T4', day: 18, title: '14:00 · Họp đánh giá sprint', sub: 'Phòng họp A · 4 thành viên' },
-  { label: 'T5', day: 19, title: '15:30 · Đồng bộ tiến độ QCRM V2', sub: 'Phòng họp A · 5 thành viên' },
-  { label: 'T6', day: 20, title: '16:00 · Tổng kết tuần và bàn giao', sub: 'Phòng họp C · 8 thành viên' },
-  { label: 'T7', day: 21, title: 'Không có lịch họp cố định', sub: 'Thời gian tập trung xử lý đầu việc' },
-  { label: 'CN', day: 22, title: 'Cuối tuần', sub: 'Chuẩn bị kế hoạch tuần tiếp theo' },
+const EXTRA_MY_TASK_IDS = new Set([
+  'my-1010',
+  'my-1011',
+  'my-1012',
+  'my-1013',
+  'my-1014',
+  'my-1015',
+  'my-1016',
+]);
+
+const WEEK_SCHEDULE_TEMPLATES = [
+  { label: 'T2', title: '09:30 · Họp giao ban đầu tuần', sub: 'Phòng họp B · 6 thành viên' },
+  { label: 'T3', title: '10:00 · Rà soát thiết kế QHRM', sub: 'Trực tuyến · 3 thành viên' },
+  { label: 'T4', title: '14:00 · Họp đánh giá sprint', sub: 'Phòng họp A · 4 thành viên' },
+  { label: 'T5', title: '15:30 · Đồng bộ tiến độ QCRM V2', sub: 'Phòng họp A · 5 thành viên' },
+  { label: 'T6', title: '16:00 · Tổng kết tuần và bàn giao', sub: 'Phòng họp C · 8 thành viên' },
+  { label: 'T7', title: 'Không có lịch họp cố định', sub: 'Thời gian tập trung xử lý đầu việc' },
+  { label: 'CN', title: 'Cuối tuần', sub: 'Chuẩn bị kế hoạch tuần tiếp theo' },
 ] as const;
+
+interface WeekDayItem {
+  iso: string;
+  label: string;
+  day: number;
+  title: string;
+  sub: string;
+}
+
+function buildCurrentWeekSchedule(now = new Date()): { rangeLabel: string; days: WeekDayItem[] } {
+  const isoWeekday = getLocalIsoWeekday(now);
+  const mondayOffset = -(isoWeekday - 1);
+  const days = WEEK_SCHEDULE_TEMPLATES.map((tpl, index) => {
+    const iso = addLocalDaysIso(mondayOffset + index, now);
+    const [, , dayStr] = iso.split('-');
+    return {
+      iso,
+      label: tpl.label,
+      day: Number(dayStr),
+      title: tpl.title,
+      sub: tpl.sub,
+    };
+  });
+  const first = days[0]!;
+  const last = days[days.length - 1]!;
+  const [, firstMonth, firstDay] = first.iso.split('-');
+  const [, lastMonth, lastDay] = last.iso.split('-');
+  const rangeLabel =
+    firstMonth === lastMonth
+      ? `${firstDay} – ${lastDay}/${lastMonth}`
+      : `${firstDay}/${firstMonth} – ${lastDay}/${lastMonth}`;
+  return { rangeLabel, days };
+}
 
 type MineTabId = 'all' | 'today' | 'upcoming' | 'done';
 
@@ -279,16 +342,19 @@ function toViewTask(task: Task): TaskViewItem {
     ...task,
     project: task.departmentId ? 'QSystem' : 'QTask',
     displayStatus: task.status,
-    dueLabel: formatDueDate(task.dueDate),
+    dueLabel: formatRelativeViDate(task.dueDate),
   };
 }
 
-const BASE_MY_SAMPLE: TaskViewItem[] = [...SAMPLE_MY_TASKS, ...EXTRA_MY_TASKS];
-const BASE_MY_SAMPLE_BY_ID = new Map(BASE_MY_SAMPLE.map((item) => [item.id, item]));
+function getBaseMySample(): TaskViewItem[] {
+  return [...getSampleMyTasks(), ...getExtraMyTasks()];
+}
 
 function mergeMineSampleTasks(stored: StoredTasksState): TaskViewItem[] {
   const deleted = new Set(stored.deletedMine);
-  const base = BASE_MY_SAMPLE.filter((t) => !deleted.has(t.id)).map((t) => stored.editedMine[t.id] ?? t);
+  const base = getBaseMySample()
+    .filter((t) => !deleted.has(t.id))
+    .map((t) => stored.editedMine[t.id] ?? t);
   const baseIds = new Set(base.map((t) => t.id));
   const custom = stored.customMine.filter((t) => !deleted.has(t.id) && !baseIds.has(t.id));
   return [...custom, ...base];
@@ -300,14 +366,14 @@ export function MyTasksView() {
   const searchParams = useSearchParams();
 
   const [tasks, setTasks] = React.useState<TaskViewItem[]>(() =>
-    canUseDevPersistence() ? BASE_MY_SAMPLE : [],
+    canUseDevPersistence() ? getBaseMySample() : [],
   );
   const [usingSample, setUsingSample] = React.useState(() => canUseDevPersistence());
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [reloadTick, setReloadTick] = React.useState(0);
   const [expanded, setExpanded] = React.useState(false);
   const [tab, setTab] = React.useState<MineTabId>('all');
-  const [selectedDay, setSelectedDay] = React.useState<number>(18);
+  const [selectedDayIso, setSelectedDayIso] = React.useState<string>(() => getLocalDateIso());
   const [calHighlight, setCalHighlight] = React.useState(false);
   const [filterOpen, setFilterOpen] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState('');
@@ -340,7 +406,12 @@ export function MyTasksView() {
     const onTaskCreated = (event: Event) => {
       const detail = (event as CustomEvent<TaskViewItem>).detail;
       if (!detail?.id) return;
-      const item: TaskViewItem = { ...detail, dueLabel: formatDueDate(detail.dueDate), bucket: 'today' };
+      const diff = diffCalendarDays(detail.dueDate);
+      const item: TaskViewItem = {
+        ...detail,
+        dueLabel: formatRelativeViDate(detail.dueDate),
+        bucket: detail.status === 'Hoàn thành' ? 'done' : diff <= 0 ? 'today' : 'upcoming',
+      };
       setTasks((prev) => [item, ...prev.filter((entry) => entry.id !== detail.id)]);
     };
     window.addEventListener('qsystem:task-created', onTaskCreated);
@@ -401,7 +472,9 @@ export function MyTasksView() {
   React.useEffect(() => {
     if (!filterOpen) return;
     const onDocDown = (event: MouseEvent) => {
-      if (!filterRef.current?.contains(event.target as Node)) {
+      const target = event.target as Element | null;
+      if (target?.closest?.('[role="listbox"]')) return;
+      if (!filterRef.current?.contains(target)) {
         setFilterOpen(false);
       }
     };
@@ -416,24 +489,16 @@ export function MyTasksView() {
   }, [tasks, usingSample, me.id]);
 
   const filteredTasks = React.useMemo(() => {
-    const todayStr = getLocalDateIso();
     return myTasks.filter((task) => {
       if (tab === 'all' && usingSample && !expanded && !statusFilter && EXTRA_MY_TASK_IDS.has(task.id)) {
         return false;
       }
       if (tab === 'today') {
-        if (usingSample) {
-          if (task.bucket !== 'today' && task.status !== 'Hoàn thành') return false;
-          if (task.status === 'Hoàn thành') return false;
-        } else if (task.dueDate.slice(0, 10) !== todayStr || task.status === 'Hoàn thành') {
-          return false;
-        }
+        if (task.status === 'Hoàn thành') return false;
+        if (diffCalendarDays(task.dueDate) !== 0) return false;
       } else if (tab === 'upcoming') {
-        if (usingSample) {
-          if (task.bucket !== 'upcoming' || task.status === 'Hoàn thành') return false;
-        } else if (task.dueDate.slice(0, 10) <= todayStr || task.status === 'Hoàn thành') {
-          return false;
-        }
+        if (task.status === 'Hoàn thành') return false;
+        if (diffCalendarDays(task.dueDate) <= 0) return false;
       } else if (tab === 'done') {
         if (task.status !== 'Hoàn thành') return false;
       }
@@ -454,8 +519,9 @@ export function MyTasksView() {
 
   function persistMinePatch(updated: TaskViewItem) {
     if (!canUseDevPersistence()) return;
+    const baseSampleIds = new Set(getBaseMySample().map((item) => item.id));
     saveStoredTasks((prev) => {
-      if (BASE_MY_SAMPLE_BY_ID.has(updated.id)) {
+      if (baseSampleIds.has(updated.id)) {
         return {
           ...prev,
           editedMine: { ...prev.editedMine, [updated.id]: updated },
@@ -526,27 +592,30 @@ export function MyTasksView() {
     }
   }
 
-  const activeDayEvent = WEEK_DAYS.find((d) => d.day === selectedDay) ?? WEEK_DAYS[2];
   const todayStr = getLocalDateIso();
+  const weekSchedule = React.useMemo(() => buildCurrentWeekSchedule(), [todayStr]);
+  const activeDayEvent =
+    weekSchedule.days.find((d) => d.iso === selectedDayIso) ??
+    weekSchedule.days.find((d) => d.iso === todayStr) ??
+    weekSchedule.days[0]!;
 
-  const baseSampleCount = BASE_MY_SAMPLE.length;
-  const baseTodayOpenCount = BASE_MY_SAMPLE.filter(
-    (t) => t.bucket === 'today' && t.status !== 'Hoàn thành',
+  const baseSample = React.useMemo(() => getBaseMySample(), [todayStr]);
+  const baseSampleCount = baseSample.length;
+  const baseTodayOpenCount = baseSample.filter(
+    (t) => t.status !== 'Hoàn thành' && diffCalendarDays(t.dueDate) === 0,
   ).length;
-  const baseUpcomingOpenCount = BASE_MY_SAMPLE.filter(
-    (t) => t.bucket === 'upcoming' && t.status !== 'Hoàn thành',
+  const baseUpcomingOpenCount = baseSample.filter(
+    (t) => t.status !== 'Hoàn thành' && diffCalendarDays(t.dueDate) > 0,
   ).length;
-  const baseDoneCount = BASE_MY_SAMPLE.filter((t) => t.status === 'Hoàn thành').length;
+  const baseDoneCount = baseSample.filter((t) => t.status === 'Hoàn thành').length;
 
   const currentTodayOpenCount = myTasks.filter(
     (t) =>
       t.status !== 'Hoàn thành' &&
-      (usingSample ? t.bucket === 'today' : t.dueDate.slice(0, 10) <= todayStr),
+      (usingSample ? diffCalendarDays(t.dueDate) === 0 : diffCalendarDays(t.dueDate) <= 0),
   ).length;
   const currentUpcomingOpenCount = myTasks.filter(
-    (t) =>
-      t.status !== 'Hoàn thành' &&
-      (usingSample ? t.bucket === 'upcoming' : t.dueDate.slice(0, 10) > todayStr),
+    (t) => t.status !== 'Hoàn thành' && diffCalendarDays(t.dueDate) > 0,
   ).length;
   const currentDoneCount = myTasks.filter((t) => t.status === 'Hoàn thành').length;
 
@@ -582,18 +651,18 @@ export function MyTasksView() {
             type="button"
             className="qx-btn"
             onClick={() => {
-              calendarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-              setSelectedDay(18);
+              calendarRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+              setSelectedDayIso(getLocalDateIso());
               setCalHighlight(true);
               if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
               highlightTimerRef.current = window.setTimeout(() => setCalHighlight(false), 1800);
             }}
           >
-            <Calendar size={15} strokeWidth={1.6} aria-hidden="true" />
+            <Calendar size={16} strokeWidth={1.5} aria-hidden="true" />
             Xem lịch
           </button>
           <button type="button" className="qx-btn qx-btn--primary" onClick={() => setCreating(true)}>
-            <Plus size={15} strokeWidth={2} aria-hidden="true" />
+            <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
             Tạo công việc
           </button>
         </div>
@@ -602,36 +671,26 @@ export function MyTasksView() {
       <div className="qx-stats">
         <article className="qx-stat">
           <span className="qx-stat__label">Được giao</span>
-          <SquareCheck className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
-          <div className="qx-stat__value">{String(totalCount).padStart(2, '0')}</div>
+          <div className="qx-stat__value">{totalCount}</div>
           <div className="qx-stat__note">Tổng số công việc</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Cần làm hôm nay</span>
-          <Clock className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
-          <div className="qx-stat__value">{String(todayCount).padStart(2, '0')}</div>
+          <div className="qx-stat__value">{todayCount}</div>
           <div className="qx-stat__note">2 việc cần ưu tiên</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Quá hạn</span>
-          <Activity className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
-          <div className="qx-stat__value">{String(overdueCount).padStart(2, '0')}</div>
+          <div className="qx-stat__value">{overdueCount}</div>
           <div className="qx-stat__note">Cần xử lý ngay</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Hoàn thành tuần này</span>
-          <CheckCircle2 className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
-          <div className="qx-stat__value">
-            <span>{String(doneCount).padStart(2, '0')}</span>
-            <span className="qx-stat__delta">
-              <ArrowUp size={11} strokeWidth={2.4} aria-hidden="true" />
-              18%
-            </span>
-          </div>
-          <div className="qx-stat__note">Tiến độ +18%</div>
+          <div className="qx-stat__value">{doneCount}</div>
+          <div className="qx-stat__note">Tăng 18% so với tuần trước</div>
         </article>
       </div>
 
@@ -655,26 +714,24 @@ export function MyTasksView() {
                 aria-expanded={filterOpen}
                 onClick={() => setFilterOpen((open) => !open)}
               >
-                <ListFilter size={14} strokeWidth={1.6} aria-hidden="true" />
+                <ListFilter size={16} strokeWidth={1.5} aria-hidden="true" />
                 Bộ lọc
               </button>
               {filterOpen ? (
                 <div className="qtk-popover" role="region" aria-label="Bộ lọc công việc">
-                  <label className="qtk-popover__field">
-                    <span className="qtk-popover__label">Trạng thái</span>
-                    <select
-                      className="qtk-select"
+                  <div className="qtk-popover__field">
+                    <label htmlFor="qtk-mine-status-filter" className="qtk-popover__label">
+                      Trạng thái
+                    </label>
+                    <Select
+                      id="qtk-mine-status-filter"
+                      aria-label="Trạng thái"
+                      controlSize="sm"
                       value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value)}
-                    >
-                      <option value="">Tất cả trạng thái</option>
-                      <option value="Ưu tiên cao">Ưu tiên cao</option>
-                      <option value="Đang làm">Đang làm</option>
-                      <option value="Cần xử lý">Cần xử lý</option>
-                      <option value="Chờ duyệt">Chờ duyệt</option>
-                      <option value="Hoàn thành">Hoàn thành</option>
-                    </select>
-                  </label>
+                      onValueChange={setStatusFilter}
+                      options={MY_STATUS_FILTER_OPTIONS}
+                    />
+                  </div>
                   <div className="qtk-popover__actions">
                     <button
                       type="button"
@@ -743,7 +800,7 @@ export function MyTasksView() {
           <ul className="qtk-mine-list" role="tabpanel">
             {filteredTasks.length === 0 ? (
               <li className="qtk-mine-row" style={{ cursor: 'default' }}>
-                <p className="qtk-mine-meta">Không có công việc nào khớp bộ lọc hiện tại.</p>
+                <p className="qtk-mine-meta">Không có công việc nào khớp bộ lọc hiện tại</p>
               </li>
             ) : (
               filteredTasks.map((task) => {
@@ -763,7 +820,7 @@ export function MyTasksView() {
                         void handleStatusChange(task, isDone ? 'Đang làm' : 'Hoàn thành');
                       }}
                     >
-                      <CheckCircle2 size={18} strokeWidth={1.6} aria-hidden="true" />
+                      <CheckCircle2 size={16} strokeWidth={1.5} aria-hidden="true" />
                     </button>
 
                     <div className="qtk-mine-main">
@@ -783,7 +840,7 @@ export function MyTasksView() {
 
                     <div className="qtk-mine-right">
                       <span className={getStatusBadgeClass(badgeText)}>{badgeText}</span>
-                      <span className="qtk-mine-due">{task.dueLabel ?? formatDueDate(task.dueDate)}</span>
+                      <span className="qtk-mine-due">{task.dueLabel ?? formatRelativeViDate(task.dueDate)}</span>
                     </div>
                   </li>
                 );
@@ -804,9 +861,9 @@ export function MyTasksView() {
                   : `Đang hiển thị ${filteredTasks.length} trong ${totalCount} công việc`}
               </span>
               {expanded ? (
-                <ChevronUp size={13} strokeWidth={1.7} aria-hidden="true" />
+                <ChevronUp size={16} strokeWidth={1.5} aria-hidden="true" />
               ) : (
-                <ArrowRight size={13} strokeWidth={1.7} aria-hidden="true" />
+                <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />
               )}
             </button>
           </div>
@@ -820,17 +877,19 @@ export function MyTasksView() {
           >
             <div className="qtk-side-card__head">
               <h2>Lịch tuần này</h2>
-              <span className="qtk-side-card__range">16 – 22/11</span>
+              <span className="qtk-side-card__range">{weekSchedule.rangeLabel}</span>
             </div>
 
             <div className="qtk-cal-strip" role="group" aria-label="Ngày trong tuần">
-              {WEEK_DAYS.map((day) => (
+              {weekSchedule.days.map((day) => (
                 <button
-                  key={day.day}
+                  key={day.iso}
                   type="button"
                   className="qtk-cal-day"
-                  aria-pressed={selectedDay === day.day}
-                  onClick={() => setSelectedDay(day.day)}
+                  aria-pressed={selectedDayIso === day.iso}
+                  aria-current={day.iso === todayStr ? 'date' : undefined}
+                  data-today={day.iso === todayStr ? 'true' : undefined}
+                  onClick={() => setSelectedDayIso(day.iso)}
                 >
                   <span className="qtk-cal-day__label">{day.label}</span>
                   <span className="qtk-cal-day__num">{day.day}</span>
@@ -862,8 +921,7 @@ export function MyTasksView() {
             </div>
             <p className="qtk-progress-caption">{`${weeklyDoneUnits} / ${weeklyTarget} đầu việc đã hoàn thành`}</p>
             <p className="qtk-progress-tip">
-              <Zap size={14} strokeWidth={1.6} aria-hidden="true" />
-              <span>Bạn đang duy trì nhịp làm việc tốt!</span>
+              <span>Tiến độ xử lý đầu việc ổn định trong tuần này</span>
             </p>
           </div>
         </aside>
@@ -888,10 +946,11 @@ export function MyTasksView() {
         onOpenChange={closeModal}
         people={people}
         onCreated={(created) => {
+          const diff = diffCalendarDays(created.dueDate);
           const item: TaskViewItem = {
             ...created,
-            dueLabel: formatDueDate(created.dueDate),
-            bucket: 'today',
+            dueLabel: formatRelativeViDate(created.dueDate),
+            bucket: created.status === 'Hoàn thành' ? 'done' : diff <= 0 ? 'today' : 'upcoming',
           };
           setTasks((prev) => [item, ...prev.filter((entry) => entry.id !== item.id)]);
           recordCreatedTaskInStorage(item, 'mine');

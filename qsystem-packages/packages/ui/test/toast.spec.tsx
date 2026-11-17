@@ -162,4 +162,21 @@ describe('Toast', () => {
     rerender(<ToastRegion position="top-right" theme="light" />);
     expect(screen.getByRole('region', { name: /thông báo/i })).toHaveAttribute('data-position', 'top-right');
   });
+
+  it('renders a styled Lucide close icon on toast dismiss buttons', async () => {
+    render(<ToastRegion />);
+    act(() => {
+      toast.info('Đã cập nhật');
+    });
+    const closeBtn = await screen.findByRole('button', { name: 'Đóng thông báo' });
+    expect(closeBtn).toHaveClass('qs-toast__close');
+    expect(closeBtn.textContent).toBe('');
+    const svg = closeBtn.querySelector('svg');
+    expect(svg).not.toBeNull();
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(svg).toHaveAttribute('stroke-width', '1.5');
+
+    const css = readFileSync(resolve(__dirname, '../src/styles.css'), 'utf8');
+    expect(css).toContain('.qs-toast__close');
+  });
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { X } from 'lucide-react';
 
 export type ToastVariant = 'info' | 'success' | 'warning' | 'error' | 'default';
 export type ToastPosition =
@@ -182,8 +183,8 @@ function ToastCard({ item }: { item: ResolvedToast }) {
       className="qs-toast"
     >
       <span className="qs-toast__message">{item.message}</span>
-      <button type="button" aria-label="Đóng thông báo" onClick={() => dismissToast(item.id)}>
-        ×
+      <button type="button" className="qs-toast__close" aria-label="Đóng thông báo" onClick={() => dismissToast(item.id)}>
+        <X size={16} strokeWidth={1.5} aria-hidden="true" />
       </button>
     </div>
   );

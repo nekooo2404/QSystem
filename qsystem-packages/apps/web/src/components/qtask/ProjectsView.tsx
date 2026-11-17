@@ -5,18 +5,17 @@ import {
   Archive,
   Check,
   CheckCircle2,
-  Clock,
   Folder,
   LayoutGrid,
   List,
   ListFilter,
   Plus,
   RotateCcw,
-  SquareCheck,
   TrendingUp,
   X,
 } from 'lucide-react';
-import { toast, useFloatingLayer } from '@qsystem/ui';
+import { Select, toast, useFloatingLayer, type SelectOption } from '@qsystem/ui';
+import { addLocalDaysIso, formatDdMmYyyy } from '../../lib/date';
 import {
   canUseDevPersistence,
   loadStoredProjects,
@@ -31,80 +30,102 @@ type ProjectTab = StoredProjectTab;
 type ProjectAccent = StoredProjectAccent;
 type ProjectItem = StoredProjectItem;
 
-const SAMPLE_PROJECTS_LIST: ProjectItem[] = [
-  {
-    id: 'proj-core',
-    name: 'QSystem Core',
-    description: 'Nền tảng quản trị doanh nghiệp',
-    accent: 'amber',
-    statusLabel: 'Đang triển khai',
-    badgeVariant: 'blue',
-    progress: 82,
-    doneTasks: 12,
-    totalTasks: 16,
-    members: ['MK', 'LA'],
-    category: 'active',
-    milestones: [
-      { id: 'ms-core-1', title: 'Kiến trúc đa phân hệ & phân quyền', due: '05/11', done: true },
-      { id: 'ms-core-2', title: 'Đồng bộ thông báo thời gian thực', due: '14/11', done: true },
-      { id: 'ms-core-3', title: 'Kiểm thử tải & nghiệm thu hệ thống', due: '25/11', done: false },
-    ],
-  },
-  {
-    id: 'proj-qhrm',
-    name: 'QHRM Upgrade',
-    description: 'Nâng cấp quản trị nhân sự',
-    accent: 'blue',
-    statusLabel: 'Đang triển khai',
-    badgeVariant: 'blue',
-    progress: 65,
-    doneTasks: 18,
-    totalTasks: 28,
-    members: ['MK', 'LA'],
-    category: 'active',
-    milestones: [
-      { id: 'ms-qhrm-1', title: 'Chuẩn hóa hồ sơ & hợp đồng nhân sự', due: '08/11', done: true },
-      { id: 'ms-qhrm-2', title: 'Quy trình duyệt nghỉ phép đa cấp', due: '18/11', done: true },
-      { id: 'ms-qhrm-3', title: 'Bảng công tự động & xuất bảng lương', due: '28/11', done: false },
-    ],
-  },
-  {
-    id: 'proj-qcrm',
-    name: 'QCRM V2',
-    description: 'Khách hàng và cơ hội bán hàng',
-    accent: 'green',
-    statusLabel: 'Đang phát triển',
-    badgeVariant: 'amber',
-    progress: 34,
-    doneTasks: 7,
-    totalTasks: 21,
-    members: ['MK', 'LA'],
-    category: 'active',
-    milestones: [
-      { id: 'ms-qcrm-1', title: 'Nhập dữ liệu khách hàng doanh nghiệp', due: '10/11', done: true },
-      { id: 'ms-qcrm-2', title: 'Phễu cơ hội & dự báo doanh thu', due: '22/11', done: false },
-      { id: 'ms-qcrm-3', title: 'Lịch sử chăm sóc & nhắc hẹn tự động', due: '30/11', done: false },
-    ],
-  },
-  {
-    id: 'proj-qsocial',
-    name: 'QSocial Workspace',
-    description: 'Truyền thông nội bộ',
-    accent: 'blue',
-    statusLabel: 'Sắp hoàn thành',
-    badgeVariant: 'green',
-    progress: 93,
-    doneTasks: 25,
-    totalTasks: 27,
-    members: ['MK', 'LA'],
-    category: 'active',
-    milestones: [
-      { id: 'ms-qsocial-1', title: 'Bảng tin phòng ban & ghim thông báo', due: '02/11', done: true },
-      { id: 'ms-qsocial-2', title: 'Bình chọn nhanh & phản hồi bài viết', due: '12/11', done: true },
-      { id: 'ms-qsocial-3', title: 'Bàn giao hướng dẫn quản trị viên', due: '20/11', done: false },
-    ],
-  },
+const STAGE_FILTER_OPTIONS: readonly SelectOption<string>[] = [
+  { value: '', label: 'Tất cả giai đoạn' },
+  { value: 'Đang triển khai', label: 'Đang triển khai' },
+  { value: 'Đang phát triển', label: 'Đang phát triển' },
+  { value: 'Sắp hoàn thành', label: 'Sắp hoàn thành' },
+  { value: 'Hoàn thành', label: 'Hoàn thành' },
+  { value: 'Đã lưu trữ', label: 'Đã lưu trữ' },
 ];
+
+const ACCENT_OPTIONS: readonly SelectOption<ProjectAccent>[] = [
+  { value: 'amber', label: 'Hổ phách' },
+  { value: 'blue', label: 'Xanh dương' },
+  { value: 'green', label: 'Xanh lá' },
+  { value: 'purple', label: 'Tím' },
+];
+
+function formatDdMmOffset(offsetDays: number): string {
+  return formatDdMmYyyy(addLocalDaysIso(offsetDays)).slice(0, 5);
+}
+
+function getSampleProjectsList(): ProjectItem[] {
+  return [
+    {
+      id: 'proj-core',
+      name: 'QSystem Core',
+      description: 'Nền tảng quản trị doanh nghiệp',
+      accent: 'amber',
+      statusLabel: 'Đang triển khai',
+      badgeVariant: 'blue',
+      progress: 82,
+      doneTasks: 12,
+      totalTasks: 16,
+      members: ['MK', 'LA'],
+      category: 'active',
+      milestones: [
+        { id: 'ms-core-1', title: 'Kiến trúc đa phân hệ & phân quyền', due: formatDdMmOffset(-12), done: true },
+        { id: 'ms-core-2', title: 'Đồng bộ thông báo thời gian thực', due: formatDdMmOffset(-3), done: true },
+        { id: 'ms-core-3', title: 'Kiểm thử tải & nghiệm thu hệ thống', due: formatDdMmOffset(8), done: false },
+      ],
+    },
+    {
+      id: 'proj-qhrm',
+      name: 'QHRM Upgrade',
+      description: 'Nâng cấp quản trị nhân sự',
+      accent: 'blue',
+      statusLabel: 'Đang triển khai',
+      badgeVariant: 'blue',
+      progress: 65,
+      doneTasks: 18,
+      totalTasks: 28,
+      members: ['MK', 'LA'],
+      category: 'active',
+      milestones: [
+        { id: 'ms-qhrm-1', title: 'Chuẩn hóa hồ sơ & hợp đồng nhân sự', due: formatDdMmOffset(-9), done: true },
+        { id: 'ms-qhrm-2', title: 'Quy trình duyệt nghỉ phép đa cấp', due: formatDdMmOffset(1), done: true },
+        { id: 'ms-qhrm-3', title: 'Bảng công tự động & xuất bảng lương', due: formatDdMmOffset(11), done: false },
+      ],
+    },
+    {
+      id: 'proj-qcrm',
+      name: 'QCRM V2',
+      description: 'Khách hàng và cơ hội bán hàng',
+      accent: 'green',
+      statusLabel: 'Đang phát triển',
+      badgeVariant: 'amber',
+      progress: 34,
+      doneTasks: 7,
+      totalTasks: 21,
+      members: ['MK', 'LA'],
+      category: 'active',
+      milestones: [
+        { id: 'ms-qcrm-1', title: 'Nhập dữ liệu khách hàng doanh nghiệp', due: formatDdMmOffset(-7), done: true },
+        { id: 'ms-qcrm-2', title: 'Phễu cơ hội & dự báo doanh thu', due: formatDdMmOffset(5), done: false },
+        { id: 'ms-qcrm-3', title: 'Lịch sử chăm sóc & nhắc hẹn tự động', due: formatDdMmOffset(13), done: false },
+      ],
+    },
+    {
+      id: 'proj-qsocial',
+      name: 'QSocial Workspace',
+      description: 'Truyền thông nội bộ',
+      accent: 'blue',
+      statusLabel: 'Sắp hoàn thành',
+      badgeVariant: 'green',
+      progress: 93,
+      doneTasks: 25,
+      totalTasks: 27,
+      members: ['MK', 'LA'],
+      category: 'active',
+      milestones: [
+        { id: 'ms-qsocial-1', title: 'Bảng tin phòng ban & ghim thông báo', due: formatDdMmOffset(-15), done: true },
+        { id: 'ms-qsocial-2', title: 'Bình chọn nhanh & phản hồi bài viết', due: formatDdMmOffset(-5), done: true },
+        { id: 'ms-qsocial-3', title: 'Bàn giao hướng dẫn quản trị viên', due: formatDdMmOffset(3), done: false },
+      ],
+    },
+  ];
+}
 
 const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
   { id: 'all', label: 'Tất cả dự án' },
@@ -115,7 +136,11 @@ const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
 
 export function ProjectsView() {
   const projectsAvailable = process.env.NODE_ENV === 'test' || canUseDevPersistence();
-  const [projects, setProjects] = React.useState<ProjectItem[]>(projectsAvailable ? SAMPLE_PROJECTS_LIST : []);
+  const baseSampleProjects = React.useMemo(
+    () => (projectsAvailable ? getSampleProjectsList() : []),
+    [projectsAvailable],
+  );
+  const [projects, setProjects] = React.useState<ProjectItem[]>(() => baseSampleProjects);
   const [tab, setTab] = React.useState<ProjectTab>('all');
   const [layout, setLayout] = React.useState<'grid' | 'list'>('grid');
   const [filterOpen, setFilterOpen] = React.useState(false);
@@ -151,7 +176,9 @@ export function ProjectsView() {
   React.useEffect(() => {
     if (!filterOpen) return;
     const onDocDown = (event: MouseEvent) => {
-      if (!filterRef.current?.contains(event.target as Node)) {
+      const target = event.target as Element | null;
+      if (target?.closest?.('[role="listbox"]')) return;
+      if (!filterRef.current?.contains(target)) {
         setFilterOpen(false);
       }
     };
@@ -256,12 +283,12 @@ export function ProjectsView() {
     return true;
   });
 
-  const baseActiveCount = projectsAvailable ? SAMPLE_PROJECTS_LIST.filter((p) => p.category === 'active').length : 0;
-  const baseAtRiskCount = projectsAvailable ? SAMPLE_PROJECTS_LIST.filter(
+  const baseActiveCount = projectsAvailable ? baseSampleProjects.filter((p) => p.category === 'active').length : 0;
+  const baseAtRiskCount = projectsAvailable ? baseSampleProjects.filter(
     (p) => p.badgeVariant === 'amber' && p.category === 'active',
   ).length : 0;
-  const baseTotalTasks = projectsAvailable ? SAMPLE_PROJECTS_LIST.reduce((sum, p) => sum + p.totalTasks, 0) : 0;
-  const baseDoneTasks = projectsAvailable ? SAMPLE_PROJECTS_LIST.reduce((sum, p) => sum + p.doneTasks, 0) : 0;
+  const baseTotalTasks = projectsAvailable ? baseSampleProjects.reduce((sum, p) => sum + p.totalTasks, 0) : 0;
+  const baseDoneTasks = projectsAvailable ? baseSampleProjects.reduce((sum, p) => sum + p.doneTasks, 0) : 0;
 
   const nonArchivedCount = projects.filter((p) => p.category !== 'archived').length;
   const activeCount = projects.filter((p) => p.category === 'active').length;
@@ -329,26 +356,24 @@ export function ProjectsView() {
               aria-expanded={filterOpen}
               onClick={() => setFilterOpen((v) => !v)}
             >
-              <ListFilter size={15} strokeWidth={1.6} aria-hidden="true" />
+              <ListFilter size={16} strokeWidth={1.5} aria-hidden="true" />
               Bộ lọc
             </button>
             {filterOpen ? (
               <div className="qtk-popover" role="region" aria-label="Bộ lọc dự án">
-                <label className="qtk-popover__field">
-                  <span className="qtk-popover__label">Giai đoạn</span>
-                  <select
-                    className="qtk-select"
+                <div className="qtk-popover__field">
+                  <label htmlFor="qtk-proj-filter-stage" className="qtk-popover__label">
+                    Giai đoạn
+                  </label>
+                  <Select
+                    id="qtk-proj-filter-stage"
+                    aria-label="Giai đoạn"
+                    controlSize="sm"
                     value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value)}
-                  >
-                    <option value="">Tất cả giai đoạn</option>
-                    <option value="Đang triển khai">Đang triển khai</option>
-                    <option value="Đang phát triển">Đang phát triển</option>
-                    <option value="Sắp hoàn thành">Sắp hoàn thành</option>
-                    <option value="Hoàn thành">Hoàn thành</option>
-                    <option value="Đã lưu trữ">Đã lưu trữ</option>
-                  </select>
-                </label>
+                    onValueChange={setStatusFilter}
+                    options={STAGE_FILTER_OPTIONS}
+                  />
+                </div>
                 <div className="qtk-popover__actions">
                   <button
                     type="button"
@@ -373,7 +398,7 @@ export function ProjectsView() {
           </div>
 
           <button type="button" className="qx-btn qx-btn--primary" onClick={() => setCreating(true)}>
-            <Plus size={15} strokeWidth={2} aria-hidden="true" />
+            <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
             Tạo dự án
           </button>
         </div>
@@ -382,28 +407,24 @@ export function ProjectsView() {
       <div className="qx-stats">
         <article className="qx-stat">
           <span className="qx-stat__label">Dự án hoạt động</span>
-          <Folder className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">{String(activePortfolioCount).padStart(2, '0')}</div>
           <div className="qx-stat__note">{`${activeNoteCount} đang thực hiện`}</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Đúng tiến độ</span>
-          <CheckCircle2 className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
-          <div className="qx-stat__value">{String(onTrackCount).padStart(2, '0')}</div>
+          <div className="qx-stat__value">{onTrackCount}</div>
           <div className="qx-stat__note">{`${onTrackPct}% danh mục`}</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Cần chú ý</span>
-          <Clock className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
-          <div className="qx-stat__value">{String(attentionCount).padStart(2, '0')}</div>
+          <div className="qx-stat__value">{attentionCount}</div>
           <div className="qx-stat__note">Có rủi ro trễ hạn</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Công việc dự án</span>
-          <SquareCheck className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">{portfolioTotalTasks}</div>
           <div className="qx-stat__note">{`Đã hoàn thành ${portfolioDoneTasks}`}</div>
         </article>
@@ -432,12 +453,12 @@ export function ProjectsView() {
         >
           {layout === 'grid' ? (
             <>
-              <LayoutGrid size={14} strokeWidth={1.6} aria-hidden="true" />
+              <LayoutGrid size={16} strokeWidth={1.5} aria-hidden="true" />
               Lưới
             </>
           ) : (
             <>
-              <List size={14} strokeWidth={1.6} aria-hidden="true" />
+              <List size={16} strokeWidth={1.5} aria-hidden="true" />
               Danh sách
             </>
           )}
@@ -445,8 +466,8 @@ export function ProjectsView() {
       </div>
 
       {visible.length === 0 ? (
-        <div className="qx-card" style={{ padding: 28, color: 'var(--qx-muted)', fontSize: 13 }}>
-          Chưa có dự án nào trong nhóm này.
+        <div className="qx-card" style={{ padding: 24, color: 'var(--qs-fg-muted)', fontSize: 13 }}>
+          Chưa có dự án nào trong nhóm này
         </div>
       ) : (
         <div className="qtk-proj-grid" data-layout={layout} role="tabpanel">
@@ -454,7 +475,7 @@ export function ProjectsView() {
             <article key={proj.id} className="qx-card qtk-proj-card">
               <div className="qtk-proj-card__top">
                 <span className={`qtk-proj-icon qtk-proj-icon--${proj.accent}`} aria-hidden="true">
-                  <Folder size={16} strokeWidth={1.6} />
+                  <Folder size={16} strokeWidth={1.5} />
                 </span>
                 <span className={`qx-badge qx-badge--${proj.badgeVariant}`}>{proj.statusLabel}</span>
               </div>
@@ -524,14 +545,14 @@ export function ProjectsView() {
           >
             <div className="qtk-modal__head">
               <h2 id="qtk-proj-create-title">Tạo dự án mới</h2>
-              <p>Khởi tạo dự án và theo dõi tiến độ đầu việc theo nhóm phụ trách.</p>
+              <p>Khởi tạo dự án và theo dõi tiến độ đầu việc theo nhóm phụ trách</p>
               <button
                 type="button"
                 className="qtk-modal__close"
                 aria-label="Đóng hộp thoại"
                 onClick={closeCreateModal}
               >
-                <X size={18} strokeWidth={1.6} aria-hidden="true" />
+                <X size={16} strokeWidth={1.5} aria-hidden="true" />
               </button>
             </div>
             <form onSubmit={handleCreateProject} noValidate>
@@ -572,17 +593,14 @@ export function ProjectsView() {
                   <label htmlFor="qtk-proj-accent" className="qtk-field__label">
                     Màu nhận diện
                   </label>
-                  <select
+                  <Select<ProjectAccent>
                     id="qtk-proj-accent"
-                    className="qtk-input"
+                    aria-label="Màu nhận diện"
+                    controlSize="md"
                     value={newAccent}
-                    onChange={(event) => setNewAccent(event.target.value as ProjectAccent)}
-                  >
-                    <option value="amber">Hổ phách</option>
-                    <option value="blue">Xanh dương</option>
-                    <option value="green">Xanh lá</option>
-                    <option value="purple">Tím</option>
-                  </select>
+                    onValueChange={setNewAccent}
+                    options={ACCENT_OPTIONS}
+                  />
                 </div>
               </div>
               <div className="qtk-modal__foot">
@@ -590,7 +608,7 @@ export function ProjectsView() {
                   Hủy
                 </button>
                 <button type="submit" className="qx-btn qx-btn--primary">
-                  <Plus size={15} strokeWidth={2} aria-hidden="true" />
+                  <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
                   Tạo dự án
                 </button>
               </div>
@@ -623,7 +641,7 @@ export function ProjectsView() {
                 aria-label="Đóng chi tiết dự án"
                 onClick={closeDetailModal}
               >
-                <X size={18} strokeWidth={1.6} aria-hidden="true" />
+                <X size={16} strokeWidth={1.5} aria-hidden="true" />
               </button>
             </div>
 
@@ -633,7 +651,7 @@ export function ProjectsView() {
                   <span className={`qx-badge qx-badge--${selectedProject.badgeVariant}`}>
                     {selectedProject.statusLabel}
                   </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div className="qtk-avatars" aria-label="Thành viên tham gia">
                       {selectedProject.members.map((initialsText) => (
                         <span key={initialsText} className="qx-avatar qx-avatar--sm qtk-avatar-cell">
@@ -679,9 +697,9 @@ export function ProjectsView() {
                         onClick={() => toggleMilestone(selectedProject.id, ms.id)}
                       >
                         <CheckCircle2
-                          size={15}
-                          strokeWidth={1.8}
-                          style={{ color: ms.done ? 'var(--qx-green)' : 'var(--qx-muted)' }}
+                          size={16}
+                          strokeWidth={1.5}
+                          style={{ color: ms.done ? 'var(--qs-success)' : 'var(--qs-fg-muted)' }}
                           aria-hidden="true"
                         />
                         <span>{ms.title}</span>
@@ -702,7 +720,7 @@ export function ProjectsView() {
                     disabled={selectedProject.progress >= 100}
                     onClick={() => bumpProjectProgress(selectedProject)}
                   >
-                    <TrendingUp size={14} strokeWidth={1.7} aria-hidden="true" />
+                    <TrendingUp size={16} strokeWidth={1.5} aria-hidden="true" />
                     +10% tiến độ
                   </button>
                   <button
@@ -712,12 +730,12 @@ export function ProjectsView() {
                   >
                     {selectedProject.category === 'done' ? (
                       <>
-                        <RotateCcw size={14} strokeWidth={1.7} aria-hidden="true" />
+                        <RotateCcw size={16} strokeWidth={1.5} aria-hidden="true" />
                         Mở lại
                       </>
                     ) : (
                       <>
-                        <Check size={14} strokeWidth={1.8} aria-hidden="true" />
+                        <Check size={16} strokeWidth={1.5} aria-hidden="true" />
                         Hoàn thành
                       </>
                     )}
@@ -727,11 +745,11 @@ export function ProjectsView() {
                     className="qx-btn qx-btn--sm qx-btn--ghost"
                     onClick={() => toggleProjectArchive(selectedProject)}
                   >
-                    <Archive size={14} strokeWidth={1.7} aria-hidden="true" />
+                    <Archive size={16} strokeWidth={1.5} aria-hidden="true" />
                     {selectedProject.category === 'archived' ? 'Khôi phục' : 'Lưu trữ'}
                   </button>
                 </div>
-                <button type="button" className="qx-btn qx-btn--primary" onClick={closeDetailModal}>
+                <button type="button" className="qx-btn" onClick={closeDetailModal}>
                   Đóng
                 </button>
               </div>

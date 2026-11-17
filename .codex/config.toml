@@ -1,0 +1,6 @@
+[mcp_servers.fragment-ui]
+command = "node"
+args = ['D:\Projects\fragment-ui-public\packages\mcp-server\dist\index.js']
+
+[mcp_servers.fragment-ui.env]
+FRAGMENT_UI_ROOT = 'D:\Projects\fragment-ui-public'

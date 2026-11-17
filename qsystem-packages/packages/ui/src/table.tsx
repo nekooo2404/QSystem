@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 export interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
   wrapperClassName?: string;
@@ -210,7 +211,14 @@ export function DataTable<T>({
                     onClick={() => toggleSort(col.id)}
                     className="qs-table__sort"
                   >
-                    {col.header}
+                    <span>{col.header}</span>
+                    {active === 'ascending' ? (
+                      <ArrowUp size={16} strokeWidth={1.5} aria-hidden="true" className="qs-table__sort-icon" />
+                    ) : active === 'descending' ? (
+                      <ArrowDown size={16} strokeWidth={1.5} aria-hidden="true" className="qs-table__sort-icon" />
+                    ) : (
+                      <ArrowUpDown size={16} strokeWidth={1.5} aria-hidden="true" className="qs-table__sort-icon" />
+                    )}
                   </button>
                 ) : (
                   col.header

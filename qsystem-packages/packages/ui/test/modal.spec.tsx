@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -129,5 +131,23 @@ describe('Modal', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /đóng hộp thoại/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('renders Lucide close icon with [data-qs-modal-close] and ships close button styling in styles.css', async () => {
+    const user = userEvent.setup();
+    render(<OpenHarness />);
+    await user.click(screen.getByRole('button', { name: 'Open dialog' }));
+    const closeBtn = screen.getByRole('button', { name: /đóng hộp thoại/i });
+    expect(closeBtn).toHaveAttribute('data-qs-modal-close', '');
+    expect(closeBtn).toHaveClass('qs-modal__close');
+    const svg = closeBtn.querySelector('svg');
+    expect(svg).not.toBeNull();
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(svg).toHaveAttribute('stroke-width', '1.5');
+
+    const css = readFileSync(join(__dirname, '..', 'src', 'styles.css'), 'utf8');
+    expect(css).toContain('.qs-modal__dialog > [data-qs-modal-close]');
+    expect(css).toContain('width: 44px;');
+    expect(css).toContain('height: 44px;');
   });
 });

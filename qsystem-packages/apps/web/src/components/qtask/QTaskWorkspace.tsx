@@ -1,15 +1,12 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  Activity,
-  ArrowUp,
   Check,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Download,
   Eye,
   Flag,
@@ -19,13 +16,13 @@ import {
   MoreHorizontal,
   Plus,
   Search,
-  SquareCheck,
   Trash2,
 } from 'lucide-react';
-import { toast } from '@qsystem/ui';
+import { Select, toast, type SelectOption } from '@qsystem/ui';
 import { listTasks, listTasksPage, TASK_STATUSES, updateTaskStatus, type Task, type TaskStatus } from '../../lib/adapters/tasks.adapter';
 import { apiFetch, ApiError } from '../../lib/api/client';
 import { useSession } from '../../lib/auth/session-context';
+import { addLocalDaysIso, diffCalendarDays } from '../../lib/date';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import { CreateTaskModal, type AssigneeOption } from './CreateTaskModal';
 import { MyTasksView } from './MyTasksView';
@@ -33,7 +30,6 @@ import { QTaskOverview } from './QTaskOverview';
 import {
   applyStatusPatch,
   canUseDevPersistence,
-  getLocalDateIso,
   loadStoredTasks,
   sanitizeCsvCell,
   saveStoredTasks,
@@ -42,11 +38,11 @@ import {
 import {
   formatDueDate,
   getPriorityBadgeClass,
+  getSampleTasks,
   getStatusBadgeClass,
   initials,
   SAMPLE_PEOPLE,
   SAMPLE_PROJECTS,
-  SAMPLE_TASKS,
   TaskDetailDrawer,
   type TaskViewItem,
 } from './TaskDetailContent';
@@ -77,15 +73,22 @@ export interface QTaskWorkspaceProps {
   initialView?: ViewId;
 }
 
+const STATUS_FILTER_OPTIONS: readonly SelectOption<string>[] = [
+  { value: '', label: 'Tất cả' },
+  ...TASK_STATUSES.map((st) => ({ value: st, label: st })),
+  { value: 'Ưu tiên', label: 'Ưu tiên' },
+  { value: 'Cần làm', label: 'Cần làm' },
+];
+
 function isOverdue(task: TaskViewItem): boolean {
   if (task.status === 'Hoàn thành') return false;
   if (task.status === 'Quá hạn') return true;
-  return task.dueDate.slice(0, 10) < getLocalDateIso();
+  return diffCalendarDays(task.dueDate) < 0;
 }
 
 function mergeSampleTasks(stored: StoredTasksState): TaskViewItem[] {
   const deleted = new Set(stored.deletedAll);
-  const base = SAMPLE_TASKS.filter((t) => !deleted.has(t.id)).map((t) => stored.editedAll[t.id] ?? t);
+  const base = getSampleTasks().filter((t) => !deleted.has(t.id)).map((t) => stored.editedAll[t.id] ?? t);
   const baseIds = new Set(base.map((t) => t.id));
   const custom = stored.customAll.filter((t) => !deleted.has(t.id) && !baseIds.has(t.id));
   return [...custom, ...base];
@@ -96,7 +99,7 @@ const SAMPLE_TITLES_EXTRA = [
   'Rà soát hợp đồng nhà cung cấp',
   'Cập nhật tài liệu hướng dẫn người dùng',
   'Tối ưu chỉ mục tìm kiếm hồ sơ',
-  'Chuẩn bị báo cáo KPI tháng 11',
+  'Chuẩn bị báo cáo KPI định kỳ',
   'Đối soát thanh toán đối tác quý IV',
 ];
 
@@ -116,7 +119,7 @@ function buildSamplePage(pageNumber: number): TaskViewItem[] {
     const person = SAMPLE_PEOPLE[(pageNumber + index) % SAMPLE_PEOPLE.length];
     const proj = SAMPLE_PROJECTS[(pageNumber + index) % SAMPLE_PROJECTS.length];
     const status = statuses[index % statuses.length];
-    const day = String(10 + ((pageNumber + index) % 18)).padStart(2, '0');
+    const offsetDays = ((pageNumber + index) % 15) - 4;
     return {
       id: `sample-page-${pageNumber}-${num}`,
       code: `CV-${num}`,
@@ -124,7 +127,7 @@ function buildSamplePage(pageNumber: number): TaskViewItem[] {
       project: proj.split(' ')[0],
       assigneeId: person.id,
       assigneeName: person.name,
-      dueDate: `2026-11-${day}`,
+      dueDate: addLocalDaysIso(offsetDays),
       status,
       displayStatus: status,
       priority: priorities[index % priorities.length],
@@ -169,7 +172,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   };
 
   const [tasks, setTasks] = React.useState<TaskViewItem[]>(() =>
-    canUseDevPersistence() ? SAMPLE_TASKS : [],
+    canUseDevPersistence() ? getSampleTasks() : [],
   );
   const [usingSample, setUsingSample] = React.useState(() => canUseDevPersistence());
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -180,6 +183,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   const [filterOpen, setFilterOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'table' | 'cards'>('table');
   const [menuTaskId, setMenuTaskId] = React.useState<string | null>(null);
+  const [menuPos, setMenuPos] = React.useState<{ top: number; left: number }>({ top: 8, left: 8 });
   const [editedSampleMap, setEditedSampleMap] = React.useState<Record<string, TaskViewItem>>({});
   const [deletedIds, setDeletedIds] = React.useState<Set<string>>(() => new Set());
   const [query, setQuery] = React.useState(initialQuery);
@@ -287,7 +291,9 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   React.useEffect(() => {
     if (!filterOpen) return;
     const onDocDown = (event: MouseEvent) => {
-      if (!filterRef.current?.contains(event.target as Node)) {
+      const target = event.target as Element | null;
+      if (target?.closest?.('[role="listbox"]')) return;
+      if (!filterRef.current?.contains(target)) {
         setFilterOpen(false);
       }
     };
@@ -298,20 +304,49 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   React.useEffect(() => {
     if (!menuTaskId) return;
     const onDocDown = (event: MouseEvent) => {
-      if (!(event.target as Element | null)?.closest?.('.qtk-row-actions')) {
+      if (!(event.target as Element | null)?.closest?.('.qtk-row-actions, .qtk-row-menu')) {
         setMenuTaskId(null);
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMenuTaskId(null);
     };
+    const onScrollOrResize = () => setMenuTaskId(null);
     document.addEventListener('mousedown', onDocDown);
     document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
     return () => {
       document.removeEventListener('mousedown', onDocDown);
       document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
     };
   }, [menuTaskId]);
+
+  const toggleRowMenu = React.useCallback(
+    (taskId: string, triggerEl: HTMLElement) => {
+      setMenuTaskId((cur) => {
+        if (cur === taskId) return null;
+        if (typeof window !== 'undefined') {
+          const rect = triggerEl.getBoundingClientRect();
+          const vw = window.innerWidth || 1024;
+          const vh = window.innerHeight || 768;
+          const menuWidth = 180;
+          const menuHeight = 160;
+          const left = Math.round(Math.max(8, Math.min(vw - menuWidth - 8, rect.right - menuWidth)));
+          const top = Math.round(
+            rect.bottom + 4 + menuHeight > vh - 8 && rect.top - menuHeight - 4 >= 8
+              ? rect.top - menuHeight - 4
+              : Math.max(8, Math.min(vh - menuHeight - 8, rect.bottom + 4)),
+          );
+          setMenuPos({ top, left });
+        }
+        return taskId;
+      });
+    },
+    [],
+  );
 
   const departmentName = React.useCallback(
     (id?: string, fallback?: string) =>
@@ -571,8 +606,9 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   let deltaDone = 0;
   let deltaOverdue = 0;
   if (usingSample) {
-    const baseById = new Map(SAMPLE_TASKS.map((t) => [t.id, t]));
-    for (const orig of SAMPLE_TASKS) {
+    const sampleTasks = getSampleTasks();
+    const baseById = new Map(sampleTasks.map((t) => [t.id, t]));
+    for (const orig of sampleTasks) {
       const cur = tasks.find((t) => t.id === orig.id);
       const wasDone = orig.status === 'Hoàn thành';
       const wasActive = orig.status === 'Đang làm' || orig.status === 'Chờ duyệt';
@@ -606,17 +642,29 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   const overdueNum = usingSample
     ? Math.max(0, 6 + deltaOverdue)
     : tasks.filter((t) => isOverdue(t)).length;
-  const statOverdue = String(overdueNum).padStart(2, '0');
+  const statOverdue = String(overdueNum);
   const completionPct = statTotal > 0 ? Math.round((statDone / statTotal) * 100) : 0;
+  const activeMenuTask =
+    menuTaskId !== null
+      ? paged.find((t) => t.id === menuTaskId) ?? tasks.find((t) => t.id === menuTaskId) ?? null
+      : null;
 
-  const projectOptions = Array.from(new Set(tasks.map((t) => t.project).filter(Boolean) as string[]));
-  const assigneeOptions =
-    people.length > 0
+  const projectSelectOptions: SelectOption<string>[] = [
+    { value: '', label: 'Tất cả' },
+    ...Array.from(new Set(tasks.map((t) => t.project).filter(Boolean) as string[])).map((proj) => ({
+      value: proj,
+      label: proj,
+    })),
+  ];
+  const assigneeSelectOptions: SelectOption<string>[] = [
+    { value: '', label: 'Tất cả' },
+    ...(people.length > 0
       ? people.map((p) => ({ value: p.id, label: p.name }))
       : Array.from(new Set(tasks.map((t) => t.assigneeName))).map((name) => ({
           value: name,
           label: name,
-        }));
+        }))),
+  ];
 
   const isOverview = searchParams?.get('muc') === 'tong-quan';
 
@@ -671,11 +719,11 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
         </div>
         <div className="qx-actions">
           <button type="button" className="qx-btn" onClick={exportReport}>
-            <Download size={15} strokeWidth={1.6} aria-hidden="true" />
+            <Download size={16} strokeWidth={1.5} aria-hidden="true" />
             Xuất báo cáo
           </button>
           <button type="button" className="qx-btn qx-btn--primary" onClick={() => setCreating(true)}>
-            <Plus size={15} strokeWidth={2} aria-hidden="true" />
+            <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
             Giao việc
           </button>
         </div>
@@ -684,14 +732,12 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
       <div className="qx-stats">
         <article className="qx-stat">
           <span className="qx-stat__label">Tổng công việc</span>
-          <SquareCheck className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">{statTotal}</div>
           <div className="qx-stat__note">Trong toàn doanh nghiệp</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Đang thực hiện</span>
-          <Activity className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">{statInProgress}</div>
           <div className="qx-stat__note">
             {usingSample
@@ -702,28 +748,20 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
 
         <article className="qx-stat">
           <span className="qx-stat__label">Hoàn thành</span>
-          <CheckCircle2 className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
-          <div className="qx-stat__value">
-            <span>{statDone}</span>
-            <span className="qx-stat__delta">
-              <ArrowUp size={11} strokeWidth={2.4} aria-hidden="true" />
-              8%
-            </span>
-          </div>
+          <div className="qx-stat__value">{statDone}</div>
           <div className="qx-stat__note">{`Tỷ lệ hoàn thành ${completionPct}%`}</div>
         </article>
 
         <article className="qx-stat">
           <span className="qx-stat__label">Quá hạn</span>
-          <Clock className="qx-stat__icon" size={16} strokeWidth={1.6} aria-hidden="true" />
           <div className="qx-stat__value">{statOverdue}</div>
           <div className="qx-stat__note">Cần theo dõi</div>
         </article>
       </div>
 
       {loadError ? (
-        <div className="qx-card" role="alert" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <span style={{ color: 'var(--qx-red)', fontSize: 13 }}>{loadError}</span>
+        <div className="qx-card" role="alert" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ color: 'var(--qs-error)', fontSize: 13 }}>{loadError}</span>
           <button
             type="button"
             className="qx-btn qx-btn--sm"
@@ -749,12 +787,12 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
             >
               {viewMode === 'table' ? (
                 <>
-                  <List size={14} strokeWidth={1.6} aria-hidden="true" />
+                  <List size={16} strokeWidth={1.5} aria-hidden="true" />
                   Chế độ bảng
                 </>
               ) : (
                 <>
-                  <LayoutGrid size={14} strokeWidth={1.6} aria-hidden="true" />
+                  <LayoutGrid size={16} strokeWidth={1.5} aria-hidden="true" />
                   Chế độ thẻ
                 </>
               )}
@@ -765,79 +803,68 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
               aria-expanded={filterOpen}
               onClick={() => setFilterOpen((v) => !v)}
             >
-              <ListFilter size={14} strokeWidth={1.6} aria-hidden="true" />
+              <ListFilter size={16} strokeWidth={1.5} aria-hidden="true" />
               Lọc
             </button>
 
             {filterOpen ? (
               <div className="qtk-popover" role="region" aria-label="Bộ lọc bảng công việc">
-                <label className="qtk-popover__field">
-                  <span className="qtk-popover__label">Trạng thái</span>
-                  <select
-                    className="qtk-select"
+                <div className="qtk-popover__field">
+                  <label htmlFor="qtk-ws-filter-status" className="qtk-popover__label">
+                    Trạng thái
+                  </label>
+                  <Select
+                    id="qtk-ws-filter-status"
                     aria-label="Trạng thái"
+                    controlSize="sm"
                     value={filters.status ?? ''}
-                    onChange={(event) => {
-                      const nextFilters = { ...filters, status: event.target.value || undefined };
+                    options={STATUS_FILTER_OPTIONS}
+                    onValueChange={(value) => {
+                      const nextFilters = { ...filters, status: value || undefined };
                       setPage(1);
                       setFilters(nextFilters);
                       syncUrl({ filters: nextFilters, page: 1 });
                     }}
-                  >
-                    <option value="">Tất cả</option>
-                    {TASK_STATUSES.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                    <option value="Ưu tiên">Ưu tiên</option>
-                    <option value="Cần làm">Cần làm</option>
-                  </select>
-                </label>
+                  />
+                </div>
 
-                <label className="qtk-popover__field">
-                  <span className="qtk-popover__label">Dự án</span>
-                  <select
-                    className="qtk-select"
+                <div className="qtk-popover__field">
+                  <label htmlFor="qtk-ws-filter-project" className="qtk-popover__label">
+                    Dự án
+                  </label>
+                  <Select
+                    id="qtk-ws-filter-project"
                     aria-label="Dự án"
+                    controlSize="sm"
                     value={filters.project ?? ''}
-                    onChange={(event) => {
-                      const nextFilters = { ...filters, project: event.target.value || undefined };
+                    options={projectSelectOptions}
+                    onValueChange={(value) => {
+                      const nextFilters = { ...filters, project: value || undefined };
                       setPage(1);
                       setFilters(nextFilters);
                       syncUrl({ filters: nextFilters, page: 1 });
                     }}
-                  >
-                    <option value="">Tất cả</option>
-                    {projectOptions.map((proj) => (
-                      <option key={proj} value={proj}>
-                        {proj}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
 
-                <label className="qtk-popover__field">
-                  <span className="qtk-popover__label">Người phụ trách</span>
-                  <select
-                    className="qtk-select"
+                <div className="qtk-popover__field">
+                  <label htmlFor="qtk-ws-filter-assignee" className="qtk-popover__label">
+                    Người phụ trách
+                  </label>
+                  <Select
+                    id="qtk-ws-filter-assignee"
                     aria-label="Người phụ trách"
+                    controlSize="sm"
                     value={filters.assigneeId ?? ''}
-                    onChange={(event) => {
-                      const nextFilters = { ...filters, assigneeId: event.target.value || undefined };
+                    options={assigneeSelectOptions}
+                    onValueChange={(value) => {
+                      const nextFilters = { ...filters, assigneeId: value || undefined };
                       setPage(1);
                       setFilters(nextFilters);
                       syncUrl({ filters: nextFilters, page: 1 });
                     }}
-                  >
-                    <option value="">Tất cả</option>
-                    {assigneeOptions.map((person) => (
-                      <option key={person.value} value={person.value}>
-                        {person.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
 
                 <div className="qtk-popover__actions">
                   <button
@@ -882,11 +909,11 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
           </div>
 
           <label className="qx-field-search">
-            <Search size={14} strokeWidth={1.7} aria-hidden="true" />
+            <Search size={16} strokeWidth={1.5} aria-hidden="true" />
             <input
               type="search"
               aria-label="Tìm theo tên hoặc mã công việc"
-              placeholder="Tìm theo tên hoặc mã công việc..."
+              placeholder="Tìm theo tên hoặc mã công việc"
               value={query}
               onChange={(event) => {
                 const nextQuery = event.target.value;
@@ -903,28 +930,27 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
             <table className="qx-table qtk-table">
               <thead>
                 <tr>
-                  <th scope="col">MÃ</th>
-                  <th scope="col">CÔNG VIỆC</th>
-                  <th scope="col">DỰ ÁN</th>
-                  <th scope="col">NGƯỜI PHỤ TRÁCH</th>
-                  <th scope="col">THỜI HẠN</th>
-                  <th scope="col">TRẠNG THÁI</th>
+                  <th scope="col">Mã</th>
+                  <th scope="col">Công việc</th>
+                  <th scope="col">Dự án</th>
+                  <th scope="col">Người phụ trách</th>
+                  <th scope="col">Thời hạn</th>
+                  <th scope="col">Trạng thái</th>
                   <th scope="col" aria-label="Thao tác" />
                 </tr>
               </thead>
               <tbody>
                 {paged.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--qx-muted)', height: 110 }}>
-                      Không có công việc nào khớp với lựa chọn hiện tại.
+                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--qs-fg-muted)', height: 108 }}>
+                      Không có công việc nào khớp với lựa chọn hiện tại
                     </td>
                   </tr>
                 ) : (
-                  paged.map((task, idx) => {
+                  paged.map((task) => {
                     const badgeLabel = task.displayStatus ?? task.status;
                     const isSelected = selected?.id === task.id;
                     const isMenuOpen = menuTaskId === task.id;
-                    const openUpward = idx >= Math.max(2, paged.length - 2);
                     return (
                       <tr
                         key={task.id}
@@ -968,69 +994,11 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
                               aria-expanded={isMenuOpen}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                setMenuTaskId((cur) => (cur === task.id ? null : task.id));
+                                toggleRowMenu(task.id, event.currentTarget);
                               }}
                             >
-                              <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden="true" />
+                              <MoreHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
                             </button>
-                            {isMenuOpen ? (
-                              <div
-                                className={`qtk-row-menu${openUpward ? ' qtk-row-menu--up' : ''}`}
-                                role="menu"
-                                aria-label={`Thao tác ${task.code}`}
-                              >
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="qtk-row-menu__item"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setMenuTaskId(null);
-                                    setSelectedId(task.id);
-                                  }}
-                                >
-                                  <Eye size={13} strokeWidth={1.7} aria-hidden="true" />
-                                  Xem chi tiết
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="qtk-row-menu__item"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setMenuTaskId(null);
-                                    void changeStatus(task, task.status === 'Hoàn thành' ? 'Đang làm' : 'Hoàn thành');
-                                  }}
-                                >
-                                  <Check size={13} strokeWidth={1.7} aria-hidden="true" />
-                                  {task.status === 'Hoàn thành' ? 'Mở lại việc' : 'Hoàn thành'}
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="qtk-row-menu__item"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    cyclePriority(task);
-                                  }}
-                                >
-                                  <Flag size={13} strokeWidth={1.7} aria-hidden="true" />
-                                  Chuyển ưu tiên
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="qtk-row-menu__item qtk-row-menu__item--danger"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    removeTask(task);
-                                  }}
-                                >
-                                  <Trash2 size={13} strokeWidth={1.7} aria-hidden="true" />
-                                  Xóa
-                                </button>
-                              </div>
-                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -1041,8 +1009,8 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
             </table>
           </div>
         ) : paged.length === 0 ? (
-          <div style={{ padding: 28, textAlign: 'center', color: 'var(--qx-muted)', fontSize: 13 }}>
-            Không có công việc nào khớp với lựa chọn hiện tại.
+          <div style={{ padding: 28, textAlign: 'center', color: 'var(--qs-fg-muted)', fontSize: 13 }}>
+            Không có công việc nào khớp với lựa chọn hiện tại
           </div>
         ) : (
           <div className="qtk-cards-grid">
@@ -1058,7 +1026,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
                 >
                   <div className="qtk-task-card__head">
                     <span className="qtk-code">{task.code}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span className={getStatusBadgeClass(badgeLabel)}>{badgeLabel}</span>
                       <div className="qtk-row-actions">
                         <button
@@ -1069,65 +1037,11 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
                           aria-expanded={isMenuOpen}
                           onClick={(event) => {
                             event.stopPropagation();
-                            setMenuTaskId((cur) => (cur === task.id ? null : task.id));
+                            toggleRowMenu(task.id, event.currentTarget);
                           }}
                         >
-                          <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden="true" />
+                          <MoreHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
                         </button>
-                        {isMenuOpen ? (
-                          <div className="qtk-row-menu" role="menu" aria-label={`Thao tác ${task.code}`}>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="qtk-row-menu__item"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setMenuTaskId(null);
-                                setSelectedId(task.id);
-                              }}
-                            >
-                              <Eye size={13} strokeWidth={1.7} aria-hidden="true" />
-                              Xem chi tiết
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="qtk-row-menu__item"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setMenuTaskId(null);
-                                void changeStatus(task, task.status === 'Hoàn thành' ? 'Đang làm' : 'Hoàn thành');
-                              }}
-                            >
-                              <Check size={13} strokeWidth={1.7} aria-hidden="true" />
-                              {task.status === 'Hoàn thành' ? 'Mở lại việc' : 'Hoàn thành'}
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="qtk-row-menu__item"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                cyclePriority(task);
-                              }}
-                            >
-                              <Flag size={13} strokeWidth={1.7} aria-hidden="true" />
-                              Chuyển ưu tiên
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="qtk-row-menu__item qtk-row-menu__item--danger"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                removeTask(task);
-                              }}
-                            >
-                              <Trash2 size={13} strokeWidth={1.7} aria-hidden="true" />
-                              Xóa
-                            </button>
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -1181,7 +1095,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
                   syncUrl({ page: prevPage });
                 }}
               >
-                <ChevronLeft size={14} strokeWidth={1.7} aria-hidden="true" />
+                <ChevronLeft size={16} strokeWidth={1.5} aria-hidden="true" />
               </button>
             ) : null}
             <span>{`Trang ${safePage} / ${totalPages}`}</span>
@@ -1196,11 +1110,75 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
                 syncUrl({ page: nextPage });
               }}
             >
-              <ChevronRight size={14} strokeWidth={1.7} aria-hidden="true" />
+              <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />
             </button>
           </div>
         </div>
       </div>
+
+      {activeMenuTask && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="qtk-row-menu"
+              role="menu"
+              aria-label={`Thao tác ${activeMenuTask.code}`}
+              style={{
+                position: 'fixed',
+                top: menuPos.top,
+                left: menuPos.left,
+                zIndex: 140,
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="qtk-row-menu__item"
+                onClick={() => {
+                  setMenuTaskId(null);
+                  setSelectedId(activeMenuTask.id);
+                }}
+              >
+                <Eye size={16} strokeWidth={1.5} aria-hidden="true" />
+                Xem chi tiết
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="qtk-row-menu__item"
+                onClick={() => {
+                  setMenuTaskId(null);
+                  void changeStatus(
+                    activeMenuTask,
+                    activeMenuTask.status === 'Hoàn thành' ? 'Đang làm' : 'Hoàn thành',
+                  );
+                }}
+              >
+                <Check size={16} strokeWidth={1.5} aria-hidden="true" />
+                {activeMenuTask.status === 'Hoàn thành' ? 'Mở lại việc' : 'Hoàn thành'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="qtk-row-menu__item"
+                onClick={() => cyclePriority(activeMenuTask)}
+              >
+                <Flag size={16} strokeWidth={1.5} aria-hidden="true" />
+                Chuyển ưu tiên
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="qtk-row-menu__item qtk-row-menu__item--danger"
+                onClick={() => removeTask(activeMenuTask)}
+              >
+                <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
+                Xóa
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <TaskDetailDrawer
         task={selected}

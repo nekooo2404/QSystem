@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from '@qsystem/ui';
 import { ApiError, apiFetch } from '../../../lib/api/client';
+import { addLocalDaysIso, diffCalendarDays, formatRelativeViDate } from '../../../lib/date';
 import { humanizeApiError } from '../../../lib/errors/humanize';
 import '../../../components/files/files.css';
 
@@ -101,78 +102,80 @@ const INITIAL_FOLDERS: FolderItem[] = [
   { id: 'nhan-su', name: 'Nhân sự / HRM', count: 12 },
 ];
 
-const SAMPLE_FILES: FileRow[] = [
-  {
-    id: 'sample-1',
-    title: 'Hợp đồng dịch vụ 2026.pdf',
-    ext: 'PDF',
-    kind: 'PDF',
-    sizeLabel: '1.8 MB',
-    uploader: 'Minh Khôi',
-    updatedLabel: 'Hôm nay',
-    folderId: 'chung',
-    recent: true,
-    shared: true,
-    starred: true,
-    real: false,
-  },
-  {
-    id: 'sample-2',
-    title: 'Kế hoạch triển khai QSystem.xlsx',
-    ext: 'XLSX',
-    kind: 'XLSX',
-    sizeLabel: '384 KB',
-    uploader: 'Lan Anh',
-    updatedLabel: 'Hôm qua',
-    folderId: 'du-an',
-    recent: true,
-    shared: true,
-    starred: false,
-    real: false,
-  },
-  {
-    id: 'sample-3',
-    title: 'Hướng dẫn sử dụng HRM.docx',
-    ext: 'DOCX',
-    kind: 'DOCX',
-    sizeLabel: '692 KB',
-    uploader: 'Đức Anh',
-    updatedLabel: '12/11/2026',
-    folderId: 'nhan-su',
-    recent: false,
-    shared: true,
-    starred: false,
-    real: false,
-  },
-  {
-    id: 'sample-4',
-    title: 'Báo cáo tiến độ dự án.pdf',
-    ext: 'PDF',
-    kind: 'PDF',
-    sizeLabel: '2.4 MB',
-    uploader: 'Hà My',
-    updatedLabel: '10/11/2026',
-    folderId: 'du-an',
-    recent: false,
-    shared: false,
-    starred: true,
-    real: false,
-  },
-  {
-    id: 'sample-5',
-    title: 'QSystem_Design_Tokens.json',
-    ext: 'JSON',
-    kind: 'JSON',
-    sizeLabel: '12 KB',
-    uploader: 'Minh Khôi',
-    updatedLabel: '08/11/2026',
-    folderId: 'chung',
-    recent: false,
-    shared: true,
-    starred: false,
-    real: false,
-  },
-];
+function getSampleFiles(): FileRow[] {
+  return [
+    {
+      id: 'sample-1',
+      title: 'Hợp đồng dịch vụ 2026.pdf',
+      ext: 'PDF',
+      kind: 'PDF',
+      sizeLabel: '1.8 MB',
+      uploader: 'Minh Khôi',
+      updatedLabel: formatRelativeViDate(addLocalDaysIso(0)),
+      folderId: 'chung',
+      recent: true,
+      shared: true,
+      starred: true,
+      real: false,
+    },
+    {
+      id: 'sample-2',
+      title: 'Kế hoạch triển khai QSystem.xlsx',
+      ext: 'XLSX',
+      kind: 'XLSX',
+      sizeLabel: '384 KB',
+      uploader: 'Lan Anh',
+      updatedLabel: formatRelativeViDate(addLocalDaysIso(-1)),
+      folderId: 'du-an',
+      recent: true,
+      shared: true,
+      starred: false,
+      real: false,
+    },
+    {
+      id: 'sample-3',
+      title: 'Hướng dẫn sử dụng HRM.docx',
+      ext: 'DOCX',
+      kind: 'DOCX',
+      sizeLabel: '692 KB',
+      uploader: 'Đức Anh',
+      updatedLabel: formatRelativeViDate(addLocalDaysIso(-5)),
+      folderId: 'nhan-su',
+      recent: false,
+      shared: true,
+      starred: false,
+      real: false,
+    },
+    {
+      id: 'sample-4',
+      title: 'Báo cáo tiến độ dự án.pdf',
+      ext: 'PDF',
+      kind: 'PDF',
+      sizeLabel: '2.4 MB',
+      uploader: 'Hà My',
+      updatedLabel: formatRelativeViDate(addLocalDaysIso(-7)),
+      folderId: 'du-an',
+      recent: false,
+      shared: false,
+      starred: true,
+      real: false,
+    },
+    {
+      id: 'sample-5',
+      title: 'QSystem_Design_Tokens.json',
+      ext: 'JSON',
+      kind: 'JSON',
+      sizeLabel: '12 KB',
+      uploader: 'Minh Khôi',
+      updatedLabel: formatRelativeViDate(addLocalDaysIso(-9)),
+      folderId: 'chung',
+      recent: false,
+      shared: true,
+      starred: false,
+      real: false,
+    },
+  ];
+}
 
 /** Object keys must be relative and unique; a timestamp keeps re-uploads apart. */
 function objectKey(file: File): string {
@@ -201,17 +204,10 @@ function formatBytes(bytes?: number): string {
 }
 
 function formatDateLabel(iso?: string): string {
-  if (!iso) return 'Hôm nay';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'Hôm nay';
-  const diffDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-  if (diffDays <= 0) return 'Hôm nay';
-  if (diffDays === 1) return 'Hôm qua';
-  return date.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  if (!iso) return '—';
+  const diff = diffCalendarDays(iso);
+  if (Number.isNaN(diff)) return '—';
+  return formatRelativeViDate(iso);
 }
 
 function toRemoteRow(item: ApiFileItem): FileRow {
@@ -419,7 +415,7 @@ function useModalFocusTrap(
 
 export default function FilesPage() {
   const [localRows] = React.useState<FileRow[]>(() =>
-    readLocalStorage<FileRow[]>(STORAGE_FILES_KEY, SAMPLE_FILES),
+    readLocalStorage<FileRow[]>(STORAGE_FILES_KEY, getSampleFiles()),
   );
   const [remoteRows, setRemoteRows] = React.useState<FileRow[]>([]);
   const [uploadedRows, setUploadedRows] = React.useState<FileRow[]>([]);

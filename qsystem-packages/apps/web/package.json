@@ -13,7 +13,6 @@
   "dependencies": {
     "@qsystem/contracts": "file:../../packages/contracts",
     "@qsystem/ui": "file:../../packages/ui",
-    "animate.css": "^4.1.1",
     "lucide-react": "^1.72.0",
     "next": "^15.5.29",
     "react": "^18.3.1",
