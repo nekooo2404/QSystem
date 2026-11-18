@@ -1,3 +1,6 @@
+approval_policy = "on-request"
+sandbox_mode = "danger-full-access"
+model_reasoning_summary = "concise"
 [mcp_servers.fragment-ui]
 command = "node"
 args = ['D:\Projects\fragment-ui-public\packages\mcp-server\dist\index.js']

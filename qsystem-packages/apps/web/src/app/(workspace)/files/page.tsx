@@ -80,6 +80,8 @@ const STORAGE_QUOTA_KEY = 'qsystem:files:quota:v1';
 const isTestEnv = process.env.NODE_ENV === 'test';
 const isStrictProd =
   process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true';
+const isDemoMode =
+  process.env.NODE_ENV === 'test' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
 const TABS: readonly { id: ScopeTab; label: string }[] = [
   { id: 'all', label: 'Tất cả tài liệu' },
@@ -415,12 +417,12 @@ function useModalFocusTrap(
 
 export default function FilesPage() {
   const [localRows] = React.useState<FileRow[]>(() =>
-    readLocalStorage<FileRow[]>(STORAGE_FILES_KEY, getSampleFiles()),
+    isDemoMode ? readLocalStorage<FileRow[]>(STORAGE_FILES_KEY, getSampleFiles()) : [],
   );
   const [remoteRows, setRemoteRows] = React.useState<FileRow[]>([]);
   const [uploadedRows, setUploadedRows] = React.useState<FileRow[]>([]);
   const [folders, setFolders] = React.useState<FolderItem[]>(() =>
-    readLocalStorage<FolderItem[]>(STORAGE_FOLDERS_KEY, INITIAL_FOLDERS),
+    isDemoMode ? readLocalStorage<FolderItem[]>(STORAGE_FOLDERS_KEY, INITIAL_FOLDERS) : [],
   );
   const [listStatus, setListStatus] = React.useState<'loading' | 'error' | 'ready'>('loading');
   const [tab, setTab] = React.useState<ScopeTab>('all');
@@ -440,7 +442,7 @@ export default function FilesPage() {
   const [deletedIds, setDeletedIds] = React.useState<Set<string>>(() => new Set());
   const [quotaModalOpen, setQuotaModalOpen] = React.useState(false);
   const [quotaRequested, setQuotaRequested] = React.useState<boolean>(() =>
-    Boolean(readLocalStorage<boolean>(STORAGE_QUOTA_KEY, false)),
+    isDemoMode ? Boolean(readLocalStorage<boolean>(STORAGE_QUOTA_KEY, false)) : false,
   );
 
   const [uploading, setUploading] = React.useState(false);
@@ -704,7 +706,7 @@ export default function FilesPage() {
   }
 
   const baseRows = React.useMemo(() => {
-    const fallbackRows = isTestEnv ? [] : localRows;
+    const fallbackRows = isDemoMode ? localRows : [];
     const serverOrSample = remoteRows.length > 0 ? remoteRows : fallbackRows;
     const combined = [
       ...uploadedRows,

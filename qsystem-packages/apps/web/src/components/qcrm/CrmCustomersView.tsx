@@ -586,12 +586,7 @@ export function CrmCustomersView({
   if (loadError) {
     return (
       <section className="qx-page crm-page" aria-label="Khách hàng" ref={pageRef}>
-        <div role="alert" className="crm-alert">
-          <span>{loadError}</span>
-          <button type="button" className="qx-btn qx-btn--sm" onClick={onRetry}>
-            Thử lại
-          </button>
-        </div>
+          <StateRegion state="error" errorDescription={loadError} onRetry={onRetry} />
       </section>
     );
   }

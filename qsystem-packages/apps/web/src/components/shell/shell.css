@@ -113,7 +113,7 @@ body {
   background: var(--qs-brand);
   color: var(--qs-on-brand);
   font-family: var(--qs-font-heading, var(--qs-font-body));
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   overflow: hidden;
 }
@@ -127,7 +127,7 @@ body {
 }
 .qx-brand__name {
   font-family: var(--qs-font-heading, var(--qs-font-body));
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -170,17 +170,17 @@ body {
   display: grid;
   flex: 1;
   min-width: 0;
-  line-height: 18px;
+  line-height: 1.125;
 }
 .qx-ws__name {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .qx-ws__plan {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--qs-fg-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -204,7 +204,7 @@ body {
 }
 .qx-ws-popover__label {
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -223,7 +223,7 @@ body {
 .qx-label {
   margin: 0;
   padding: 0 12px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -251,7 +251,7 @@ body {
   background: transparent;
   color: var(--qs-fg-secondary);
   font: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
@@ -292,7 +292,7 @@ body {
   padding: 0 12px;
   border-radius: var(--qs-radius-control);
   color: var(--qs-fg-secondary);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.25;
   white-space: nowrap;
   text-decoration: none;
@@ -306,7 +306,7 @@ body {
   border: 0;
   background: none;
   font: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: left;
   cursor: pointer;
 }
@@ -337,7 +337,7 @@ body {
   background: var(--qs-bg-inverse);
   color: var(--qs-fg-secondary);
   font-family: var(--qs-font-code, var(--qs-font-mono));
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -358,17 +358,17 @@ body {
   display: grid;
   flex: 1;
   min-width: 0;
-  line-height: 20px;
+  line-height: 1.25;
 }
 .qx-user__name {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .qx-user__role {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--qs-fg-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -385,19 +385,19 @@ body {
   border: 1px solid var(--qs-border);
   background: var(--qs-surface-2);
   color: var(--qs-fg);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0;
 }
 .qx-avatar--sm {
   width: 24px;
   height: 24px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .qx-avatar--lg {
   width: 40px;
   height: 40px;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .qx-main {
@@ -434,7 +434,7 @@ body {
   background: var(--qs-surface-1);
   color: var(--qs-fg-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -456,7 +456,7 @@ body {
   border-radius: var(--qs-radius-sm);
   background: var(--qs-surface-2);
   color: var(--qs-fg);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1;
 }
@@ -492,7 +492,7 @@ body {
 }
 .qx-launcher-head__title {
   padding-left: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -531,8 +531,8 @@ body {
   background: transparent;
   color: var(--qs-fg);
   font: inherit;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 0.8125rem;
+  line-height: 1.25;
   outline: none;
 }
 .qx-launcher-search .qx-launcher-search__input:focus,
@@ -574,7 +574,7 @@ body {
 .qx-launcher-group__label {
   margin: 0;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -640,9 +640,9 @@ body {
   min-width: 0;
 }
 .qx-launcher-item__name {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
-  line-height: 20px;
+  line-height: 1.25;
   color: var(--qs-fg);
 }
 .qx-launcher-item__badge {
@@ -654,22 +654,22 @@ body {
   border-radius: var(--qs-radius-sm);
   background: var(--qs-surface-2);
   color: var(--qs-fg-secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
 }
 .qx-launcher-item__desc {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 0.75rem;
+  line-height: 1;
   color: var(--qs-fg-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .qx-launcher-item__match {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 0.75rem;
+  line-height: 1;
   font-weight: 500;
   color: var(--qs-focus);
 }
@@ -708,7 +708,7 @@ body {
   padding: 24px 12px;
   text-align: center;
   color: var(--qs-fg-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .qx-launcher-empty p {
   margin: 0;
@@ -717,7 +717,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--qs-fg-secondary);
   min-width: 0;
   white-space: nowrap;
@@ -752,7 +752,7 @@ body {
   background: var(--qs-bg-inverse);
   color: var(--qs-fg-muted);
   font: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -775,12 +775,12 @@ body {
 .qx-kbd {
   padding: 0 4px;
   height: 20px;
-  line-height: 18px;
+  line-height: 1.125;
   border: 1px solid var(--qs-border);
   border-bottom-width: 2px;
   border-radius: var(--qs-radius-keycap);
   font-family: var(--qs-font-code, var(--qs-font-mono, ui-monospace, monospace));
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--qs-fg-muted);
   white-space: nowrap;
 }
@@ -864,7 +864,7 @@ body {
   background: transparent;
   color: var(--qs-fg);
   font: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1;
   white-space: nowrap;
   text-align: left;
@@ -1058,7 +1058,7 @@ body {
   }
   .qx-field-search input,
   .qx-launcher-search__input {
-    font-size: 16px;
+    font-size: 1rem;
   }
 }
 @media (max-width: 374px) {
@@ -1093,14 +1093,14 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--qs-font-heading, var(--qs-font-body));
-  font-size: 26px;
+  font-size: 1.625rem;
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
 .qx-page-head p {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--qs-fg-muted);
 }
 .qx-actions {
@@ -1122,7 +1122,7 @@ body {
   background: var(--qs-surface-1);
   color: var(--qs-fg);
   font: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.25;
   white-space: nowrap;
@@ -1153,7 +1153,7 @@ body {
 .qx-btn--sm {
   height: 36px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .qx-btn--ghost {
   border-color: transparent;
@@ -1177,7 +1177,7 @@ body {
   background: var(--qs-surface-1);
 }
 .qx-stat__label {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--qs-fg-secondary);
 }
@@ -1193,7 +1193,7 @@ body {
   gap: 8px;
   margin-top: 8px;
   font-family: var(--qs-font-heading, var(--qs-font-body));
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -1203,13 +1203,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--qs-success);
 }
 .qx-stat__note {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--qs-fg-muted);
 }
 
@@ -1232,7 +1232,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
 }
 .qx-card__foot {
@@ -1242,19 +1242,19 @@ body {
   flex-wrap: wrap;
   gap: 12px;
   padding: 16px 20px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--qs-fg-muted);
 }
 
 .qx-count {
   padding: 0 8px;
   height: 24px;
-  line-height: 22px;
+  line-height: 1.375;
   border: 1px solid var(--qs-border);
   border-radius: var(--qs-radius-sm);
   background: var(--qs-surface-2);
   font-family: var(--qs-font-code, var(--qs-font-mono));
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--qs-fg-secondary);
   font-variant-numeric: tabular-nums;
@@ -1275,7 +1275,7 @@ body {
   background: none;
   color: var(--qs-fg-muted);
   font: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.25;
   cursor: pointer;
   text-decoration: none;
@@ -1304,7 +1304,7 @@ body {
   padding: 0 8px;
   border: 1px solid var(--qs-border);
   border-radius: var(--qs-radius-sm);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -1358,7 +1358,7 @@ body {
   background: none;
   color: var(--qs-fg);
   font: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   outline: none;
 }
 .qx-field-search input:focus,
@@ -1379,7 +1379,7 @@ body {
 .qx-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 .qx-table thead th {
@@ -1387,7 +1387,7 @@ body {
   padding: 0 16px;
   background: var(--qs-surface-2);
   text-align: left;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: normal;
   text-transform: none;
@@ -1446,7 +1446,7 @@ body {
     flex-direction: column;
   }
   .qx-page-head h1 {
-    font-size: 24px;
+    font-size: 1.5rem;
     line-height: 1.2;
   }
 }

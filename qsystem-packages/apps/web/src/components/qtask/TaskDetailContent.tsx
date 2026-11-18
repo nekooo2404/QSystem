@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Check, FileText, Paperclip, Plus, Send, X } from 'lucide-react';
 import { Select, useFloatingLayer, type SelectOption } from '@qsystem/ui';
 import { TASK_STATUSES, type TaskStatus } from '../../lib/adapters/tasks.adapter';
+import { apiFetch } from '../../lib/api/client';
 
 const TASK_STATUS_OPTIONS: readonly SelectOption<TaskStatus>[] = TASK_STATUSES.map((status) => ({
   value: status,
@@ -243,6 +244,53 @@ export function TaskDetailContent({
     setDraft('');
   }, [task.id]);
 
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'test' || task.isSample || task.id.startsWith('sample-')) return;
+    let active = true;
+    Promise.all([
+      apiFetch<Array<{ id: string; text: string; createdAt: string; author?: { name?: string } }>>(`/api/org/tasks/${task.id}/comments`),
+      apiFetch<Array<{ id: string; text: string; createdAt: string; actor?: { name?: string } }>>(`/api/org/tasks/${task.id}/history`),
+      apiFetch<Array<{ id: string; name: string; size: number | null; createdAt: string }>>(`/api/org/tasks/${task.id}/attachments`),
+    ]).then(([commentsRows, historyRows, attachmentRows]) => {
+      if (!active) return;
+      const safeComments = Array.isArray(commentsRows) ? commentsRows : [];
+      const safeHistory = Array.isArray(historyRows) ? historyRows : [];
+      const safeAttachments = Array.isArray(attachmentRows) ? attachmentRows : [];
+      setCommentsByTask((current) => ({
+        ...current,
+        [task.id]: safeComments.map((item) => ({
+          id: item.id,
+          author: item.author?.name ?? 'Người dùng',
+          initials: initials(item.author?.name),
+          time: formatLocalTimeHm(new Date(item.createdAt)),
+          text: item.text,
+        })),
+      }));
+      setHistoryByTask((current) => ({
+        ...current,
+        [task.id]: safeHistory.map((item) => ({
+          id: item.id,
+          text: item.text,
+          time: formatLocalTimeHm(new Date(item.createdAt)),
+        })),
+      }));
+      setAttachmentsByTask((current) => ({
+        ...current,
+        [task.id]: safeAttachments.map((item) => ({
+          id: item.id,
+          name: item.name,
+          size: item.size ? `${Math.max(1, Math.round(item.size / 1024))} KB` : 'Tệp đính kèm',
+        })),
+      }));
+    }).catch(() => {
+      // Keep the existing task snapshot visible; mutation errors are surfaced
+      // when the user submits a write.
+    });
+    return () => {
+      active = false;
+    };
+  }, [task.id, task.isSample]);
+
   const assignee = task.detailAssigneeName ?? task.assigneeName;
   const due = formatDueDate(task.detailDueDate ?? task.dueDate);
   const baseAttachments = React.useMemo(() => task.attachments ?? [], [task.attachments]);
@@ -273,6 +321,13 @@ export function TaskDetailContent({
         }));
         return { ...map, [task.id]: nextList };
       });
+      if (process.env.NODE_ENV !== 'test' && !task.isSample && !task.id.startsWith('sample-')) {
+        void apiFetch(`/api/org/tasks/${task.id}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: nextItem.text }),
+        }).catch(() => {});
+      }
     }
     prevStatusRef.current = { id: task.id, status: task.status };
   }, [task.id, task.status, currentUserName, baseHistory]);
@@ -303,12 +358,23 @@ export function TaskDetailContent({
     });
   }
 
-  function submitComment(event: React.FormEvent) {
+  async function submitComment(event: React.FormEvent) {
     event.preventDefault();
     const text = draft.trim();
     if (!text) {
       commentInputRef.current?.focus();
       return;
+    }
+    if (process.env.NODE_ENV !== 'test' && !task.isSample && !task.id.startsWith('sample-')) {
+      try {
+        await apiFetch(`/api/org/tasks/${task.id}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+      } catch {
+        return;
+      }
     }
     const time = formatLocalTimeHm();
     const next: TaskComment = {
@@ -331,9 +397,37 @@ export function TaskDetailContent({
     setDraft('');
   }
 
-  function handleAttachFile(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleAttachFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!task.isSample && !task.id.startsWith('sample-')) {
+      try {
+        const key = `tasks/${task.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const presigned = await apiFetch<{ uploadUrl: string }>('/api/files/presign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bucket: 'qsystem-docs', key, size: file.size, mimeType: file.type || undefined }),
+        });
+        const uploaded = await fetch(presigned.uploadUrl, {
+          method: 'PUT',
+          headers: file.type ? { 'Content-Type': file.type } : undefined,
+          body: file,
+        });
+        if (!uploaded.ok) throw new Error('FILE_UPLOAD_FAILED');
+        await apiFetch(`/api/org/tasks/${task.id}/attachments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: file.name,
+            storageKey: key,
+            size: file.size,
+            mimeType: file.type || undefined,
+          }),
+        });
+      } catch {
+        return;
+      }
+    }
     const sizeLabel =
       file.size >= 1024 * 1024
         ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`

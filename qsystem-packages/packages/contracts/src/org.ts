@@ -136,6 +136,12 @@ export const CreateProjectSchema = z.object({
 });
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 
+export const UpdateProjectSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+});
+export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
+
 export const UpdateWorkPackageSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),

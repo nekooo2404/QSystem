@@ -9,11 +9,13 @@ import {
   TaskQuerySchema,
   TaskStatusSchema,
   UpdateTaskSchema,
+  UpdateProjectSchema,
   UpdateWorkPackageSchema,
 } from '@qsystem/contracts';
 import { AuditService } from '../common/audit.service';
 import { isAllowed } from '../prisma/prisma-scope.extension';
 import { PrismaService, type ScopeViewer } from '../prisma/prisma.service';
+import { presignUrl, PRESIGN_EXPIRES_SECONDS, s3ConfigFromEnv } from '../storage/sigv4';
 
 function error(code: string, message: string, status: HttpStatus): HttpException {
   return new HttpException({ code, message }, status);
@@ -478,6 +480,55 @@ export class OrgService {
     });
   }
 
+  /** DIRECTOR edits any visible project; others may edit only ones they own. */
+  private assertProjectWrite(viewer: ScopeViewer, existing: { id: string; ownerId: string } | null) {
+    if (!existing) throw error('NOT_FOUND', 'Project not found', HttpStatus.NOT_FOUND);
+    if (viewer.role === 'EMPLOYEE' && existing.ownerId !== viewer.id) {
+      throw error('FORBIDDEN', 'Insufficient permission for project', HttpStatus.FORBIDDEN);
+    }
+    if (viewer.role === 'MANAGER' && existing.ownerId !== viewer.id) {
+      // A manager may still manage packages they own; project edits stay owner-only.
+      throw error('FORBIDDEN', 'Only the project owner may edit this project', HttpStatus.FORBIDDEN);
+    }
+  }
+
+  async updateProject(viewer: ScopeViewer, id: string, raw: unknown) {
+    const parsed = UpdateProjectSchema.safeParse(raw ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { code: 'INVALID_INPUT', message: 'Invalid project update payload', details: parsed.error.issues },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const existing = await this.client(viewer).project.findUnique({ where: { id } });
+    this.assertProjectWrite(viewer, existing);
+    const body = parsed.data;
+    return this.client(viewer).project.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.description !== undefined ? { description: body.description?.trim() || null } : {}),
+      },
+    });
+  }
+
+  async deleteProject(viewer: ScopeViewer, id: string) {
+    const existing = await this.client(viewer).project.findUnique({ where: { id } });
+    this.assertProjectWrite(viewer, existing);
+    if (viewer.role !== 'DIRECTOR') {
+      throw error('FORBIDDEN', 'Only DIRECTOR may delete projects', HttpStatus.FORBIDDEN);
+    }
+    await this.client(viewer).project.delete({ where: { id } });
+    await this.recordAudit({
+      actorId: viewer.id,
+      action: 'DELETE',
+      entity: 'Project',
+      entityId: id,
+      oldData: { name: existing!.name },
+    });
+    return { ok: true as const, id };
+  }
+
   async createWorkPackage(viewer: ScopeViewer, raw: unknown) {
     const parsed = CreateWorkPackageSchema.safeParse(raw ?? {});
     if (!parsed.success) {
@@ -534,6 +585,256 @@ export class OrgService {
       throw error('FORBIDDEN', 'Insufficient permission for work package', HttpStatus.FORBIDDEN);
     }
     return this.client(viewer).workPackage.update({ where: { id }, data: parsed.data });
+  }
+
+  async listTaskComments(viewer: ScopeViewer, taskId: string) {
+    await this.assertTaskVisible(viewer, taskId);
+    return this.client(viewer).taskComment.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+      include: { author: { select: { id: true, name: true } } },
+    });
+  }
+
+  async addTaskComment(viewer: ScopeViewer, taskId: string, raw: unknown) {
+    await this.assertTaskVisible(viewer, taskId);
+    const text = typeof (raw as { text?: unknown })?.text === 'string'
+      ? (raw as { text: string }).text.trim()
+      : '';
+    if (!text) throw error('INVALID_INPUT', 'Comment text is required', HttpStatus.BAD_REQUEST);
+    const comment = await this.client(viewer).taskComment.create({
+      data: { taskId, authorId: viewer.id, text },
+      include: { author: { select: { id: true, name: true } } },
+    });
+    await this.client(viewer).taskHistory.create({
+      data: { taskId, actorId: viewer.id, text: `${viewer.id} đã thêm bình luận mới` },
+    });
+    return comment;
+  }
+
+  async listTaskHistory(viewer: ScopeViewer, taskId: string) {
+    await this.assertTaskVisible(viewer, taskId);
+    return this.client(viewer).taskHistory.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+      include: { actor: { select: { id: true, name: true } } },
+    });
+  }
+
+  async addTaskHistory(viewer: ScopeViewer, taskId: string, raw: unknown) {
+    await this.assertTaskVisible(viewer, taskId);
+    const text = typeof (raw as { text?: unknown })?.text === 'string'
+      ? (raw as { text: string }).text.trim()
+      : '';
+    if (!text) throw error('INVALID_INPUT', 'History text is required', HttpStatus.BAD_REQUEST);
+    return this.client(viewer).taskHistory.create({ data: { taskId, actorId: viewer.id, text } });
+  }
+
+  async addTaskAttachment(viewer: ScopeViewer, taskId: string, raw: unknown) {
+    await this.assertTaskVisible(viewer, taskId);
+    const body = raw as { name?: unknown; storageKey?: unknown; size?: unknown; mimeType?: unknown };
+    if (typeof body.name !== 'string' || typeof body.storageKey !== 'string') {
+      throw error('INVALID_INPUT', 'Attachment name and storageKey are required', HttpStatus.BAD_REQUEST);
+    }
+    const attachment = await this.client(viewer).taskAttachment.create({
+      data: {
+        taskId,
+        uploaderId: viewer.id,
+        name: body.name.trim(),
+        storageKey: body.storageKey,
+        size: typeof body.size === 'number' ? body.size : null,
+        mimeType: typeof body.mimeType === 'string' ? body.mimeType : null,
+      },
+    });
+    await this.client(viewer).taskHistory.create({
+      data: { taskId, actorId: viewer.id, text: `${viewer.id} đã đính kèm ${body.name.trim()}` },
+    });
+    return attachment;
+  }
+
+  async listTaskAttachments(viewer: ScopeViewer, taskId: string) {
+    await this.assertTaskVisible(viewer, taskId);
+    return this.client(viewer).taskAttachment.findMany({ where: { taskId }, orderBy: { createdAt: 'asc' } });
+  }
+
+  async getTaskAttachmentDownload(viewer: ScopeViewer, taskId: string, attachmentId: string) {
+    await this.assertTaskVisible(viewer, taskId);
+    const attachment = await this.client(viewer).taskAttachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.taskId !== taskId) {
+      throw error('NOT_FOUND', 'Attachment not found', HttpStatus.NOT_FOUND);
+    }
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      storageKey: attachment.storageKey,
+      url: presignUrl(s3ConfigFromEnv(), 'GET', 'qsystem-docs', attachment.storageKey, PRESIGN_EXPIRES_SECONDS, {
+        'response-content-disposition': `attachment; filename="${attachment.name.replace(/"/g, '')}"`,
+      }),
+      expiresInSeconds: PRESIGN_EXPIRES_SECONDS,
+    };
+  }
+
+  async deleteTaskAttachment(viewer: ScopeViewer, taskId: string, attachmentId: string) {
+    await this.assertTaskVisible(viewer, taskId);
+    const attachment = await this.client(viewer).taskAttachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.taskId !== taskId) {
+      throw error('NOT_FOUND', 'Attachment not found', HttpStatus.NOT_FOUND);
+    }
+    await this.client(viewer).taskAttachment.delete({ where: { id: attachmentId } });
+    await this.client(viewer).taskHistory.create({
+      data: { taskId, actorId: viewer.id, text: `${viewer.id} đã xóa đính kèm ${attachment.name}` },
+    });
+    return { ok: true as const, id: attachmentId };
+  }
+
+  private async assertTaskVisible(viewer: ScopeViewer, taskId: string) {
+    const task = await this.client(viewer).task.findUnique({ where: { id: taskId } });
+    if (!task) throw error('NOT_FOUND', 'Task not found', HttpStatus.NOT_FOUND);
+    return task;
+  }
+
+  async listLeaves(viewer: ScopeViewer) {
+    return this.client(viewer).leaveRequest.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, name: true, email: true, departmentId: true } },
+        reviewer: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async createLeave(viewer: ScopeViewer, raw: unknown) {
+    const body = raw as { fromDate?: unknown; toDate?: unknown; days?: unknown; reason?: unknown; type?: unknown };
+    if (typeof body.fromDate !== 'string' || typeof body.toDate !== 'string' || typeof body.reason !== 'string') {
+      throw error('INVALID_INPUT', 'fromDate, toDate and reason are required', HttpStatus.BAD_REQUEST);
+    }
+    const days = typeof body.days === 'number' && body.days > 0 ? Math.ceil(body.days) : 1;
+    const code = `LV-${Date.now()}`;
+    return this.client(viewer).leaveRequest.create({
+      data: {
+        code,
+        userId: viewer.id,
+        fromDate: body.fromDate,
+        toDate: body.toDate,
+        days,
+        reason: body.reason.trim(),
+        type: typeof body.type === 'string' ? body.type : 'Phép năm',
+      },
+      include: { user: { select: { id: true, name: true, email: true, departmentId: true } } },
+    });
+  }
+
+  async reviewLeave(viewer: ScopeViewer, id: string, raw: unknown) {
+    if (viewer.role === 'EMPLOYEE') throw error('FORBIDDEN', 'Only managers may review leave', HttpStatus.FORBIDDEN);
+    const body = raw as { status?: unknown; rejectionReason?: unknown };
+    if (body.status !== 'APPROVED' && body.status !== 'REJECTED') {
+      throw error('INVALID_INPUT', 'status must be APPROVED or REJECTED', HttpStatus.BAD_REQUEST);
+    }
+    const existing = await this.client(viewer).leaveRequest.findUnique({ where: { id } });
+    if (!existing) throw error('NOT_FOUND', 'Leave request not found', HttpStatus.NOT_FOUND);
+    return this.client(viewer).leaveRequest.update({
+      where: { id },
+      data: {
+        status: body.status,
+        reviewerId: viewer.id,
+        reviewedAt: new Date(),
+        rejectionReason: body.status === 'REJECTED' && typeof body.rejectionReason === 'string'
+          ? body.rejectionReason.trim()
+          : null,
+      },
+    });
+  }
+
+  async listCalendarEvents(viewer: ScopeViewer, from?: string, to?: string) {
+    return this.client(viewer).calendarEvent.findMany({
+      where: {
+        ...(from || to ? { startsAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
+      },
+      orderBy: { startsAt: 'asc' },
+    });
+  }
+
+  async createCalendarEvent(viewer: ScopeViewer, raw: unknown) {
+    const body = raw as { title?: unknown; startsAt?: unknown; endsAt?: unknown; color?: unknown; description?: unknown };
+    if (typeof body.title !== 'string' || typeof body.startsAt !== 'string' || Number.isNaN(Date.parse(body.startsAt))) {
+      throw error('INVALID_INPUT', 'title and startsAt are required', HttpStatus.BAD_REQUEST);
+    }
+    return this.client(viewer).calendarEvent.create({
+      data: {
+        ownerId: viewer.id,
+        title: body.title.trim(),
+        startsAt: new Date(body.startsAt),
+        endsAt: typeof body.endsAt === 'string' && !Number.isNaN(Date.parse(body.endsAt)) ? new Date(body.endsAt) : null,
+        color: typeof body.color === 'string' ? body.color : 'blue',
+        description: typeof body.description === 'string' ? body.description.trim() : null,
+      },
+    });
+  }
+
+  async deleteCalendarEvent(viewer: ScopeViewer, id: string) {
+    const existing = await this.client(viewer).calendarEvent.findUnique({ where: { id } });
+    if (!existing) throw error('NOT_FOUND', 'Calendar event not found', HttpStatus.NOT_FOUND);
+    await this.client(viewer).calendarEvent.delete({ where: { id } });
+    return { ok: true as const, id };
+  }
+
+  async updateCalendarEvent(viewer: ScopeViewer, id: string, raw: unknown) {
+    const body = raw as { title?: unknown; startsAt?: unknown; endsAt?: unknown; color?: unknown; description?: unknown };
+    const existing = await this.client(viewer).calendarEvent.findUnique({ where: { id } });
+    if (!existing) throw error('NOT_FOUND', 'Calendar event not found', HttpStatus.NOT_FOUND);
+    return this.client(viewer).calendarEvent.update({
+      where: { id },
+      data: {
+        ...(typeof body.title === 'string' && body.title.trim() ? { title: body.title.trim() } : {}),
+        ...(typeof body.startsAt === 'string' && !Number.isNaN(Date.parse(body.startsAt))
+          ? { startsAt: new Date(body.startsAt) }
+          : {}),
+        ...(typeof body.endsAt === 'string' && !Number.isNaN(Date.parse(body.endsAt))
+          ? { endsAt: new Date(body.endsAt) }
+          : {}),
+        ...(typeof body.color === 'string' ? { color: body.color } : {}),
+        ...(typeof body.description === 'string' ? { description: body.description.trim() } : {}),
+      },
+    });
+  }
+
+  /** HR attendance — server clock is authoritative; client timestamps ignored. */
+  async listAttendance(viewer: ScopeViewer, date?: string) {
+    return this.client(viewer).attendanceRecord.findMany({
+      where: date ? { date } : undefined,
+      orderBy: [{ date: 'desc' }, { checkInAt: 'asc' }],
+      include: { user: { select: { id: true, name: true, email: true, departmentId: true } } },
+    });
+  }
+
+  async attendanceCheckIn(viewer: ScopeViewer) {
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const existing = await this.client(viewer).attendanceRecord.findUnique({
+      where: { userId_date: { userId: viewer.id, date } },
+    });
+    if (existing?.checkInAt) throw error('CONFLICT', 'Already checked in today', HttpStatus.CONFLICT);
+    return this.client(viewer).attendanceRecord.upsert({
+      where: { userId_date: { userId: viewer.id, date } },
+      create: { userId: viewer.id, date, checkInAt: now, status: 'Đúng giờ' },
+      update: { checkInAt: now },
+      include: { user: { select: { id: true, name: true, email: true, departmentId: true } } },
+    });
+  }
+
+  async attendanceCheckOut(viewer: ScopeViewer) {
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const existing = await this.client(viewer).attendanceRecord.findUnique({
+      where: { userId_date: { userId: viewer.id, date } },
+    });
+    if (!existing?.checkInAt) throw error('BAD_REQUEST', 'Check in before check out', HttpStatus.BAD_REQUEST);
+    if (existing.checkOutAt) throw error('CONFLICT', 'Already checked out today', HttpStatus.CONFLICT);
+    return this.client(viewer).attendanceRecord.update({
+      where: { id: existing.id },
+      data: { checkOutAt: now },
+      include: { user: { select: { id: true, name: true, email: true, departmentId: true } } },
+    });
   }
 
   async listTasks(viewer: ScopeViewer, rawQuery: Record<string, unknown>) {
@@ -1058,6 +1359,79 @@ export class OrgService {
       pipelineCents,
       wonCents,
       dealCount: deals.length,
+    };
+  }
+
+  /** Aggregated QTask analytics computed from the real scoped Task rows. */
+  async taskAnalytics(viewer: ScopeViewer) {
+    const tasks = await this.client(viewer).task.findMany({
+      select: { status: true, priority: true, dueDate: true, assigneeName: true, createdAt: true, updatedAt: true },
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthKey = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+
+    const byStatus: Record<string, number> = { 'Đang làm': 0, 'Chờ duyệt': 0, 'Hoàn thành': 0, 'Quá hạn': 0 };
+    const byPriority: Record<string, number> = { LOW: 0, NORMAL: 0, HIGH: 0, URGENT: 0 };
+    const workload = new Map<string, { name: string; active: number; total: number }>();
+    let completedThisMonth = 0;
+    let completedLastMonth = 0;
+    let overdueCount = 0;
+    let total = 0;
+
+    for (const task of tasks) {
+      total += 1;
+      byStatus[task.status] = (byStatus[task.status] ?? 0) + 1;
+      byPriority[task.priority] = (byPriority[task.priority] ?? 0) + 1;
+
+      const due = task.dueDate ? new Date(task.dueDate) : null;
+      if (due !== null && !Number.isNaN(due.getTime()) && due < today && task.status !== 'Hoàn thành') {
+        overdueCount += 1;
+      }
+
+      const doneDate = task.status === 'Hoàn thành' ? new Date(task.updatedAt) : null;
+      const doneKey = doneDate
+        ? `${doneDate.getFullYear()}-${String(doneDate.getMonth() + 1).padStart(2, '0')}`
+        : null;
+      if (doneKey === thisMonthKey) completedThisMonth += 1;
+      if (doneKey === lastMonthKey) completedLastMonth += 1;
+
+      const assignee = task.assigneeName || 'Chưa phân công';
+      const entry = workload.get(assignee) ?? { name: assignee, active: 0, total: 0 };
+      entry.total += 1;
+      if (task.status !== 'Hoàn thành') entry.active += 1;
+      workload.set(assignee, entry);
+    }
+
+    const monthly: { month: string; tasks: number }[] = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const count = tasks.filter((t) => {
+        if (t.status !== 'Hoàn thành') return false;
+        const dt = new Date(t.updatedAt);
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}` === key;
+      }).length;
+      monthly.push({ month: `T${d.getMonth() + 1}`, tasks: count });
+    }
+
+    const completed = byStatus['Hoàn thành'] ?? 0;
+    return {
+      total,
+      byStatus,
+      byPriority,
+      completionRate: total === 0 ? 0 : Math.round((completed / total) * 100),
+      completedThisMonth,
+      completedLastMonth,
+      overdue: overdueCount,
+      monthly,
+      workload: Array.from(workload.values())
+        .sort((a, b) => b.active - a.active || b.total - a.total)
+        .slice(0, 5),
     };
   }
 }

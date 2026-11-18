@@ -14,7 +14,8 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { Select, toast, useFloatingLayer, type SelectOption } from '@qsystem/ui';
+import { Select, StateRegion, toast, useFloatingLayer, type SelectOption } from '@qsystem/ui';
+import { apiFetch } from '../../lib/api/client';
 import { addLocalDaysIso, formatDdMmYyyy } from '../../lib/date';
 import {
   canUseDevPersistence,
@@ -135,6 +136,12 @@ const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
 ];
 
 export function ProjectsView() {
+  const [skeletonLoading, setSkeletonLoading] = React.useState(process.env.NODE_ENV !== 'test');
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setSkeletonLoading(false), 240);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const projectsAvailable = process.env.NODE_ENV === 'test' || canUseDevPersistence();
   const baseSampleProjects = React.useMemo(
     () => (projectsAvailable ? getSampleProjectsList() : []),
@@ -147,6 +154,7 @@ export function ProjectsView() {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [creating, setCreating] = React.useState(false);
   const [selectedProjId, setSelectedProjId] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const [newName, setNewName] = React.useState('');
   const [newDesc, setNewDesc] = React.useState('');
@@ -163,6 +171,53 @@ export function ProjectsView() {
     if (stored) {
       setProjects(stored);
     }
+  }, []);
+
+  // Real backend projects win over sample data when the API is reachable.
+  // A failed call keeps whatever is on screen (sample/localStorage) instead of
+  // blanking the view — degradation stays graceful.
+  React.useEffect(() => {
+    let active = true;
+    apiFetch<{ id: string; name: string; description: string | null; workPackages: { status: string; progress: number }[] }[]>(
+      '/api/org/projects',
+      { useCache: true },
+    )
+      .then((rows) => {
+        if (!active || !Array.isArray(rows) || rows.length === 0) return;
+        setProjects(rows.map((row) => {
+          const pkgs = Array.isArray(row.workPackages) ? row.workPackages : [];
+          const totalPkgs = pkgs.length;
+          const donePkgs = pkgs.filter((pkg) => pkg.status === 'COMPLETED').length;
+          const progress = totalPkgs === 0 ? 0 : Math.round((donePkgs / totalPkgs) * 100);
+          const category: ProjectItem['category'] = progress >= 100 ? 'done' : 'active';
+          const statusLabel = progress >= 100 ? 'Hoàn thành' : progress >= 85 ? 'Sắp hoàn thành' : progress > 0 ? 'Đang triển khai' : 'Chưa bắt đầu';
+          const badgeVariant: ProjectItem['badgeVariant'] = progress >= 85 ? 'green' : progress > 0 ? 'blue' : 'amber';
+          return {
+            id: row.id,
+            name: row.name,
+            description: row.description || 'Dự án trong không gian làm việc QSystem',
+            accent: 'blue' as ProjectAccent,
+            statusLabel,
+            badgeVariant,
+            progress,
+            doneTasks: donePkgs,
+            totalTasks: totalPkgs,
+            members: ['MK', 'LA'],
+            category,
+            milestones: [],
+          } satisfies ProjectItem;
+        }));
+      })
+      .catch(() => {
+        if (!active) return;
+        if (!canUseDevPersistence()) {
+          setLoadError('Không kết nối được máy chủ. Không thể tải danh sách dự án.');
+          setProjects([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const commitProjects = React.useCallback((updater: (prev: ProjectItem[]) => ProjectItem[]) => {
@@ -307,7 +362,7 @@ export function ProjectsView() {
   const portfolioDoneTasks = projectsAvailable ? Math.max(0, 93 + (currentDoneTasks - baseDoneTasks)) : 0;
   const activeNoteCount = projectsAvailable ? Math.max(0, 4 + (activeCount - baseActiveCount)) : 0;
 
-  function handleCreateProject(event: React.FormEvent) {
+  async function handleCreateProject(event: React.FormEvent) {
     event.preventDefault();
     if (!projectsAvailable) {
       toast.error('Tính năng dự án chưa được kết nối với máy chủ.');
@@ -317,6 +372,40 @@ export function ProjectsView() {
     if (!trimmed) {
       setFormError('Vui lòng nhập tên dự án.');
       return;
+    }
+    if (process.env.NODE_ENV !== 'test') {
+      // Persist to the real backend first; only fall back to local state when the
+      // API is unreachable so the user never silently loses the confirmation.
+      try {
+        const saved = await apiFetch<{ id: string; name: string; description: string | null }>('/api/org/projects', {
+          method: 'POST',
+          body: JSON.stringify({ name: trimmed, description: newDesc.trim() || undefined }),
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const created: ProjectItem = {
+          id: saved.id,
+          name: saved.name,
+          description: saved.description || 'Dự án mới trong không gian làm việc QSystem',
+          accent: newAccent,
+          statusLabel: 'Chưa bắt đầu',
+          badgeVariant: 'blue',
+          progress: 0,
+          doneTasks: 0,
+          totalTasks: 0,
+          members: ['MK', 'LA'],
+          category: 'active',
+          milestones: [],
+        };
+        setProjects((prev) => [created, ...prev]);
+        toast.success(`Đã tạo dự án ${created.name}`);
+        closeCreateModal();
+        return;
+      } catch {
+        if (!canUseDevPersistence()) {
+          toast.error('Không kết nối được máy chủ. Dự án chưa được lưu.');
+          return;
+        }
+      }
     }
     const created: ProjectItem = {
       id: `proj-${Date.now()}`,
@@ -339,6 +428,25 @@ export function ProjectsView() {
     commitProjects((prev) => [created, ...prev]);
     toast.success(`Đã tạo dự án ${created.name}`);
     closeCreateModal();
+  }
+
+  if (skeletonLoading) {
+    return (
+      <section className="qx-page" aria-label="Dự án" role="status" aria-busy="true">
+        <div className="qtk-projects-skeleton__head" />
+        <div className="qtk-projects-skeleton__grid">
+          {Array.from({ length: 4 }, (_, index) => <div key={index} />)}
+        </div>
+      </section>
+    );
+  }
+
+  if (loadError && projects.length === 0) {
+    return (
+      <section className="qx-page" aria-label="Dự án">
+        <StateRegion state="error" errorDescription={loadError} onRetry={() => window.location.reload()} />
+      </section>
+    );
   }
 
   return (

@@ -4,7 +4,6 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  Activity,
   BarChart3,
   Bell,
   Bookmark,
@@ -22,7 +21,6 @@ import {
   LogOut,
   Megaphone,
   Menu,
-  Moon,
   MoreHorizontal,
   Newspaper,
   Phone,
@@ -31,7 +29,6 @@ import {
   Settings,
   ShieldCheck,
   SquareCheck,
-  Sun,
   Target,
   User,
   UserRound,
@@ -51,7 +48,6 @@ import {
 import { SAMPLE_PEOPLE } from '../qtask/TaskDetailContent';
 import { countUnread, formatRole, startPolling, type NotificationItem } from '../../lib/adapters/notifications.adapter';
 import { apiFetch, setAccessToken } from '../../lib/api/client';
-import { useTheme } from '../../lib/theme';
 import './shell.css';
 
 interface NavItem {
@@ -143,7 +139,6 @@ const ACCOUNT_NAV: ModuleDef = {
   nav: [
     { label: 'Thông tin cá nhân', href: '/account', icon: User, match: '/account' },
     { label: 'Bảo mật & đăng nhập', href: '/account?muc=bao-mat', icon: ShieldCheck, match: '/account?bao-mat' },
-    { label: 'Phiên làm việc', href: '/account?muc=phien', icon: Activity, match: '/account?phien' },
   ],
 };
 
@@ -228,7 +223,6 @@ export function AppWorkspaceShell({ children, me, allowedModuleIds }: AppWorkspa
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { theme, toggle } = useTheme();
   const [items, setItems] = React.useState<NotificationItem[]>([]);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsMenuOpen, setWsMenuOpen] = React.useState(false);
@@ -596,9 +590,6 @@ export function AppWorkspaceShell({ children, me, allowedModuleIds }: AppWorkspa
               onClick={() => setQuickTaskOpen(true)}
             >
               <Plus size={18} strokeWidth={1.5} aria-hidden="true" />
-            </button>
-            <button type="button" className="qx-icon-btn" onClick={toggle} aria-label="Chuyển giao diện Sáng/Tối" aria-pressed={theme === 'dark'}>
-              {theme === 'dark' ? <Sun size={18} strokeWidth={1.5} aria-hidden="true" /> : <Moon size={18} strokeWidth={1.5} aria-hidden="true" />}
             </button>
             <Link href="/notifications" prefetch={true} className="qx-icon-btn" aria-label={unread > 0 ? `Thông báo, ${unread} chưa đọc` : 'Thông báo'}>
               <Bell size={18} strokeWidth={1.5} aria-hidden="true" />

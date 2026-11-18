@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IamModule } from '../iam/iam.module';
 import { OrgModule } from '../org/org.module';
+import { SearchModule } from '../search/search.module';
 import { StorageController } from './storage.controller';
 import { StorageService } from './storage.service';
 
@@ -14,7 +15,7 @@ import { StorageService } from './storage.service';
  * No S3 SDK (R20): SigV4 presigning lives in sigv4.ts on node:crypto.
  */
 @Module({
-  imports: [IamModule, OrgModule],
+  imports: [IamModule, OrgModule, SearchModule],
   controllers: [StorageController],
   providers: [StorageService],
   exports: [StorageService],

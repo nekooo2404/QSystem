@@ -22,7 +22,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { toast } from '@qsystem/ui';
+import { ErrorState, toast } from '@qsystem/ui';
 import {
   addSocialComment,
   createSocialPost,
@@ -33,7 +33,7 @@ import {
   type SocialPostItem,
 } from '../../lib/adapters/social.adapter';
 import { formatRole } from '../../lib/adapters/notifications.adapter';
-import { ApiError } from '../../lib/api/client';
+import { ApiError, apiFetch } from '../../lib/api/client';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import './qsocial.css';
 
@@ -69,8 +69,7 @@ const STORAGE_SAVED_KEY = 'qsystem:social:saved:v1';
 const STORAGE_HIDDEN_KEY = 'qsystem:social:hidden:v1';
 
 const isTestEnv = process.env.NODE_ENV === 'test';
-const isStrictProd =
-  process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true';
+const isDemoMode = process.env.NODE_ENV === 'test' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
 const CHANNELS = [
   { id: 'all', label: 'Toàn công ty', count: 36, icon: Users },
@@ -254,7 +253,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   const muc = searchParams?.get('muc');
 
   const [persistedFeed] = React.useState<FeedPost[]>(() =>
-    readStorageJson<FeedPost[]>(STORAGE_POSTS_KEY, SAMPLE_POSTS),
+    isDemoMode ? readStorageJson<FeedPost[]>(STORAGE_POSTS_KEY, SAMPLE_POSTS) : [],
   );
   const [posts, setPosts] = React.useState<SocialPostItem[]>([]);
   const [localPosts, setLocalPosts] = React.useState<FeedPost[]>([]);
@@ -267,16 +266,13 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   const [attachment, setAttachment] = React.useState<{ name: string; sizeLabel: string } | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [composerError, setComposerError] = React.useState(false);
+  const [composerOpen, setComposerOpen] = React.useState(false);
 
   const [likeOverrides, setLikeOverrides] = React.useState<Record<string, { liked: boolean; likes: number }>>({});
   const [pinnedOverrides, setPinnedOverrides] = React.useState<Record<string, boolean>>({});
   const [deletedIds, setDeletedIds] = React.useState<Set<string>>(() => new Set());
-  const [savedIds, setSavedIds] = React.useState<Set<string>>(
-    () => new Set(readStorageJson<string[]>(STORAGE_SAVED_KEY, [])),
-  );
-  const [hiddenIds, setHiddenIds] = React.useState<Set<string>>(
-    () => new Set(readStorageJson<string[]>(STORAGE_HIDDEN_KEY, [])),
-  );
+  const [savedIds, setSavedIds] = React.useState<Set<string>>(new Set());
+  const [hiddenIds, setHiddenIds] = React.useState<Set<string>>(new Set());
   const [openMenuId, setOpenMenuId] = React.useState<string | null>(null);
   const [openComments, setOpenComments] = React.useState<Set<string>>(() => new Set());
   const [extraComments, setExtraComments] = React.useState<Record<string, FeedComment[]>>({});
@@ -312,7 +308,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
         }
       },
       () => {
-        if (isTestEnv || isStrictProd) {
+        if (!isDemoMode) {
           setFeedError(true);
         }
       },
@@ -343,7 +339,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
 
   const baseFeed = React.useMemo<FeedPost[]>(() => {
     const remote = posts.map(toFeed);
-    const fallbackFeed = isTestEnv ? [] : persistedFeed;
+    const fallbackFeed = isDemoMode ? persistedFeed : [];
     const mergedRemote = remote.length > 0 ? remote : fallbackFeed;
     const combined = [
       ...localPosts,
@@ -367,16 +363,19 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   }, [posts, persistedFeed, localPosts, deletedIds, likeOverrides, pinnedOverrides, extraComments]);
 
   React.useEffect(() => {
-    writeStorageJson(STORAGE_POSTS_KEY, baseFeed);
+    if (isDemoMode) writeStorageJson(STORAGE_POSTS_KEY, baseFeed);
   }, [baseFeed]);
 
   React.useEffect(() => {
-    writeStorageJson(STORAGE_SAVED_KEY, Array.from(savedIds));
-  }, [savedIds]);
-
-  React.useEffect(() => {
-    writeStorageJson(STORAGE_HIDDEN_KEY, Array.from(hiddenIds));
-  }, [hiddenIds]);
+    if (isDemoMode) return;
+    void Promise.all([
+      apiFetch<string[]>('/api/social/saved').catch(() => [] as string[]),
+      apiFetch<string[]>('/api/social/hidden').catch(() => [] as string[]),
+    ]).then(([saved, hidden]) => {
+      if (Array.isArray(saved)) setSavedIds(new Set(saved));
+      if (Array.isArray(hidden)) setHiddenIds(new Set(hidden));
+    });
+  }, [isDemoMode]);
 
   const visible = React.useMemo(() => {
     const filtered = baseFeed.filter((post) => {
@@ -410,6 +409,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   }
 
   function focusComposer() {
+    setComposerOpen(true);
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     composerRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
     composerRef.current?.focus();
@@ -438,7 +438,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
       setAttachment(null);
       toast.success('Đã đăng bài viết lên bảng tin');
     } catch (err) {
-      if (isStrictProd || (err instanceof ApiError && (err.status === 401 || err.status === 403))) {
+      if (!isDemoMode || (err instanceof ApiError && (err.status === 401 || err.status === 403))) {
         toast.error(errText(err));
       } else {
         const local: FeedPost = {
@@ -482,8 +482,12 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
         if (result?.post?.id) {
           setPosts((current) => current.map((p) => (p.id === post.id ? result.post : p)));
         }
-      } catch {
-        /* keep optimistic toggle when offline */
+      } catch (err) {
+        setLikeOverrides((current) => ({
+          ...current,
+          [post.id]: { liked: post.liked, likes: post.likes },
+        }));
+        toast.error(errText(err));
       }
     }
   }
@@ -567,8 +571,13 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
             return copy;
           });
         }
-      } catch {
-        /* keep optimistic reply when offline */
+      } catch (err) {
+        setExtraComments((current) => ({
+          ...current,
+          [post.id]: (current[post.id] ?? []).filter((item) => item.id !== newComment.id),
+        }));
+        setCommentDrafts((current) => ({ ...current, [post.id]: text }));
+        toast.error(errText(err));
       }
     }
   }
@@ -597,13 +606,37 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
       return next;
     });
     setOpenMenuId(null);
-    toast.success(willSave ? 'Đã lưu bài viết vào mục Đã lưu' : 'Đã bỏ lưu bài viết');
+    if (isDemoMode) {
+      writeStorageJson(STORAGE_SAVED_KEY, Array.from(savedIds));
+      return;
+    }
+    void apiFetch(`/api/social/posts/${encodeURIComponent(postId)}/save`, { method: 'POST' }).catch(() => {
+      setSavedIds((current) => {
+        const next = new Set(current);
+        if (willSave) next.delete(postId);
+        else next.add(postId);
+        return next;
+      });
+      toast.error('Không kết nối được máy chủ. Thay đổi chưa được lưu.');
+    });
   }
 
   function hidePost(postId: string) {
     setHiddenIds((current) => new Set(current).add(postId));
     setOpenMenuId(null);
     toast.info('Đã ẩn bài viết khỏi bảng tin');
+    if (isDemoMode) {
+      writeStorageJson(STORAGE_HIDDEN_KEY, Array.from(hiddenIds));
+      return;
+    }
+    void apiFetch(`/api/social/posts/${encodeURIComponent(postId)}/hide`, { method: 'POST' }).catch(() => {
+      setHiddenIds((current) => {
+        const next = new Set(current);
+        next.delete(postId);
+        return next;
+      });
+      toast.error('Không kết nối được máy chủ. Thay đổi chưa được lưu.');
+    });
   }
 
   function handleSelectNotice(notice: (typeof NOTICES)[number]) {
@@ -664,7 +697,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
         </nav>
 
         <section className="qso__feed" aria-label="Bảng tin">
-          <form className="qx-card qso__composer" onSubmit={handlePublish}>
+          {composerOpen ? <form className="qx-card qso__composer qso__composer--open" onSubmit={handlePublish}>
             <div className="qso__compose-row">
               <span className="qx-avatar qso__av" aria-hidden="true">{initialsOf(me.name)}</span>
               <label className="qso__sr" htmlFor="qso-draft">Nội dung bài viết</label>
@@ -734,7 +767,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
                 <Send size={16} strokeWidth={1.5} aria-hidden="true" /> {submitting ? 'Đang đăng' : 'Đăng bài'}
               </button>
             </div>
-          </form>
+          </form> : null}
 
           <div className="qso__tabbar">
             <div className="qx-tabs qso__tabs" role="tablist" aria-label="Chế độ xem bảng tin">
@@ -775,12 +808,11 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
           ) : null}
 
           {feedError ? (
-            <div role="alert" className="qx-card qso__empty-feed">
-              <span>Không thể tải bảng tin lúc này.</span>
-              <button type="button" className="qx-btn qx-btn--sm" onClick={loadFeed}>
-                Thử lại
-              </button>
-            </div>
+            <ErrorState
+              title="Không tải được bảng tin"
+              description="Không kết nối được máy chủ. Dữ liệu chưa được tải."
+              onRetry={loadFeed}
+            />
           ) : visible.length === 0 ? (
             <div className="qx-card qso__empty-feed">
               <span>

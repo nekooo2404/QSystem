@@ -68,5 +68,25 @@ export class SocialController {
   ) {
     return this.social.addComment(await this.viewer(user), id, body);
   }
+
+  @Post('posts/:id/save')
+  async toggleSave(@CurrentUser() user: RequestViewer | undefined, @Param('id') id: string) {
+    return this.social.toggleSave(await this.viewer(user), id);
+  }
+
+  @Post('posts/:id/hide')
+  async toggleHide(@CurrentUser() user: RequestViewer | undefined, @Param('id') id: string) {
+    return this.social.toggleHide(await this.viewer(user), id);
+  }
+
+  @Get('saved')
+  async listSaved(@CurrentUser() user: RequestViewer | undefined) {
+    return this.social.listSavedIds(await this.viewer(user));
+  }
+
+  @Get('hidden')
+  async listHidden(@CurrentUser() user: RequestViewer | undefined) {
+    return this.social.listHiddenIds(await this.viewer(user));
+  }
 }
 

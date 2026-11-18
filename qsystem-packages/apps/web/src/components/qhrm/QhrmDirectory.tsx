@@ -78,10 +78,7 @@ const DEFAULT_META_CACHE: OrgMetaCache = {
 };
 
 function canUseOrgLocalFallback(): boolean {
-  return (
-    process.env.NODE_ENV === 'development' ||
-    (process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && process.env.NODE_ENV !== 'test')
-  );
+  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true' || process.env.NODE_ENV === 'test';
 }
 
 function readJsonStorage<T>(key: string, fallback: T): T {
@@ -346,49 +343,6 @@ const SYN_TITLES = [
   'Chuyên viên khách hàng',
 ];
 
-function buildSyntheticSampleRow(
-  slotIndex: number,
-  departments: Department[],
-  selectedDeptId: string | null,
-  allUsers: OrgUser[],
-): DirectoryRow {
-  const last = SYN_LAST[slotIndex % SYN_LAST.length];
-  const mid = SYN_MID[Math.floor(slotIndex / SYN_LAST.length) % SYN_MID.length];
-  const first = SYN_FIRST[(slotIndex * 3 + Math.floor(slotIndex / 7)) % SYN_FIRST.length];
-  const codeNum = slotIndex + 1;
-  const fullName = `${last} ${mid} ${first} #${codeNum}`;
-  const targetDept = selectedDeptId
-    ? (departments.find((d) => d.id === selectedDeptId) ?? departments[0])
-    : departments[(slotIndex + 1) % Math.max(1, departments.length)];
-  const deptName = targetDept?.name ?? 'Toàn công ty';
-  const deptManager = allUsers.find(
-    (u) => u.departmentId === targetDept?.id && (u.role === 'MANAGER' || u.role === 'DIRECTOR'),
-  );
-  const avatarTone = TONE_CYCLE[slotIndex % TONE_CYCLE.length];
-  const jobTitle = SYN_TITLES[slotIndex % SYN_TITLES.length];
-  const syntheticUser: OrgUser = {
-    id: `u-syn-${codeNum}`,
-    name: fullName,
-    email: `nhansu.${codeNum}@qsystem.vn`,
-    role: 'EMPLOYEE',
-    jobTitle,
-    departmentId: targetDept?.id ?? null,
-    reportsToId: deptManager?.id ?? 'u-1',
-    statusLabel: 'Đang làm',
-    avatarTone,
-  };
-  return {
-    user: syntheticUser,
-    employeeCode: `NV-${String(codeNum + 200).padStart(4, '0')}`,
-    initials: initialsOf(`${mid} ${first}`),
-    avatarTone,
-    jobTitle,
-    departmentName: deptName,
-    managerName: deptManager?.name ?? 'Minh Khôi',
-    statusLabel: 'Đang làm',
-  };
-}
-
 type OrgMuc = 'tong-quan' | 'phong-ban' | 'cham-cong' | 'nghi-phep';
 
 const MUC_META: Record<
@@ -592,6 +546,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
   const [newDeptName, setNewDeptName] = React.useState('');
   const [detailUserId, setDetailUserId] = React.useState<string | null>(null);
   const [leavesState, setLeavesState] = React.useState<LeaveRequest[] | null>(null);
+  const [leavesReloadTick, setLeavesReloadTick] = React.useState(0);
   const [attendanceState, setAttendanceState] = React.useState<AttendanceRecord[] | null>(null);
 
   const canManage = me.role === 'DIRECTOR' || me.role === 'MANAGER';
@@ -722,6 +677,65 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     setAttendanceState(syncedAttendance);
   }, [departments, usersForStore, me.id, isSample]);
 
+  React.useEffect(() => {
+    if (isSample || !departments) return;
+    let active = true;
+    void cachedApiFetch<Array<{
+      id: string;
+      code: string;
+      userId: string;
+      fromDate: string;
+      toDate: string;
+      days: number;
+      reason: string;
+      type: string;
+      status: string;
+      reviewerId: string | null;
+      rejectionReason: string | null;
+      createdAt: string;
+      reviewedAt: string | null;
+      user?: { id: string; name: string; email: string; departmentId: string | null };
+      reviewer?: { id: string; name: string } | null;
+    }>>('/api/org/leaves')
+      .then((rows) => {
+        if (!active) return;
+        const byId = new Map(usersForStore.map((u) => [u.id, u]));
+        const mapped: LeaveRequest[] = rows.map((row) => {
+          const user = row.user ?? byId.get(row.userId);
+          const dept = departments.find((d) => d.id === user?.departmentId);
+          return {
+            id: row.id,
+            code: row.code,
+            employeeId: row.userId,
+            employeeCode: user?.id ? `NV-${user.id.slice(-4).toUpperCase()}` : 'NV-0001',
+            employeeName: user?.name ?? 'Nhân viên',
+            employeeEmail: user?.email ?? '',
+            departmentId: user?.departmentId ?? null,
+            departmentName: dept?.name ?? 'Toàn công ty',
+            type: row.type as LeaveType,
+            fromDate: row.fromDate,
+            toDate: row.toDate,
+            days: row.days,
+            reason: row.reason,
+            status: row.status === 'APPROVED' ? 'Đã duyệt' : row.status === 'REJECTED' ? 'Từ chối' : 'Chờ duyệt',
+            approverId: row.reviewerId,
+            approverName: row.reviewer?.name ?? 'Chưa phân công',
+            createdAtLabel: formatDateTimeLabel(new Date(row.createdAt)),
+            reviewedByName: row.reviewer?.name,
+            reviewedAtLabel: row.reviewedAt ? formatDateTimeLabel(new Date(row.reviewedAt)) : undefined,
+            rejectionReason: row.rejectionReason ?? undefined,
+          };
+        });
+        setLeavesState(mapped);
+      })
+      .catch(() => {
+        if (active) setLoadError('Không tải được dữ liệu nghỉ phép từ máy chủ.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [departments, isSample, usersForStore, leavesReloadTick]);
+
   // Open CreateUserModal automatically when navigated via ?them-nhan-su=1
   const openParam = searchParams?.get('them-nhan-su') === '1';
   React.useEffect(() => {
@@ -777,12 +791,11 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
   if (loadError) {
     return (
       <section className="qx-page" aria-label="Danh bạ nhân sự">
-        <div role="alert" className="hr-alert">
-          <span>{loadError}</span>
-          <button type="button" className="qx-btn qx-btn--sm" onClick={() => loadDirectory()}>
-            Thử lại
-          </button>
-        </div>
+          <StateRegion
+            state="error"
+            errorDescription={loadError}
+            onRetry={() => loadDirectory()}
+          />
       </section>
     );
   }
@@ -862,55 +875,13 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
       ? `${((activeStaffStat / totalStaffStat) * 100).toFixed(1).replace('.', ',')}% tổng nhân sự`
       : '0% tổng nhân sự';
 
-  const footerTotalCount = (() => {
-    if (normalizedQuery || activeMuc === 'nghi-phep' || activeMuc === 'cham-cong') {
-      return filteredRows.length;
-    }
-    if (isSample) {
-      if (selectedId === null) return totalStaffStat;
-      return selectedDept ? departmentCountFor(selectedDept) : filteredRows.length;
-    }
-    return filteredRows.length;
-  })();
+  const footerTotalCount = filteredRows.length;
 
   const totalPages = Math.max(1, Math.ceil(footerTotalCount / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
 
-  // Slice visible rows; for sample pages beyond concrete rows, generate distinct deterministic employees.
   const startIdx = (safePage - 1) * PAGE_SIZE;
-  const pageRows: DirectoryRow[] = (() => {
-    if (startIdx < filteredRows.length) {
-      const concrete = filteredRows.slice(startIdx, startIdx + PAGE_SIZE);
-      if (
-        isSample &&
-        concrete.length < PAGE_SIZE &&
-        !normalizedQuery &&
-        activeMuc !== 'nghi-phep' &&
-        activeMuc !== 'cham-cong' &&
-        startIdx + concrete.length < footerTotalCount
-      ) {
-        const needed = Math.min(PAGE_SIZE - concrete.length, footerTotalCount - (startIdx + concrete.length));
-        const extra = Array.from({ length: needed }, (_, i) =>
-          buildSyntheticSampleRow(startIdx + concrete.length + i, departments, selectedId, users),
-        );
-        return [...concrete, ...extra];
-      }
-      return concrete;
-    }
-    if (
-      isSample &&
-      !normalizedQuery &&
-      activeMuc !== 'nghi-phep' &&
-      activeMuc !== 'cham-cong' &&
-      startIdx < footerTotalCount
-    ) {
-      const needed = Math.min(PAGE_SIZE, footerTotalCount - startIdx);
-      return Array.from({ length: needed }, (_, i) =>
-        buildSyntheticSampleRow(startIdx + i, departments, selectedId, users),
-      );
-    }
-    return [];
-  })();
+  const pageRows: DirectoryRow[] = filteredRows.slice(startIdx, startIdx + PAGE_SIZE);
 
   function selectDepartment(nextId: string | null) {
     setSelectedId(nextId);
@@ -1163,7 +1134,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     saveStoredAttendance(nextRecords);
   }
 
-  function handleCreateLeave(payload: {
+  async function handleCreateLeave(payload: {
     type: LeaveType;
     fromDate: string;
     toDate: string;
@@ -1172,6 +1143,22 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     approverId: string | null;
     approverName: string;
   }) {
+    if (!isSample) {
+      try {
+        await apiFetch('/api/org/leaves', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        toast.success('Đã gửi đơn nghỉ phép');
+        invalidateApiCache('/api/org/leaves');
+        setLeavesReloadTick((tick) => tick + 1);
+        return;
+      } catch {
+        toast.error('Không kết nối được máy chủ. Đơn nghỉ phép chưa được lưu.');
+        return;
+      }
+    }
     const created = createLeaveRequestEntry(resolvedLeaves, {
       user: currentMeUser,
       userIndex: currentMeIndex,
@@ -1184,9 +1171,25 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     toast.success(`Đã gửi đơn nghỉ phép ${created.code}`);
   }
 
-  function handleApproveLeave(leaveId: string, reviewerName: string) {
+  async function handleApproveLeave(leaveId: string, reviewerName: string) {
     const target = resolvedLeaves.find((item) => item.id === leaveId);
     if (!target || target.status !== 'Chờ duyệt') return;
+    if (!isSample) {
+      try {
+        await apiFetch(`/api/org/leaves/${leaveId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'APPROVED' }),
+        });
+        toast.success(`Đã duyệt đơn ${target.code}`);
+        invalidateApiCache('/api/org/leaves');
+        setLeavesReloadTick((tick) => tick + 1);
+        return;
+      } catch {
+        toast.error('Không kết nối được máy chủ. Thay đổi chưa được lưu.');
+        return;
+      }
+    }
     const reviewedAtLabel = formatDateTimeLabel();
     const nextLeaves = resolvedLeaves.map((item) =>
       item.id === leaveId
@@ -1234,9 +1237,25 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
     toast.success(`Đã duyệt đơn ${target.code} và cập nhật bảng chấm công`);
   }
 
-  function handleRejectLeave(leaveId: string, reviewerName: string, reason: string) {
+  async function handleRejectLeave(leaveId: string, reviewerName: string, reason: string) {
     const target = resolvedLeaves.find((item) => item.id === leaveId);
     if (!target || target.status !== 'Chờ duyệt') return;
+    if (!isSample) {
+      try {
+        await apiFetch(`/api/org/leaves/${leaveId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'REJECTED', rejectionReason: reason }),
+        });
+        toast.info(`Đã từ chối đơn ${target.code}`);
+        invalidateApiCache('/api/org/leaves');
+        setLeavesReloadTick((tick) => tick + 1);
+        return;
+      } catch {
+        toast.error('Không kết nối được máy chủ. Thay đổi chưa được lưu.');
+        return;
+      }
+    }
     const reviewedAtLabel = formatDateTimeLabel();
     const nextLeaves = resolvedLeaves.map((item) =>
       item.id === leaveId
@@ -1358,6 +1377,7 @@ export function QhrmDirectory({ me }: { me: MeResponse }) {
 
   return (
     <section className="qx-page" aria-label={pageTitle} ref={menuContainerRef}>
+      {isSample ? <div className="qx-badge qx-badge--amber" style={{ marginBottom: 12 }}>Dữ liệu mẫu</div> : null}
       <header className="qx-page-head">
         <div>
           <h1>{pageTitle}</h1>

@@ -93,6 +93,7 @@ export const TASKS_STORAGE_KEY = 'qsystem:tasks:v1';
 export const TASK_EXTRAS_STORAGE_KEY = 'qsystem:task-extras:v1';
 export const PROJECTS_STORAGE_KEY = 'qsystem:projects:v1';
 export const WORKSPACE_STORAGE_KEY = 'qsystem:workspace:v1';
+export const CALENDAR_EVENTS_STORAGE_KEY = 'qsystem:calendar-events:v1';
 
 const EMPTY_TASKS_STATE: StoredTasksState = {
   customAll: [],
@@ -127,7 +128,9 @@ export function isStrictProduction(): boolean {
  * and never in strict production deployments.
  */
 export function canUseDevPersistence(): boolean {
-  return !isTestEnvironment() && !isStrictProduction();
+  // Production and normal local runs are API-first. Demo/localStorage data is
+  // opt-in only; tests retain the deterministic fixture path.
+  return isTestEnvironment() || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 }
 
 /** Neutralizes spreadsheet CSV formula prefixes before RFC-4180 quoting. */
@@ -238,6 +241,19 @@ export function saveStoredWorkspaceId(id: string): void {
   if (!canUseDevPersistence() || typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export function loadStoredCalendarEvents<T>(): T[] {
+  return readJsonStorage<T[] | null>(CALENDAR_EVENTS_STORAGE_KEY, null) ?? [];
+}
+
+export function saveStoredCalendarEvents<T>(events: T[]): void {
+  if (!canUseDevPersistence() || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CALENDAR_EVENTS_STORAGE_KEY, JSON.stringify(events));
   } catch {
     // Ignore storage failures.
   }

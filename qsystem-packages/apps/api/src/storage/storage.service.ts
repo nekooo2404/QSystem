@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, type ScopeViewer } from '../prisma/prisma.service';
 import { presignUrl, PRESIGN_EXPIRES_SECONDS, s3ConfigFromEnv } from './sigv4';
+import { SearchSyncWorker } from '../search/sync.worker';
 
 /** Buckets permitted by the MVP spec (design doc lines 79-80). */
 export const ALLOWED_BUCKETS = ['qsystem-docs', 'qsystem-avatars'] as const;
@@ -133,7 +134,10 @@ export interface FileDownload {
 @Injectable()
 export class StorageService {
   // Explicit token — esbuild (vitest) does not emit decorator metadata.
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(SearchSyncWorker) private readonly searchSync: SearchSyncWorker,
+  ) {}
 
   /**
    * Upsert the `files` metadata row (ownerId = viewer, departmentId =
@@ -227,6 +231,8 @@ export class StorageService {
       uploadUrl: presignUrl(s3ConfigFromEnv(), 'PUT', input.bucket, key),
       expiresInSeconds: PRESIGN_EXPIRES_SECONDS,
     };
+      // Best-effort index sync: never block or fail the presign response.
+      void this.searchSync.syncFile(fileId, viewer).catch(() => {});
   }
 
   /**

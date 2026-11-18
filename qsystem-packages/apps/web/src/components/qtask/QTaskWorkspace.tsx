@@ -18,7 +18,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
-import { Select, toast, type SelectOption } from '@qsystem/ui';
+import { ErrorState, Select, toast, type SelectOption } from '@qsystem/ui';
 import {
   listTasks,
   listTasksPage,
@@ -31,7 +31,7 @@ import {
 } from '../../lib/adapters/tasks.adapter';
 import { apiFetch, ApiError } from '../../lib/api/client';
 import { useSession } from '../../lib/auth/session-context';
-import { addLocalDaysIso, diffCalendarDays } from '../../lib/date';
+import { diffCalendarDays } from '../../lib/date';
 import { humanizeApiError } from '../../lib/errors/humanize';
 import { CreateTaskModal, type AssigneeOption } from './CreateTaskModal';
 import { MyTasksView } from './MyTasksView';
@@ -50,8 +50,6 @@ import {
   getSampleTasks,
   getStatusBadgeClass,
   initials,
-  SAMPLE_PEOPLE,
-  SAMPLE_PROJECTS,
   TaskDetailDrawer,
   type TaskViewItem,
 } from './TaskDetailContent';
@@ -112,42 +110,6 @@ const SAMPLE_TITLES_EXTRA = [
   'Đối soát thanh toán đối tác quý IV',
 ];
 
-function buildSamplePage(pageNumber: number): TaskViewItem[] {
-  const baseCode = 1004 + (pageNumber - 1) * 6;
-  const statuses: TaskStatus[] = ['Đang làm', 'Chờ duyệt', 'Hoàn thành', 'Đang làm', 'Đang làm', 'Hoàn thành'];
-  const priorities: ('Ưu tiên cao' | 'Trung bình' | 'Thấp')[] = [
-    'Ưu tiên cao',
-    'Trung bình',
-    'Thấp',
-    'Ưu tiên cao',
-    'Trung bình',
-    'Thấp',
-  ];
-  return Array.from({ length: 6 }, (_, index) => {
-    const num = baseCode + index;
-    const person = SAMPLE_PEOPLE[(pageNumber + index) % SAMPLE_PEOPLE.length];
-    const proj = SAMPLE_PROJECTS[(pageNumber + index) % SAMPLE_PROJECTS.length];
-    const status = statuses[index % statuses.length];
-    const offsetDays = ((pageNumber + index) % 15) - 4;
-    return {
-      id: `sample-page-${pageNumber}-${num}`,
-      code: `CV-${num}`,
-      title: SAMPLE_TITLES_EXTRA[(pageNumber + index) % SAMPLE_TITLES_EXTRA.length],
-      project: proj.split(' ')[0],
-      assigneeId: person.id,
-      assigneeName: person.name,
-      dueDate: addLocalDaysIso(offsetDays),
-      status,
-      displayStatus: status,
-      priority: priorities[index % priorities.length],
-      departmentName: 'Vận hành',
-      description: 'Đầu việc thuộc kế hoạch triển khai định kỳ trong không gian làm việc QSystem.',
-      updatedLabel: 'Cập nhật hôm nay',
-      isSample: true,
-    };
-  });
-}
-
 function toViewTask(task: Task, deptMap: Map<string, string>): TaskViewItem {
   const deptName = task.departmentId ? deptMap.get(task.departmentId) : undefined;
   return {
@@ -184,6 +146,9 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
     canUseDevPersistence() ? getSampleTasks() : [],
   );
   const [usingSample, setUsingSample] = React.useState(() => canUseDevPersistence());
+  const [initialLoading, setInitialLoading] = React.useState(
+    () => process.env.NODE_ENV !== 'test' && !canUseDevPersistence(),
+  );
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [reloadTick, setReloadTick] = React.useState(0);
   const [departments, setDepartments] = React.useState<Department[]>([]);
@@ -273,6 +238,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
       if (meRes && typeof meRes === 'object') setMe(meRes as { id?: string; name?: string });
 
       if (tasksResult.ok) {
+        setInitialLoading(false);
         setLoadError(null);
         if (tasksResult.result.items.length > 0) {
           const deptMap = new Map((Array.isArray(depts) ? depts : []).map((d) => [d.id, d.name]));
@@ -285,6 +251,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
           setUsingSample(false);
         }
       } else if (!canUseDevPersistence()) {
+        setInitialLoading(false);
         setLoadError(
           tasksResult.err instanceof ApiError
             ? humanizeApiError(tasksResult.err.code, tasksResult.err.status)
@@ -299,6 +266,23 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
       active = false;
     };
   }, [reloadTick, page, query, filters.status, filters.assigneeId]);
+
+  // Keep the task surface live without forcing a reload while the user is
+  // actively editing a drawer or modal. Refresh on tab return and at a
+  // conservative interval so server-side assignments appear naturally.
+  React.useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') setReloadTick((tick) => tick + 1);
+    };
+    const interval = window.setInterval(refreshIfVisible, 30_000);
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshIfVisible);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!filterOpen) return;
@@ -394,34 +378,10 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   }, [tasks, view, filters, query, me]);
 
   const pageSize = 6;
-  const isUnfilteredSample =
-    usingSample &&
-    view === 'all' &&
-    !query.trim() &&
-    !filters.status &&
-    !filters.project &&
-    !filters.assigneeId;
-
-  const customAddedCount = tasks.filter((t) => !t.id.startsWith('sample-')).length;
-  const deletedSampleCount = deletedIds.size;
-  const totalCount = isUnfilteredSample
-    ? Math.max(visible.length, 156 + customAddedCount - deletedSampleCount)
-    : visible.length;
-  const totalPages = isUnfilteredSample
-    ? 26
-    : serverTotal !== null
-      ? Math.max(1, Math.ceil(serverTotal / pageSize))
-      : Math.max(1, Math.ceil(visible.length / pageSize));
+  const totalCount = serverTotal ?? visible.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
-  const rawSlice = visible.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const generatedSlice =
-    isUnfilteredSample && safePage > 1 && rawSlice.length < pageSize
-      ? buildSamplePage(safePage)
-          .filter((item) => !deletedIds.has(item.id))
-          .map((item) => editedSampleMap[item.id] ?? item)
-          .slice(0, pageSize - rawSlice.length)
-      : [];
-  const paged = serverTotal !== null && !usingSample ? visible : [...rawSlice, ...generatedSlice];
+  const paged = serverTotal !== null ? visible : visible.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const selected =
     tasks.find((task) => task.id === selectedId) ??
@@ -563,7 +523,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
       );
     } catch {
       if (!mounted.current) return;
-      if (!canUseDevPersistence()) {
+      if (process.env.NODE_ENV === 'test' || !canUseDevPersistence()) {
         toast.error(`Chưa cập nhật được công việc ${task.code}. Vui lòng thử lại.`);
         return;
       }
@@ -580,17 +540,7 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
   }
 
   function exportReport() {
-    const extraSampleRows: TaskViewItem[] = [];
-    if (isUnfilteredSample && totalPages > 1) {
-      for (let p = 2; p <= totalPages; p += 1) {
-        for (const item of buildSamplePage(p)) {
-          if (!deletedIds.has(item.id)) {
-            extraSampleRows.push(editedSampleMap[item.id] ?? item);
-          }
-        }
-      }
-    }
-    const exportList = [...visible, ...extraSampleRows];
+    const exportList = visible;
     const rows = [
       ['Mã', 'Công việc', 'Dự án', 'Người phụ trách', 'Thời hạn', 'Trạng thái'],
       ...exportList.map((t) => [
@@ -613,6 +563,8 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
     toast.success('Đã xuất báo cáo công việc');
   }
 
+  const customAddedCount = tasks.filter((t) => !t.id.startsWith('sample-')).length;
+  const deletedSampleCount = deletedIds.size;
   const statTotal = usingSample ? Math.max(0, 156 + customAddedCount - deletedSampleCount) : tasks.length;
   let deltaInProgress = 0;
   let deltaDone = 0;
@@ -722,8 +674,20 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
     );
   }
 
+  if (initialLoading) {
+    return (
+      <section className="qx-page qtk-table-loading" aria-label="Tất cả công việc" role="status" aria-busy="true">
+        <div className="qtk-table-skeleton__head" />
+        <div className="qtk-table-skeleton__rows">
+          {Array.from({ length: 7 }, (_, index) => <div key={index} />)}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="qx-page" aria-label="Tất cả công việc">
+      {usingSample ? <div className="qx-badge qx-badge--amber" style={{ marginBottom: 12 }}>Dữ liệu mẫu</div> : null}
       <header className="qx-page-head">
         <div>
           <h1>Tất cả công việc</h1>
@@ -772,16 +736,11 @@ function AllTasksWorkspace({ initialView }: { initialView?: ViewId }) {
       </div>
 
       {loadError ? (
-        <div className="qx-card" role="alert" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <span style={{ color: 'var(--qs-error)', fontSize: 13 }}>{loadError}</span>
-          <button
-            type="button"
-            className="qx-btn qx-btn--sm"
-            onClick={() => setReloadTick((tick) => tick + 1)}
-          >
-            Thử lại
-          </button>
-        </div>
+        <ErrorState
+          title="Không tải được công việc"
+          description={loadError}
+          onRetry={() => setReloadTick((tick) => tick + 1)}
+        />
       ) : null}
 
       <div className="qx-card qtk-table-card">

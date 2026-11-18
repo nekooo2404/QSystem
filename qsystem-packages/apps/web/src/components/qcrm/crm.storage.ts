@@ -222,12 +222,14 @@ export function isStrictProduction(): boolean {
 
 /** Dev/demo fallback for API-backed Customer list (matches `qtask.storage.ts` & `QhrmDirectory.tsx`). */
 export function canUseCrmApiFallback(): boolean {
-  return !isTestEnvironment() && !isStrictProduction();
+  // Production is API-first: sample/localStorage CRM data only loads in
+  // explicit demo mode (or tests with fixtures).
+  return isTestEnvironment() || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 }
 
 /** Local client persistence for CRM modules that have no backend endpoints yet. */
 export function canUseCrmLocalStore(): boolean {
-  return !isStrictProduction();
+  return isTestEnvironment() || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 }
 
 export function initialsOf(name: string): string {

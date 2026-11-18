@@ -28,11 +28,11 @@ const nextConfig = {
       },
     ];
   },
-  // Same-origin proxy: the httpOnly `refresh_token` cookie (path=/, lax)
-  // is only sent back to the app origin, never to the API's own :3001 origin.
+  // Same-origin proxy is enabled only when the deployment provides an API URL.
+  // Local UI-only runs stay on the web origin and use the existing fallback data.
   async rewrites() {
-    const api = process.env.QSYSTEM_API_URL ?? 'http://127.0.0.1:3001';
-    return [{ source: '/api/:path*', destination: `${api}/:path*` }];
+    const api = process.env.QSYSTEM_API_URL?.trim();
+    return api ? [{ source: '/api/:path*', destination: `${api}/:path*` }] : [];
   },
 };
 

@@ -55,14 +55,30 @@ type BaseModelName =
   | 'auditLog'
   | 'notification'
   | 'file'
-  | 'task';
+  | 'task'
+  | 'taskComment'
+  | 'taskHistory'
+  | 'taskAttachment'
+  | 'leaveRequest'
+  | 'calendarEvent'
+  | 'attendanceRecord';
 
 type ModelName =
   | BaseModelName
   | 'socialPost'
   | 'socialComment'
   | 'socialPostLike'
-  | 'refreshToken';
+  | 'refreshToken'
+  | 'project'
+  | 'workPackage'
+  | 'crmCustomer'
+  | 'crmDeal'
+  | 'taskComment'
+  | 'taskHistory'
+  | 'taskAttachment'
+  | 'leaveRequest'
+  | 'calendarEvent'
+  | 'attendanceRecord';
 
 const BASE_MODELS = new Set<string>([
   'user',
@@ -72,6 +88,16 @@ const BASE_MODELS = new Set<string>([
   'notification',
   'file',
   'task',
+  'crmCustomer',
+  'crmDeal',
+  'project',
+  'workPackage',
+  'taskComment',
+  'taskHistory',
+  'taskAttachment',
+  'leaveRequest',
+  'calendarEvent',
+  'attendanceRecord',
 ]);
 
 const MODELS: ModelName[] = [
@@ -86,6 +112,14 @@ const MODELS: ModelName[] = [
   'socialComment',
   'socialPostLike',
   'refreshToken',
+  'project',
+  'workPackage',
+  'crmCustomer',
+  'crmDeal',
+  'taskComment',
+  'taskHistory',
+  'taskAttachment',
+  'leaveRequest',
 ];
 
 const LIST_OPS = new Set([
@@ -401,6 +435,16 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       socialComment: ops('socialComment'),
       socialPostLike: ops('socialPostLike'),
       refreshToken: ops('refreshToken'),
+  project: ops('project'),
+  workPackage: ops('workPackage'),
+  crmCustomer: ops('crmCustomer'),
+  crmDeal: ops('crmDeal'),
+      taskComment: ops('taskComment'),
+      taskHistory: ops('taskHistory'),
+      taskAttachment: ops('taskAttachment'),
+      leaveRequest: ops('leaveRequest'),
+      calendarEvent: ops('calendarEvent'),
+      attendanceRecord: ops('attendanceRecord'),
       // Raw SQL entry points exist only to refuse: scoped work must go
       // through the ORM delegates above, never raw queries.
       $queryRaw: refuse,

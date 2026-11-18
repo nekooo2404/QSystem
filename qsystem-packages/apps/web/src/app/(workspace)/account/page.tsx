@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Activity, ArrowRight, Bell, KeyRound, Settings, ShieldCheck, Sun, User } from 'lucide-react';
+import { Bell, KeyRound, Settings, ShieldCheck, User } from 'lucide-react';
 import { StateRegion, toast } from '@qsystem/ui';
 import { ChangePasswordSchema, type MeResponse } from '@qsystem/contracts';
 import { ApiError, apiFetch, setAccessToken } from '../../../lib/api/client';
@@ -10,14 +10,7 @@ import { useSession } from '../../../lib/auth/session-context';
 import { humanizeApiError } from '../../../lib/errors/humanize';
 import '../../../components/account/account.css';
 
-type NavKey = 'profile' | 'security' | 'notifications' | 'appearance' | 'session';
-
-interface DeviceSession {
-  id: string;
-  device: string;
-  detail: string;
-  current?: boolean;
-}
+type NavKey = 'profile' | 'security' | 'notifications';
 
 const FALLBACK_ME: MeResponse = {
   id: 'u-director-01',
@@ -28,13 +21,7 @@ const FALLBACK_ME: MeResponse = {
   managedDepartmentIds: [],
 };
 
-const INITIAL_SESSIONS: DeviceSession[] = [
-  { id: 'sess-current', device: 'Windows · Trình duyệt Chrome', detail: 'TP. Hồ Chí Minh · Hoạt động hiện tại', current: true },
-  { id: 'sess-mobile', device: 'iPhone 15 · QSystem Mobile', detail: 'TP. Hồ Chí Minh · 2 giờ trước' },
-];
-
 const PROFILE_STORAGE_KEY = 'qsystem:account:profile:v1';
-const SESSIONS_STORAGE_KEY = 'qsystem:account:sessions:v1';
 
 interface StoredAccountProfile {
   name?: string;
@@ -77,31 +64,6 @@ function writeStoredProfile(next: StoredAccountProfile): void {
   }
 }
 
-function readStoredSessions(): DeviceSession[] {
-  if (typeof window === 'undefined' || !allowDevOfflineFallback()) return INITIAL_SESSIONS;
-  try {
-    const raw = window.localStorage.getItem(SESSIONS_STORAGE_KEY);
-    if (!raw) return INITIAL_SESSIONS;
-    const parsed = JSON.parse(raw) as DeviceSession[];
-    if (!Array.isArray(parsed)) return INITIAL_SESSIONS;
-    return parsed.filter(
-      (item): item is DeviceSession =>
-        Boolean(item) && typeof item.id === 'string' && typeof item.device === 'string' && typeof item.detail === 'string',
-    );
-  } catch {
-    return INITIAL_SESSIONS;
-  }
-}
-
-function writeStoredSessions(next: DeviceSession[]): void {
-  if (typeof window === 'undefined' || !allowDevOfflineFallback()) return;
-  try {
-    window.localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Ignore storage quota errors in private mode.
-  }
-}
-
 function humanize(err: unknown): string {
   return humanizeApiError(err instanceof ApiError ? err.code : undefined, err instanceof ApiError ? err.status : undefined);
 }
@@ -127,15 +89,13 @@ function useSafeSearchParams() {
   }
 }
 
-function navKeyFromMuc(muc: string | null | undefined): 'profile' | 'security' | 'session' {
+function navKeyFromMuc(muc: string | null | undefined): 'profile' | 'security' {
   if (muc === 'bao-mat') return 'security';
-  if (muc === 'phien') return 'session';
   return 'profile';
 }
 
-function hrefForNavKey(key: 'profile' | 'security' | 'session'): string {
+function hrefForNavKey(key: 'profile' | 'security'): string {
   if (key === 'security') return '/account?muc=bao-mat';
-  if (key === 'session') return '/account?muc=phien';
   return '/account';
 }
 
@@ -165,13 +125,8 @@ function AccountPageContent() {
   // their server-backed flows exist; never present a localStorage toggle as
   // account security.
   const [twoFactorEnabled] = React.useState(false);
-  const [showDevices, setShowDevices] = React.useState(false);
-  const [sessions, setSessions] = React.useState<DeviceSession[]>(INITIAL_SESSIONS);
-  const [loggingOut, setLoggingOut] = React.useState(false);
-
   const profileRef = React.useRef<HTMLDivElement>(null);
   const securityRef = React.useRef<HTMLDivElement>(null);
-  const sessionRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -189,7 +144,6 @@ function AccountPageContent() {
         setDepartmentName(stored.departmentName.trim());
         setSavedDepartment(stored.departmentName.trim());
       }
-      setSessions(readStoredSessions());
     }
 
     apiFetch<Partial<MeResponse>>('/api/me').then(
@@ -270,32 +224,6 @@ function AccountPageContent() {
     }
   }
 
-  async function handleLogout() {
-    setLoggingOut(true);
-    try {
-      await apiFetch('/api/auth/logout', { method: 'POST' });
-    } catch {
-      // Offline preview fallback: still clear local session state and redirect.
-    } finally {
-      if (typeof document !== 'undefined') {
-        document.cookie = 'refresh_token=; path=/; max-age=0';
-        document.cookie = 'refresh_token=; path=/api/auth; max-age=0';
-        document.cookie = 'qsystem_logged_out=1; path=/; max-age=86400; SameSite=Lax';
-      }
-      setAccessToken(null);
-      router.push('/login');
-    }
-  }
-
-  function revokeSession(sessionId: string) {
-    setSessions((cur) => {
-      const next = cur.filter((item) => item.id !== sessionId);
-      writeStoredSessions(next);
-      return next;
-    });
-    toast.success('Đã đăng xuất thiết bị khỏi tài khoản.');
-  }
-
   const hasMe = Boolean(me);
   React.useEffect(() => {
     const nextKey = navKeyFromMuc(mucParam);
@@ -304,11 +232,9 @@ function AccountPageContent() {
     const target =
       nextKey === 'security'
         ? securityRef.current
-        : nextKey === 'session'
-          ? sessionRef.current
-          : mucParam === 'ho-so'
-            ? profileRef.current
-            : null;
+        : mucParam === 'ho-so'
+          ? profileRef.current
+          : null;
     if (target && typeof target.scrollIntoView === 'function') {
       target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -319,25 +245,11 @@ function AccountPageContent() {
       router.push('/notifications');
       return;
     }
-    if (key === 'appearance') {
-      const currentTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-      const nextLabel = currentTheme === 'dark' ? 'Sáng' : 'Tối';
-      const toggleBtn = document.querySelector<HTMLButtonElement>('button[aria-label="Chuyển giao diện Sáng/Tối"]');
-      if (toggleBtn) {
-        toggleBtn.click();
-      } else {
-        const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        document.documentElement.dataset.theme = nextTheme;
-        try { localStorage.setItem('qsystem-theme', nextTheme); } catch {}
-      }
-      toast.success(`Đã chuyển sang giao diện ${nextLabel}.`);
-      return;
-    }
     setActiveNav(key);
     if (typeof (router as { replace?: unknown }).replace === 'function') {
       router.replace(hrefForNavKey(key), { scroll: false });
     }
-    const target = key === 'profile' ? profileRef.current : key === 'security' ? securityRef.current : sessionRef.current;
+    const target = key === 'profile' ? profileRef.current : securityRef.current;
     if (target && typeof target.scrollIntoView === 'function') {
       target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -426,25 +338,6 @@ function AccountPageContent() {
             >
               <Bell size={16} strokeWidth={1.6} aria-hidden="true" />
               <span>Thông báo</span>
-            </button>
-            <button
-              type="button"
-              className="qa-nav__item"
-              data-active={activeNav === 'appearance'}
-              onClick={() => handleNavClick('appearance')}
-            >
-              <Sun size={16} strokeWidth={1.6} aria-hidden="true" />
-              <span>Giao diện</span>
-            </button>
-            <button
-              type="button"
-              className="qa-nav__item"
-              data-active={activeNav === 'session'}
-              aria-current={activeNav === 'session' ? 'page' : undefined}
-              onClick={() => handleNavClick('session')}
-            >
-              <Activity size={16} strokeWidth={1.6} aria-hidden="true" />
-              <span>Phiên làm việc</span>
             </button>
           </nav>
         </aside>
@@ -645,51 +538,9 @@ function AccountPageContent() {
                 </div>
               </div>
 
-              <div className="qa-sec-item">
-                <div className="qa-sec-row">
-                  <span className="qa-sec-icon" aria-hidden="true">
-                    <Activity size={17} strokeWidth={1.7} aria-hidden="true" />
-                  </span>
-                  <div className="qa-sec-main">
-                    <p className="qa-sec-title">Thiết bị đăng nhập</p>
-                    <p className="qa-sec-desc">Windows · Chrome · Hiện tại</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="qx-btn qx-btn--sm"
-                    disabled
-                    aria-disabled="true"
-                    aria-expanded={showDevices}
-                    onClick={() => setShowDevices((prev) => !prev)}
-                  >
-                    Quản lý
-                  </button>
-                </div>
-
-                {showDevices ? (
-                  <div className="qa-device-list" role="region" aria-label="Danh sách thiết bị đăng nhập">
-                    <p className="qa-helper">Quản lý phiên đăng nhập chưa được triển khai trên máy chủ.</p>
-                  </div>
-                ) : null}
-              </div>
             </div>
           </div>
 
-          <div id="qa-session" ref={sessionRef} className="qx-card qa-session">
-            <div>
-              <h2>Phiên hiện tại</h2>
-              <p>Đăng xuất khỏi thiết bị này</p>
-            </div>
-            <button
-              type="button"
-              className="qx-btn qx-btn--sm"
-              disabled={loggingOut}
-              onClick={handleLogout}
-            >
-              <ArrowRight size={14} strokeWidth={1.7} aria-hidden="true" />
-              {loggingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
-            </button>
-          </div>
         </div>
       </div>
     </section>

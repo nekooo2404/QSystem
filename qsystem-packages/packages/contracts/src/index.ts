@@ -25,6 +25,7 @@ export {
   WorkPackageStatusSchema,
   CreateWorkPackageSchema,
   CreateProjectSchema,
+  UpdateProjectSchema,
   UpdateWorkPackageSchema,
   type CreateDepartmentInput,
   type UpdateDepartmentInput,
@@ -40,6 +41,7 @@ export {
   type WorkPackageStatus,
   type CreateWorkPackageInput,
   type CreateProjectInput,
+  type UpdateProjectInput,
   type UpdateWorkPackageInput,
 } from './org';
 export {

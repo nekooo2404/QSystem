@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Calendar, Paperclip, Plus, Users, X } from 'lucide-react';
+import { Calendar, FileText, Paperclip, Plus, Users, X } from 'lucide-react';
 import { Select, useFloatingLayer, type SelectOption } from '@qsystem/ui';
 import {
   createTask,
@@ -56,7 +56,11 @@ function getDefaultDue(): string {
   return formatDdMmYyyy(getLocalDateIso());
 }
 
-const VISIBILITY_OPTIONS = ['Hiển thị với nhóm', 'Công khai toàn công ty', 'Chỉ người phụ trách'] as const;
+const VISIBILITY_OPTIONS: readonly SelectOption<string>[] = [
+  { value: 'group', label: 'Hiển thị với nhóm' },
+  { value: 'company', label: 'Công khai toàn công ty' },
+  { value: 'assignee', label: 'Chỉ người phụ trách' },
+];
 
 export function CreateTaskModal({ open, onOpenChange, people, onCreated }: CreateTaskModalProps) {
   const modalRef = React.useRef<HTMLDivElement>(null);
@@ -76,7 +80,8 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
   const [dueDate, setDueDate] = React.useState(() => getDefaultDue());
   const [priority, setPriority] = React.useState<'Ưu tiên cao' | 'Trung bình' | 'Thấp'>('Ưu tiên cao');
   const [attachmentName, setAttachmentName] = React.useState<string | null>(null);
-  const [visibilityIdx, setVisibilityIdx] = React.useState(0);
+  const [attachmentSize, setAttachmentSize] = React.useState<string>('');
+  const [visibility, setVisibility] = React.useState<string>(VISIBILITY_OPTIONS[0].value);
   const [errors, setErrors] = React.useState<{ title?: string; assignee?: string; due?: string }>({});
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [errorAttempt, setErrorAttempt] = React.useState(0);
@@ -95,7 +100,8 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
     setDueDate(getDefaultDue());
     setPriority('Ưu tiên cao');
     setAttachmentName(null);
-    setVisibilityIdx(0);
+    setAttachmentSize('');
+    setVisibility(VISIBILITY_OPTIONS[0].value);
     setErrors({});
     setSubmitError(null);
     setErrorAttempt(0);
@@ -401,27 +407,61 @@ export function CreateTaskModal({ open, onOpenChange, people, onCreated }: Creat
                 hidden
                 onChange={(event) => {
                   const file = event.target.files?.[0];
-                  if (file) setAttachmentName(file.name);
+                  if (file) {
+                    setAttachmentName(file.name);
+                    const kb = file.size / 1024;
+                    setAttachmentSize(kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`);
+                  }
                 }}
               />
-              <button
-                type="button"
-                className="qtk-extra-btn"
-                data-active={attachmentName ? 'true' : undefined}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Paperclip size={16} strokeWidth={1.5} aria-hidden="true" />
-                <span>{attachmentName ?? 'Thêm tệp đính kèm'}</span>
-              </button>
-              <button
-                type="button"
-                className="qtk-extra-btn"
-                data-active={visibilityIdx !== 0 ? 'true' : undefined}
-                onClick={() => setVisibilityIdx((current) => (current + 1) % VISIBILITY_OPTIONS.length)}
-              >
-                <Users size={16} strokeWidth={1.5} aria-hidden="true" />
-                <span>{VISIBILITY_OPTIONS[visibilityIdx]}</span>
-              </button>
+
+              {/* Attachment field */}
+              <div className="qtk-field">
+                <label className="qtk-field__label">Tệp đính kèm</label>
+                {attachmentName ? (
+                  <div className="qtk-attach-chip">
+                    <FileText size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span className="qtk-attach-chip__name">{attachmentName}</span>
+                    <span className="qtk-attach-chip__size">{attachmentSize}</span>
+                    <button
+                      type="button"
+                      className="qtk-attach-chip__remove"
+                      aria-label="Xóa tệp đính kèm"
+                      onClick={() => {
+                        setAttachmentName(null);
+                        setAttachmentSize('');
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                    >
+                      <X size={14} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="qtk-extra-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span>Thêm tệp đính kèm</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Visibility field */}
+              <div className="qtk-field">
+                <label htmlFor="qtk-create-visibility" className="qtk-field__label">
+                  <Users size={13} strokeWidth={1.5} aria-hidden="true" /> Quyền hiển thị
+                </label>
+                <Select
+                  id="qtk-create-visibility"
+                  aria-label="Quyền hiển thị"
+                  value={visibility}
+                  onValueChange={setVisibility}
+                  options={[...VISIBILITY_OPTIONS]}
+                  controlSize="md"
+                />
+              </div>
             </div>
           </div>
 

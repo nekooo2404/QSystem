@@ -24,7 +24,15 @@ type ModelName =
   | 'file'
   | 'task'
   | 'crmCustomer'
-  | 'crmDeal';
+  | 'crmDeal'
+  | 'project'
+  | 'workPackage'
+  | 'taskComment'
+  | 'taskHistory'
+  | 'taskAttachment'
+  | 'leaveRequest'
+  | 'calendarEvent'
+  | 'attendanceRecord';
 
 type Where = Record<string, unknown>;
 type Row = Record<string, unknown>;
@@ -77,6 +85,39 @@ export function scopeFor(model: ModelName, viewer: ScopeViewer): Where | undefin
       return viewer.role === 'MANAGER'
         ? { customer: { OR: [{ ownerId: viewer.id }, { departmentId: managed }] } }
         : { customer: { OR: [{ ownerId: viewer.id }, { createdById: viewer.id }] } };
+    case 'project':
+      // Work hierarchy: DIRECTOR sees the whole portfolio; a MANAGER sees the
+      // projects that own packages they manage plus ones they own; EMPLOYEE
+      // sees only projects they own.
+      return viewer.role === 'MANAGER'
+        ? { OR: [{ ownerId: viewer.id }, { workPackages: { some: { managerId: viewer.id } } }] }
+        : { ownerId: viewer.id };
+    case 'workPackage':
+      return viewer.role === 'MANAGER'
+        ? { OR: [{ assignedById: viewer.id }, { managerId: viewer.id }] }
+        : { managerId: viewer.id };
+    case 'taskComment':
+      return { task: viewer.role === 'MANAGER'
+          ? { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }, { departmentId: managed }] }
+          : { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }] } };
+    case 'taskHistory':
+      return { task: viewer.role === 'MANAGER'
+          ? { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }, { departmentId: managed }] }
+          : { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }] } };
+    case 'taskAttachment':
+      return { task: viewer.role === 'MANAGER'
+          ? { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }, { departmentId: managed }] }
+          : { OR: [{ ownerId: viewer.id }, { assigneeId: viewer.id }] } };
+    case 'leaveRequest':
+      return viewer.role === 'MANAGER'
+          ? { OR: [{ userId: viewer.id }, { user: { departmentId: managed } }, { reviewerId: viewer.id }] }
+          : { userId: viewer.id };
+    case 'calendarEvent':
+      return { ownerId: viewer.id };
+    case 'attendanceRecord':
+      return viewer.role === 'MANAGER'
+        ? { OR: [{ userId: viewer.id }, { user: { departmentId: managed } }] }
+        : { userId: viewer.id };
     case 'auditLog':
       return viewer.role === 'MANAGER'
         ? {
@@ -133,6 +174,23 @@ export function isAllowed(model: ModelName, viewer: ScopeViewer, row: Row): bool
       const customer = row.customer as Row | undefined;
       return !!customer && isAllowed('crmCustomer', viewer, customer);
     }
+    case 'project':
+      if (row.ownerId === viewer.id) return true;
+      return viewer.role === 'MANAGER';
+    case 'workPackage':
+      return row.managerId === viewer.id || row.assignedById === viewer.id;
+    case 'taskComment':
+    case 'taskHistory':
+    case 'taskAttachment': {
+      const task = row.task as Row | undefined;
+      return !!task && isAllowed('task', viewer, task);
+    }
+    case 'leaveRequest':
+      return row.userId === viewer.id || row.reviewerId === viewer.id || viewer.role === 'MANAGER';
+    case 'calendarEvent':
+      return row.ownerId === viewer.id;
+    case 'attendanceRecord':
+      return row.userId === viewer.id || viewer.role === 'MANAGER';
     case 'auditLog': {
       if (row.actorId === viewer.id) return true;
       if (viewer.role !== 'MANAGER') return false;
@@ -214,6 +272,14 @@ export function withScope(viewer: ScopeViewer) {
     'task',
     'crmCustomer',
     'crmDeal',
+    'project',
+    'workPackage',
+    'taskComment',
+    'taskHistory',
+    'taskAttachment',
+    'leaveRequest',
+    'calendarEvent',
+    'attendanceRecord',
   ];
 
   interface ScopedReader {
@@ -226,6 +292,14 @@ export function withScope(viewer: ScopeViewer) {
   task: ReaderDelegate;
   crmCustomer: ReaderDelegate;
   crmDeal: ReaderDelegate;
+  project: ReaderDelegate;
+  workPackage: ReaderDelegate;
+  taskComment: ReaderDelegate;
+  taskHistory: ReaderDelegate;
+  taskAttachment: ReaderDelegate;
+  leaveRequest: ReaderDelegate;
+  calendarEvent: ReaderDelegate;
+  attendanceRecord: ReaderDelegate;
 }
 
 interface ReaderDelegate {

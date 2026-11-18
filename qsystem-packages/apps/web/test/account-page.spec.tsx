@@ -56,21 +56,6 @@ it('fails closed on password update errors without redirecting or faking success
   expect(push).not.toHaveBeenCalledWith('/login');
 });
 
-it('clears access token, sets logout cookie, and navigates to /login on logout', async () => {
-  apiFetch
-    .mockResolvedValueOnce({ name: 'Nguyễn Minh Tuấn', email: 'tuan@qsystem.vn', role: 'EMPLOYEE' })
-    .mockResolvedValueOnce({ ok: true });
-  const user = userEvent.setup();
-  render(<AccountPage />);
-  expect(await screen.findByText('Nguyễn Minh Tuấn')).toBeInTheDocument();
-
-  await user.click(screen.getByRole('button', { name: 'Đăng xuất' }));
-
-  expect(setAccessToken).toHaveBeenCalledWith(null);
-  expect(document.cookie).toContain('qsystem_logged_out=1');
-  expect(push).toHaveBeenCalledWith('/login');
-});
-
 it('syncs ?muc= query params with account navigation sections without QTask references', async () => {
   searchParams = new URLSearchParams('muc=bao-mat');
   apiFetch.mockResolvedValueOnce({ name: 'Nguyễn Minh Tuấn', email: 'tuan@qsystem.vn', role: 'EMPLOYEE' });
@@ -81,9 +66,9 @@ it('syncs ?muc= query params with account navigation sections without QTask refe
   expect(screen.getByRole('button', { name: 'Bảo mật & đăng nhập' })).toHaveAttribute('aria-current', 'page');
   expect(screen.getByRole('button', { name: 'Thông tin cá nhân' })).not.toHaveAttribute('aria-current');
 
-  await user.click(screen.getByRole('button', { name: 'Phiên làm việc' }));
-  expect(replace).toHaveBeenCalledWith('/account?muc=phien', { scroll: false });
-  expect(screen.getByRole('button', { name: 'Phiên làm việc' })).toHaveAttribute('aria-current', 'page');
+  await user.click(screen.getByRole('button', { name: 'Thông tin cá nhân' }));
+  expect(replace).toHaveBeenCalledWith('/account', { scroll: false });
+  expect(screen.getByRole('button', { name: 'Thông tin cá nhân' })).toHaveAttribute('aria-current', 'page');
 
   searchParams = new URLSearchParams('muc=ho-so');
   rerender(<AccountPage />);

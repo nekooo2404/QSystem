@@ -470,6 +470,20 @@ export function MyTasksView() {
   }, [reloadTick]);
 
   React.useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') setReloadTick((tick) => tick + 1);
+    };
+    const interval = window.setInterval(refreshIfVisible, 30_000);
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshIfVisible);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, []);
+
+  React.useEffect(() => {
     if (!filterOpen) return;
     const onDocDown = (event: MouseEvent) => {
       const target = event.target as Element | null;

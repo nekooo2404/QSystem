@@ -81,8 +81,17 @@ model User {
   socialPosts          SocialPost[]         @relation("SocialPostAuthor")
   socialComments       SocialComment[]      @relation("SocialCommentAuthor")
   socialPostLikes      SocialPostLike[]     @relation("SocialPostLikeUser")
+  socialPostSaves      SocialPostSave[]     @relation("SocialPostSaveUser")
+  socialPostHides      SocialPostHide[]     @relation("SocialPostHideUser")
   crmCustomersOwned    CrmCustomer[]        @relation("CrmCustomerOwner")
   crmCustomersCreated  CrmCustomer[]        @relation("CrmCustomerCreator")
+  taskComments         TaskComment[]        @relation("TaskCommentAuthor")
+  taskHistories        TaskHistory[]        @relation("TaskHistoryActor")
+  taskAttachments      TaskAttachment[]    @relation("TaskAttachmentUploader")
+  leaveRequests         LeaveRequest[]      @relation("LeaveRequester")
+  reviewedLeaves        LeaveRequest[]      @relation("LeaveReviewer")
+  calendarEvents        CalendarEvent[]     @relation("CalendarEventOwner")
+  attendanceRecords     AttendanceRecord[]  @relation("AttendanceUser")
 
   @@map("users")
 }
@@ -214,6 +223,9 @@ model Task {
 
   project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
   workPackage WorkPackage? @relation(fields: [workPackageId], references: [id], onDelete: SetNull)
+  comments    TaskComment[]
+  history     TaskHistory[]
+  attachments TaskAttachment[]
 
   @@index([ownerId])
   @@index([departmentId])
@@ -222,6 +234,99 @@ model Task {
   @@index([projectId])
   @@index([workPackageId])
   @@map("tasks")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  authorId  String   @map("author_id")
+  text      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User     @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  @@index([taskId, createdAt])
+  @@map("task_comments")
+}
+
+model TaskHistory {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  actorId   String   @map("actor_id")
+  text      String
+  createdAt DateTime @default(now()) @map("created_at")
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor     User     @relation("TaskHistoryActor", fields: [actorId], references: [id], onDelete: Cascade)
+  @@index([taskId, createdAt])
+  @@map("task_history")
+}
+
+model TaskAttachment {
+  id           String   @id @default(cuid())
+  taskId       String   @map("task_id")
+  uploaderId   String   @map("uploader_id")
+  name         String
+  storageKey   String   @map("storage_key")
+  size         Int?
+  mimeType     String?  @map("mime_type")
+  createdAt    DateTime @default(now()) @map("created_at")
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader     User     @relation("TaskAttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+  @@index([taskId, createdAt])
+  @@map("task_attachments")
+}
+
+model LeaveRequest {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  userId       String   @map("user_id")
+  fromDate     String   @map("from_date")
+  toDate       String   @map("to_date")
+  days         Int
+  reason       String
+  type         String   @default("Phép năm")
+  status       String   @default("PENDING")
+  reviewerId   String?  @map("reviewer_id")
+  rejectionReason String? @map("rejection_reason")
+  createdAt    DateTime @default(now()) @map("created_at")
+  reviewedAt   DateTime? @map("reviewed_at")
+  user         User     @relation("LeaveRequester", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer     User?    @relation("LeaveReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("leave_requests")
+}
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  ownerId     String   @map("owner_id")
+  title       String
+  startsAt    DateTime @map("starts_at")
+  endsAt      DateTime? @map("ends_at")
+  color       String   @default("blue")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  owner       User     @relation("CalendarEventOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  @@index([ownerId, startsAt])
+  @@map("calendar_events")
+}
+
+model AttendanceRecord {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  date       String
+  checkInAt  DateTime? @map("check_in_at")
+  checkOutAt DateTime? @map("check_out_at")
+  status     String    @default("Chưa chấm công")
+  note       String?
+  source     String    @default("WEB")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  user       User      @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, date])
+  @@index([date])
+  @@map("attendance_records")
 }
 
 model CrmCustomer {
@@ -338,6 +443,8 @@ model SocialPost {
   department Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   comments   SocialComment[]
   likes      SocialPostLike[]
+  saves      SocialPostSave[]
+  hides      SocialPostHide[]
 
   @@index([pinned, createdAt])
   @@index([departmentId, createdAt])
@@ -376,4 +483,28 @@ model SocialPostLike {
   @@index([postId])
   @@index([userId])
   @@map("social_post_likes")
+}
+
+model SocialPostSave {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  post      SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User       @relation("SocialPostSaveUser", fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([postId, userId])
+  @@index([userId])
+  @@map("social_post_saves")
+}
+
+model SocialPostHide {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  post      SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User       @relation("SocialPostHideUser", fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([postId, userId])
+  @@index([userId])
+  @@map("social_post_hides")
 }

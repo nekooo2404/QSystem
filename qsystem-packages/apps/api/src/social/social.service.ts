@@ -378,4 +378,42 @@ export class SocialService {
       };
     });
   }
+
+  async toggleSave(viewer: ScopeViewer, postId: string) {
+    return this.prisma.withIdentity(viewer.id, async (tx) => {
+      const existing = await tx.socialPostSave.findUnique({
+        where: { postId_userId: { postId, userId: viewer.id } },
+      });
+      if (existing) {
+        await tx.socialPostSave.delete({ where: { id: existing.id } });
+        return { saved: false as const };
+      }
+      await tx.socialPostSave.create({ data: { postId, userId: viewer.id } });
+      return { saved: true as const };
+    });
+  }
+
+  async toggleHide(viewer: ScopeViewer, postId: string) {
+    return this.prisma.withIdentity(viewer.id, async (tx) => {
+      const existing = await tx.socialPostHide.findUnique({
+        where: { postId_userId: { postId, userId: viewer.id } },
+      });
+      if (existing) {
+        await tx.socialPostHide.delete({ where: { id: existing.id } });
+        return { hidden: false as const };
+      }
+      await tx.socialPostHide.create({ data: { postId, userId: viewer.id } });
+      return { hidden: true as const };
+    });
+  }
+
+  async listSavedIds(viewer: ScopeViewer): Promise<string[]> {
+    const rows = await this.prisma.socialPostSave.findMany({ where: { userId: viewer.id }, select: { postId: true } });
+    return rows.map((row) => row.postId);
+  }
+
+  async listHiddenIds(viewer: ScopeViewer): Promise<string[]> {
+    const rows = await this.prisma.socialPostHide.findMany({ where: { userId: viewer.id }, select: { postId: true } });
+    return rows.map((row) => row.postId);
+  }
 }

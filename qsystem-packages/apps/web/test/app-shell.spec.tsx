@@ -99,10 +99,10 @@ describe('AppWorkspaceShell', () => {
     expect(screen.getByText('Nội dung công việc')).toBeInTheDocument();
   });
 
-  it('keeps Sáng/Tối, Thông báo and Tài khoản anchored in the top bar', () => {
+  it('keeps Thông báo and Tài khoản anchored in the top bar', () => {
     renderShell();
     const topbar = screen.getByRole('banner');
-    expect(within(topbar).getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeInTheDocument();
+    expect(within(topbar).queryByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeNull();
     expect(within(topbar).getByRole('link', { name: /Thông báo/ })).toBeInTheDocument();
     expect(within(topbar).getByRole('button', { name: 'Tài khoản' })).toBeInTheDocument();
   });
@@ -117,17 +117,14 @@ describe('AppWorkspaceShell', () => {
     expect(screen.queryByRole('link', { name: 'Tất cả công việc' })).toBeNull();
 
     const topbar = screen.getByRole('banner');
-    expect(within(topbar).getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeInTheDocument();
+    expect(within(topbar).queryByRole('button', { name: 'Chuyển giao diện Sáng/Tối' })).toBeNull();
     expect(within(topbar).getByRole('link', { name: /Thông báo/ })).toBeInTheDocument();
     expect(within(topbar).getByRole('button', { name: 'Tài khoản' })).toBeInTheDocument();
   });
 
-  it('toggles the theme and shows the account menu with a Vietnamese role', async () => {
+  it('shows the account menu with a Vietnamese role', async () => {
     const user = userEvent.setup();
     renderShell();
-
-    await user.click(screen.getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' }));
-    expect(document.documentElement.dataset.theme).toBe('light');
 
     await user.click(screen.getByRole('button', { name: 'Tài khoản' }));
     const menu = screen.getByRole('menu', { name: 'Tài khoản' });
@@ -141,13 +138,9 @@ describe('AppWorkspaceShell', () => {
     expect(await screen.findByRole('link', { name: 'Thông báo, 1 chưa đọc' })).toBeInTheDocument();
   });
 
-  it('exposes theme state and supports account menu keyboard navigation and restoration', async () => {
+  it('supports account menu keyboard navigation and restoration', async () => {
     const user = userEvent.setup();
     renderShell();
-    const theme = screen.getByRole('button', { name: 'Chuyển giao diện Sáng/Tối' });
-    expect(theme).toHaveAttribute('aria-pressed', 'true');
-    await user.click(theme);
-    expect(theme).toHaveAttribute('aria-pressed', 'false');
     const trigger = screen.getByRole('button', { name: 'Tài khoản' });
     trigger.focus();
     await user.keyboard('{ArrowDown}');
@@ -183,7 +176,7 @@ describe('AppWorkspaceShell', () => {
     const accountNav = within(sidebar).getByRole('navigation', { name: 'Tài khoản & bảo mật' });
     expect(within(accountNav).getByRole('link', { name: 'Thông tin cá nhân' })).toHaveAttribute('aria-current', 'page');
     expect(within(accountNav).getByRole('link', { name: 'Bảo mật & đăng nhập' })).toHaveAttribute('href', '/account?muc=bao-mat');
-    expect(within(accountNav).getByRole('link', { name: 'Phiên làm việc' })).toHaveAttribute('href', '/account?muc=phien');
+    expect(within(accountNav).queryByRole('link', { name: 'Phiên làm việc' })).toBeNull();
 
     const shortcutsNav = within(sidebar).getByRole('navigation', { name: 'Lối tắt' });
     expect(within(shortcutsNav).getByRole('button', { name: 'Tìm kiếm' })).toBeInTheDocument();

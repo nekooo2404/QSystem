@@ -4,6 +4,7 @@ import {
   CreateProjectSchema,
   CreateWorkPackageSchema,
   UpdateDepartmentSchema,
+  UpdateProjectSchema,
   UpdateUserSchema,
   UpdateWorkPackageSchema,
 } from '@qsystem/contracts';
@@ -125,6 +126,131 @@ export class OrgController {
     return this.org.updateTask(await this.viewer(user), id, body);
   }
 
+  @Get('tasks/:id/comments')
+  async listTaskComments(@CurrentUser() user: RequestViewer | undefined, @Param('id') id: string) {
+    return this.org.listTaskComments(await this.viewer(user), id);
+  }
+
+  @Post('tasks/:id/comments')
+  async addTaskComment(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.addTaskComment(await this.viewer(user), id, body);
+  }
+
+  @Get('tasks/:id/history')
+  async listTaskHistory(@CurrentUser() user: RequestViewer | undefined, @Param('id') id: string) {
+    return this.org.listTaskHistory(await this.viewer(user), id);
+  }
+
+  @Post('tasks/:id/history')
+  async addTaskHistory(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.addTaskHistory(await this.viewer(user), id, body);
+  }
+
+  @Post('tasks/:id/attachments')
+  async addTaskAttachment(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.addTaskAttachment(await this.viewer(user), id, body);
+  }
+
+  @Get('tasks/:id/attachments')
+  async listTaskAttachments(@CurrentUser() user: RequestViewer | undefined, @Param('id') id: string) {
+    return this.org.listTaskAttachments(await this.viewer(user), id);
+  }
+
+  @Get('tasks/:taskId/attachments/:attachmentId/download')
+  async downloadTaskAttachment(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('taskId') taskId: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.org.getTaskAttachmentDownload(await this.viewer(user), taskId, attachmentId);
+  }
+
+  @Delete('tasks/:taskId/attachments/:attachmentId')
+  async deleteTaskAttachment(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('taskId') taskId: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.org.deleteTaskAttachment(await this.viewer(user), taskId, attachmentId);
+  }
+
+  @Get('leaves')
+  async listLeaves(@CurrentUser() user: RequestViewer | undefined) {
+    return this.org.listLeaves(await this.viewer(user));
+  }
+
+  @Post('leaves')
+  async createLeave(@CurrentUser() user: RequestViewer | undefined, @Body() body: unknown) {
+    return this.org.createLeave(await this.viewer(user), body);
+  }
+
+  @Patch('leaves/:id')
+  async reviewLeave(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.reviewLeave(await this.viewer(user), id, body);
+  }
+
+  @Get('events')
+  async listCalendarEvents(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.org.listCalendarEvents(await this.viewer(user), from, to);
+  }
+
+  @Post('events')
+  async createCalendarEvent(@CurrentUser() user: RequestViewer | undefined, @Body() body: unknown) {
+    return this.org.createCalendarEvent(await this.viewer(user), body);
+  }
+
+  @Patch('events/:id')
+  async updateCalendarEvent(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.updateCalendarEvent(await this.viewer(user), id, body);
+  }
+
+  @Delete('events/:id')
+  async deleteCalendarEvent(@CurrentUser() user: RequestViewer | undefined, @Param('id') id: string) {
+    return this.org.deleteCalendarEvent(await this.viewer(user), id);
+  }
+
+  @Get('attendance')
+  async listAttendance(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Query('date') date?: string,
+  ) {
+    return this.org.listAttendance(await this.viewer(user), date);
+  }
+
+  @Post('attendance/check-in')
+  async attendanceCheckIn(@CurrentUser() user: RequestViewer | undefined) {
+    return this.org.attendanceCheckIn(await this.viewer(user));
+  }
+
+  @Post('attendance/check-out')
+  async attendanceCheckOut(@CurrentUser() user: RequestViewer | undefined) {
+    return this.org.attendanceCheckOut(await this.viewer(user));
+  }
+
   @Get('work-packages')
   async listWorkPackages(
     @CurrentUser() user: RequestViewer | undefined,
@@ -144,6 +270,28 @@ export class OrgController {
     @Body() body: unknown,
   ) {
     return this.org.createProject(await this.viewer(user), parseBody(CreateProjectSchema, body));
+  }
+
+  @Patch('projects/:id')
+  async updateProject(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.org.updateProject(await this.viewer(user), id, parseBody(UpdateProjectSchema, body));
+  }
+
+  @Delete('projects/:id')
+  async deleteProject(
+    @CurrentUser() user: RequestViewer | undefined,
+    @Param('id') id: string,
+  ) {
+    return this.org.deleteProject(await this.viewer(user), id);
+  }
+
+  @Get('analytics/overview')
+  async taskAnalytics(@CurrentUser() user: RequestViewer | undefined) {
+    return this.org.taskAnalytics(await this.viewer(user));
   }
 
   @Post('work-packages')

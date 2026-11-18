@@ -536,7 +536,7 @@ describe('Finding #9: SigV4 path canonicalisation + presignUpload input validati
     }
   });
 
-  const svc = new StorageService({} as never);
+  const svc = new StorageService({} as never, { syncFile: async () => {} } as never);
   const viewer: ScopeViewer = { id: 'u', role: 'EMPLOYEE', managedDepartmentIds: [] };
 
   it('key chứa . / .. hoặc bắt đầu bằng / → INVALID_KEY (không chạm DB)', async () => {
@@ -560,7 +560,7 @@ describe('Finding #9: SigV4 path canonicalisation + presignUpload input validati
       forUser: () => ({
         file: { findUnique: async () => null, create: async () => ({ id: 'f1' }) },
       }),
-    } as never);
+    } as never, { syncFile: async () => {} } as never);
     for (const size of [0, MAX_FILE_SIZE_BYTES, undefined]) {
       const r = await reachedDb.presignUpload(viewer, { bucket: BUCKET, key: 'a..b/ok.txt', size });
       expect(r.fileId).toBe('f1');

@@ -12,7 +12,6 @@ import {
   Plus,
   Search,
   SquareCheck,
-  Sun,
   Users,
 } from 'lucide-react';
 import { toast, useCommandPaletteHotkey, useFloatingLayer } from '@qsystem/ui';
@@ -249,23 +248,6 @@ export function GlobalCommandHost({ open, onOpenChange, role, allowedModuleIds }
     [close, router],
   );
 
-  const toggleTheme = React.useCallback(() => {
-    const currentTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-    const nextLabel = currentTheme === 'dark' ? 'Sáng' : 'Tối';
-    close(false);
-    const toggleBtn = document.querySelector<HTMLButtonElement>('button[aria-label="Chuyển giao diện Sáng/Tối"]');
-    if (toggleBtn) {
-      toggleBtn.click();
-    } else {
-      const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.dataset.theme = nextTheme;
-      try {
-        localStorage.setItem('qsystem-theme', nextTheme);
-      } catch {}
-    }
-    toast.success(`Đã chuyển sang giao diện ${nextLabel}.`);
-  }, [close]);
-
   const groups = React.useMemo<PaletteGroup[]>(() => {
     const base: PaletteGroup[] = [
       {
@@ -361,13 +343,6 @@ export function GlobalCommandHost({ open, onOpenChange, role, allowedModuleIds }
             icon: <span className="qp-row__icon"><Users size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
             onSelect: () => go('/org?them-nhan-su=1'),
           },
-          {
-            id: 'action-toggle-theme',
-            label: 'Chuyển giao diện Sáng / Tối',
-            keywords: 'theme dark light sáng tối giao diện',
-            icon: <span className="qp-row__icon"><Sun size={16} strokeWidth={1.5} aria-hidden="true" /></span>,
-            onSelect: toggleTheme,
-          },
         ],
       },
     ];
@@ -404,7 +379,7 @@ export function GlobalCommandHost({ open, onOpenChange, role, allowedModuleIds }
             : group.items.filter((item) => matches(item, query)),
       }))
       .filter((group) => group.items.length > 0);
-  }, [allowedModuleIds, go, hits, query, role, toggleTheme]);
+  }, [allowedModuleIds, go, hits, query, role]);
 
   const flat = React.useMemo(() => groups.flatMap((group) => group.items), [groups]);
   const currentIndex = Math.min(activeIndex, Math.max(0, flat.length - 1));

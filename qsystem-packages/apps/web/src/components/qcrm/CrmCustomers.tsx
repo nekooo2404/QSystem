@@ -132,9 +132,9 @@ export function CrmWorkspace() {
     return loadCustomers();
   }, [loadCustomers]);
 
-  const fallbackCustomers = React.useMemo(() => buildSampleCustomers(), []);
-  const effectiveCustomers =
-    customers && customers.length > 0 ? customers : fallbackCustomers;
+  // API-first: an empty or failed backend response renders as empty/loading,
+  // never as fabricated sample customers (demo mode hydrates elsewhere).
+  const effectiveCustomers = customers ?? [];
 
   const ownerNames = React.useMemo(() => {
     const set = new Set<string>(DEFAULT_CRM_OWNERS.map((o) => o.name));
