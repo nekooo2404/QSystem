@@ -118,6 +118,7 @@ export function validateRuntimeEnv(): { env: RuntimeEnv; productionLike: boolean
     }
     assertNonPlaceholderSecret('S3_ACCESS_KEY', 3);
     assertNonPlaceholderSecret('S3_SECRET_KEY', 8);
+    assertNonPlaceholderSecret('REDIS_URL', 12);
     if (!readSecretOrEnv('MEILI_URL') && !readSecretOrEnv('MEILI_HOST')) {
       throw new Error(`env: MEILI_URL is required in ${env} mode`);
     }

@@ -4,7 +4,7 @@ import { CurrentUser } from '../iam/current-user.decorator';
 import type { RequestViewer } from '../iam/iam.service';
 import { AbilitiesFactory } from '../org/abilities.factory';
 import { NotifyService } from './notify.service';
-import { LocalSocketGateway } from './providers/local-socket.gateway';
+import { RedisSocketGateway } from './providers/redis-socket.gateway';
 
 @Controller('notifications')
 export class NotifyController implements OnModuleDestroy {
@@ -13,7 +13,7 @@ export class NotifyController implements OnModuleDestroy {
   constructor(
     @Inject(NotifyService) private readonly notify: NotifyService,
     @Inject(AbilitiesFactory) private readonly abilities: AbilitiesFactory,
-    @Inject(LocalSocketGateway) private readonly socket: LocalSocketGateway,
+    @Inject(RedisSocketGateway) private readonly socket: RedisSocketGateway,
   ) {}
 
   onModuleDestroy(): void {

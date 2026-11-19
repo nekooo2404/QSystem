@@ -7,7 +7,7 @@ import { NotifyService } from './notify.service';
 import { NotifyWorker } from './notify.worker';
 import { LocalEmailProvider } from './providers/local-email.provider';
 import { LocalViberFallbackProvider } from './providers/local-viber-fallback.provider';
-import { LocalSocketGateway } from './providers/local-socket.gateway';
+import { RedisSocketGateway } from './providers/redis-socket.gateway';
 import { LocalVideoProviderMock } from './providers/local-video.provider-mock';
 import { LocalAiProviderMock } from './providers/local-ai.provider-mock';
 import type { NotificationProvider } from './providers/notification-provider.interface';
@@ -39,15 +39,15 @@ const consoleLog = (message: string): void => {
     { provide: 'NOTIFY_LOGGER', useValue: consoleLog },
     LocalEmailProvider,
     LocalViberFallbackProvider,
-    LocalSocketGateway,
+    RedisSocketGateway,
     LocalVideoProviderMock,
     LocalAiProviderMock,
     {
       provide: 'NOTIFY_PROVIDERS',
-      useFactory(email: LocalEmailProvider, viber: LocalViberFallbackProvider, socket: LocalSocketGateway): NotificationProvider[] {
+      useFactory(email: LocalEmailProvider, viber: LocalViberFallbackProvider, socket: RedisSocketGateway): NotificationProvider[] {
         return [email, viber, socket];
       },
-      inject: [LocalEmailProvider, LocalViberFallbackProvider, LocalSocketGateway],
+      inject: [LocalEmailProvider, LocalViberFallbackProvider, RedisSocketGateway],
     },
   ] satisfies Provider[],
   exports: [NotifyService, NotifyWorker],

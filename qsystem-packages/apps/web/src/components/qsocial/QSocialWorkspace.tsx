@@ -253,7 +253,7 @@ export function QSocialWorkspace({ me }: { me: MeResponse }) {
   const muc = searchParams?.get('muc');
 
   const [persistedFeed] = React.useState<FeedPost[]>(() =>
-    isDemoMode ? readStorageJson<FeedPost[]>(STORAGE_POSTS_KEY, SAMPLE_POSTS) : [],
+    readStorageJson<FeedPost[]>(STORAGE_POSTS_KEY, []),
   );
   const [posts, setPosts] = React.useState<SocialPostItem[]>([]);
   const [localPosts, setLocalPosts] = React.useState<FeedPost[]>([]);

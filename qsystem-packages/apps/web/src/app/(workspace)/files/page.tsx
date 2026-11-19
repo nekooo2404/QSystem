@@ -417,7 +417,7 @@ function useModalFocusTrap(
 
 export default function FilesPage() {
   const [localRows] = React.useState<FileRow[]>(() =>
-    isDemoMode ? readLocalStorage<FileRow[]>(STORAGE_FILES_KEY, getSampleFiles()) : [],
+    readLocalStorage<FileRow[]>(STORAGE_FILES_KEY, []),
   );
   const [remoteRows, setRemoteRows] = React.useState<FileRow[]>([]);
   const [uploadedRows, setUploadedRows] = React.useState<FileRow[]>([]);

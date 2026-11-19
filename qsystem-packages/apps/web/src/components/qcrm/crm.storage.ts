@@ -224,12 +224,12 @@ export function isStrictProduction(): boolean {
 export function canUseCrmApiFallback(): boolean {
   // Production is API-first: sample/localStorage CRM data only loads in
   // explicit demo mode (or tests with fixtures).
-  return isTestEnvironment() || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  return false;
 }
 
 /** Local client persistence for CRM modules that have no backend endpoints yet. */
 export function canUseCrmLocalStore(): boolean {
-  return isTestEnvironment() || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  return false;
 }
 
 export function initialsOf(name: string): string {

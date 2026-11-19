@@ -7,7 +7,7 @@ const JWT_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const OPAQUE_TOKEN_RE = /^[A-Za-z0-9_-]{24,512}$/;
 
 function isDemoEnabled(): boolean {
-  return process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  return false;
 }
 
 function isValidRefreshToken(token: string | undefined): boolean {

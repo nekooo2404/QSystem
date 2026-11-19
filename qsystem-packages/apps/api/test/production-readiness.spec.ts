@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { applyHttpHardening } from '../src/common/http-hardening';
 import { LoginRateLimiter } from '../src/iam/login-rate-limit';
-import { LocalSocketGateway } from '../src/notify/providers/local-socket.gateway';
+import { RedisSocketGateway } from '../src/notify/providers/redis-socket.gateway';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Production Readiness: Hardening, QTask, Missing APIs & RLS', () => {
@@ -22,7 +22,7 @@ describe('Production Readiness: Hardening, QTask, Missing APIs & RLS', () => {
 
   let app: NestExpressApplication;
   let baseUrl = '';
-  let socketGateway: LocalSocketGateway;
+  let socketGateway: RedisSocketGateway;
 
   let deptAId = '';
   let deptBId = '';
@@ -72,7 +72,7 @@ describe('Production Readiness: Hardening, QTask, Missing APIs & RLS', () => {
     await app.listen(0, '127.0.0.1');
     const addr = app.getHttpServer().address() as { port: number };
     baseUrl = `http://127.0.0.1:${addr.port}`;
-    socketGateway = app.get(LocalSocketGateway);
+    socketGateway = app.get(RedisSocketGateway);
 
     const passwordHash = await argon2.hash(password);
     const deptA = await ownerPrisma.department.create({ data: { name: `PR Dept A ${runId}` } });

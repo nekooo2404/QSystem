@@ -78,7 +78,7 @@ const DEFAULT_META_CACHE: OrgMetaCache = {
 };
 
 function canUseOrgLocalFallback(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true' || process.env.NODE_ENV === 'test';
+  return false;
 }
 
 function readJsonStorage<T>(key: string, fallback: T): T {

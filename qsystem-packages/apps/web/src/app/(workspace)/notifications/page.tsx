@@ -76,11 +76,7 @@ function isTestEnvironment(): boolean {
 }
 
 function allowDevOfflineFallback(): boolean {
-  if (isTestEnvironment()) return false;
-  if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') {
-    return false;
-  }
-  return true;
+  return false;
 }
 
 function readStoredState(): StoredNotificationsState {
